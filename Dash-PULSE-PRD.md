@@ -1,12 +1,12 @@
-# DASH PAYROLL — Product Requirements Document
-*Rider Fee Calculation, Payroll & Client Billing Platform*
+# Dash PULSE — Product Requirements Document
+*Payroll, Utilization & Ledger System for Earnings — Rider Fee Calculation, Payroll & Client Billing Platform*
 
 | Field | Detail |
 |---|---|
-| Product | DASH Payroll (internal name: price-set-show) |
+| Product | Dash PULSE (repo/dir name: price-set-show; formerly referred to as "DASH Payroll") |
 | Owner / Operator | Dash Electric |
 | Document status | Living reference — reflects system as built, updated as features ship |
-| Last updated | 21 July 2026 |
+| Last updated | 24 July 2026 |
 | Stack | React + TypeScript, TanStack Router/Start, Supabase (Postgres, Auth, RLS), Tailwind CSS |
 
 ---
@@ -14,7 +14,7 @@
 ## 1. Overview
 
 ### 1.1 Purpose of this document
-This PRD documents DASH Payroll as it exists today: the problem it solves, who uses it, and how each module behaves. It is meant as a standing reference ("patokan project") — a single source of truth to onboard new contributors, evaluate new feature requests against existing behavior, and avoid re-litigating decisions already made in the system. It is descriptive of current behavior first, and prescriptive about near-term roadmap second (Section 9).
+This PRD documents Dash PULSE as it exists today: the problem it solves, who uses it, and how each module behaves. It is meant as a standing reference ("patokan project") — a single source of truth to onboard new contributors, evaluate new feature requests against existing behavior, and avoid re-litigating decisions already made in the system. It is descriptive of current behavior first, and prescriptive about near-term roadmap second (Section 9).
 
 ### 1.2 Problem statement
 Dash Electric pays a network of delivery riders based on how much they deliver (per shipment: distance/weight-based) and/or how much they attend (per shift), and separately bills its own clients (the businesses whose goods riders deliver) for that same work — but at different rates and under different logic. Before this system, fee logic and payroll needed a way to be: configured per client without engineering changes, computed consistently and auditable, and turned into an operational payroll run (calculate → review → finalize → publish → pay) without spreadsheets.
@@ -26,7 +26,7 @@ Dash Electric pays a network of delivery riders based on how much they deliver (
 - Give leadership live and historical margin (revenue − cost) visibility per client, with automated weekly reporting.
 
 ### 1.4 Non-goals (explicitly out of scope today)
-- Direct bank disbursement / payment execution — the system produces a bank-import file; the actual transfer happens outside DASH Payroll.
+- Direct bank disbursement / payment execution — the system produces a bank-import file; the actual transfer happens outside Dash PULSE.
 - External accounting/ERP integration — invoices are tracked in-app only (draft/finalized), not synced to any accounting system.
 - Multi-role / granular permissions beyond a binary admin/rider split.
 - Soft-delete / recycle-bin recovery — deletions across the app are hard deletes (see Section 14).

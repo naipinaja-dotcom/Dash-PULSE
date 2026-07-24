@@ -21,7 +21,7 @@ export async function callHermes(opts: {
       // OpenRouter minta identitas app buat dashboard/rate-limit mereka,
       // bukan buat auth — aman di-hardcode.
       "HTTP-Referer": "https://price-set-show.lovable.app",
-      "X-Title": "Dash Payroll - Ops Insight Agents", // header value harus ASCII, bukan em dash
+      "X-Title": "Dash PULSE - Ops Insight Agents", // header value harus ASCII, bukan em dash
     },
     body: JSON.stringify({
       model: config.hermesModel,

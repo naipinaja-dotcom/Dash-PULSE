@@ -1,8 +1,8 @@
-# DASH Payroll
+# Dash PULSE
 
 > Sistem payroll terpadu PT. Dash Elektrik Indonesia untuk mengelola skema pricing, attendance, potongan, dan slip gaji rider dari satu tempat.
 
-DASH Payroll adalah aplikasi internal yang membantu operator logistik menghitung gaji rider berdasarkan skema pricing yang fleksibel, data attendance, dan potongan-potongan terkait.
+Dash PULSE adalah aplikasi internal yang membantu operator logistik menghitung gaji rider berdasarkan skema pricing yang fleksibel, data attendance, dan potongan-potongan terkait.
 
 ## Pages
 

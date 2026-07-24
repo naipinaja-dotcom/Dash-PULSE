@@ -71,13 +71,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "DASH Payroll — Sistem Payroll Rider" },
+      { title: "Dash PULSE — Sistem Payroll Rider" },
       {
         name: "description",
         content:
-          "Payroll engine PT. Dash Elektrik Indonesia — kelola skema pricing, attendance, potongan, dan slip gaji rider dari satu tempat.",
+          "Dash PULSE, PT. Dash Elektrik Indonesia — kelola skema pricing, attendance, potongan, dan slip gaji rider dari satu tempat.",
       },
-      { property: "og:title", content: "DASH Payroll — Sistem Payroll Rider" },
+      { property: "og:title", content: "Dash PULSE — Sistem Payroll Rider" },
       {
         property: "og:description",
         content:
@@ -85,7 +85,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "DASH Payroll" },
+      { name: "twitter:title", content: "Dash PULSE" },
       { name: "twitter:description", content: "Sistem payroll terpadu untuk operasional rider." },
     ],
     links: [

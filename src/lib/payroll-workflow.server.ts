@@ -456,7 +456,7 @@ function buildNotification(result: PayrollWorkflowResult): {
     ${runs.length ? `<ul>${runRows}</ul>` : "<p>Gak ada periode yang jatuh tempo hari ini.</p>"}
     ${skippedClients.length ? `<p>Dilewati (udah finalized/published): ${skippedClients.join(", ")}</p>` : ""}
     <p>Total warning: ${totalWarnings}. Cek halaman Payroll Run untuk review sebelum publish.</p>
-    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash Payroll Engine — Payroll Workflow.</p>
+    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash PULSE — Payroll Workflow.</p>
   </div>`;
   return { subject, text, html };
 }

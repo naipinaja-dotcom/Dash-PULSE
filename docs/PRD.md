@@ -1,6 +1,6 @@
-# PRD — Dash Payroll Engine
+# PRD — Dash PULSE
 
-**Produk:** Payroll Engine PT. Dash Elektrik Indonesia (Dash Electric)
+**Produk:** Dash PULSE, PT. Dash Elektrik Indonesia (Dash Electric)
 **Domain:** Otomasi kalkulasi fee rider EV last-mile delivery + business intelligence (revenue/margin) untuk vendor logistik
 **Dokumen ini menggantikan:** tidak ada PRD sebelumnya di repo — ini PRD pertama, disusun dari kondisi kode aktual per 11 Juli 2026 (bukan dari asumsi lama yang sudah terbukti tidak sinkron dengan kode).
 **Dokumen terkait:** `docs/BLUEPRINT.md` (arsitektur teknis), `docs/pricing-engine-v2-design.md` (rencana redesign pricing engine — status: desain, belum diimplementasi).
@@ -9,7 +9,7 @@
 
 ## 1. Ringkasan
 
-Dash beroperasi sebagai vendor logistik last-mile (EV rider) untuk banyak client. Setiap client punya kombinasi skema pricing sendiri (rider dibayar dengan cara berbeda-beda tergantung kontrak dengan client), dan Dash sendiri menagih ke client dengan skema revenue yang juga bisa berbeda dari skema pembayaran ke rider. Payroll Engine adalah sistem internal (admin panel + rider portal) yang:
+Dash beroperasi sebagai vendor logistik last-mile (EV rider) untuk banyak client. Setiap client punya kombinasi skema pricing sendiri (rider dibayar dengan cara berbeda-beda tergantung kontrak dengan client), dan Dash sendiri menagih ke client dengan skema revenue yang juga bisa berbeda dari skema pembayaran ke rider. Dash PULSE adalah sistem internal (admin panel + rider portal) yang:
 
 1. Mengotomasi perhitungan fee rider dari data pengiriman (delivery) dan absensi (attendance) mentah, dengan 6 model pricing yang bisa dikonfigurasi per client/rider tanpa ubah kode.
 2. Menghasilkan laporan finansial (payroll run, payslip, deduction/potongan, bulk payment export) untuk operasional.

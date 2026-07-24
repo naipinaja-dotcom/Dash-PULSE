@@ -21,7 +21,7 @@ export interface CooAnalysis {
   coo_brief: string;
 }
 
-const SYSTEM_PROMPT = `You are the Chief Operating Officer advisor for a delivery/payroll company (Dash Payroll).
+const SYSTEM_PROMPT = `You are the Chief Operating Officer advisor for a delivery/payroll company (Dash PULSE).
 Create a 1-page executive brief with strategic implications. Be concise and decisive — highlight only what the COO needs to know.
 Respond with a single valid JSON object only — no markdown fences, no extra text.`;
 

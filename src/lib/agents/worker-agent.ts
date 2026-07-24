@@ -32,7 +32,7 @@ export interface WorkerAnalysis {
   worker_summary: string;
 }
 
-const SYSTEM_PROMPT = `You are a Financial Data Analyst for a delivery/payroll company (Dash Payroll).
+const SYSTEM_PROMPT = `You are a Financial Data Analyst for a delivery/payroll company (Dash PULSE).
 Your job is to analyze weekly P&L data and identify numerical changes.
 Respond with a single valid JSON object only — no markdown fences, no extra text.`;
 

@@ -1,5 +1,5 @@
 
-# Payroll Engine — PT. DASH ELEKTRIK INDONESIA
+# Dash PULSE — PT. DASH ELEKTRIK INDONESIA
 
 Aplikasi payroll untuk admin & rider dengan 6 model kalkulasi pricing dinamis. Tema ungu (#7C3AED), UI Bahasa Indonesia.
 

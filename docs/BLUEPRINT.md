@@ -1,4 +1,4 @@
-# Blueprint Teknis — Dash Payroll Engine
+# Blueprint Teknis — Dash PULSE
 
 Dokumen ini menggantikan asumsi lama di skill `dash-payroll-engine` yang sudah tidak sinkron dengan kode (contoh: skill lama bilang RLS "disabled" — kenyataannya RLS aktif di semua tabel bisnis; skill lama bilang kolom `clients.address/contact_person/phone` belum ada — kenyataannya sudah ada). Isi di bawah diverifikasi langsung dari kode & migration per 11 Juli 2026. Skill belum di-update secara sengaja (lihat `docs/PRD.md` §10) — dokumen ini yang jadi rujukan sementara sampai skill di-refresh.
 

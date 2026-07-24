@@ -198,7 +198,7 @@ export function AdminLayout({
               className="text-[13px] font-bold leading-tight tracking-tight"
               style={{ fontFamily: "'Plus Jakarta Sans',sans-serif" }}
             >
-              DASH Payroll
+              Dash PULSE
             </div>
             <div className="text-[10px] text-muted-foreground tracking-widest uppercase mt-0.5">
               PT. Dash Elektrik
@@ -352,7 +352,7 @@ export function AdminLayout({
           <div className="absolute inset-0 bg-foreground/40" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 bottom-0 w-64 bg-sidebar border-r border-border flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-sm font-semibold">DASH Payroll</span>
+              <span className="text-sm font-semibold">Dash PULSE</span>
               <button onClick={() => setMobileOpen(false)} className="p-1" aria-label="Tutup menu">
                 <X className="w-5 h-5" />
               </button>

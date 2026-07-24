@@ -46,7 +46,7 @@ function buildEmailHtml(dateISO: string, dueClients: DueClient[], dueRiders: Due
     <h2>Reminder Disbursement — ${WEEKDAY_NAMES[weekdayOf(dateISO)]}, ${dateISO}</h2>
     ${dueClients.length ? `<p><b>Client yang harus digaji hari ini:</b></p><ul>${clientRows}</ul>` : ""}
     ${dueRiders.length ? `<p><b>Rider spesifik yang harus digaji hari ini:</b></p><ul>${riderRows}</ul>` : ""}
-    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash Payroll Engine — Payroll Reminder.</p>
+    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash PULSE — Payroll Reminder.</p>
   </div>`;
 }
 

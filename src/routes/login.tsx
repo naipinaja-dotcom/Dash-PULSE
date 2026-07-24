@@ -10,14 +10,14 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
   head: () => ({
     meta: [
-      { title: "Masuk — DASH Payroll" },
+      { title: "Masuk — Dash PULSE" },
       {
         name: "description",
         content:
-          "Masuk ke DASH Payroll sebagai admin untuk mengakses dashboard payroll, attendance, dan slip gaji.",
+          "Masuk ke Dash PULSE sebagai admin untuk mengakses dashboard payroll, attendance, dan slip gaji.",
       },
-      { property: "og:title", content: "Masuk — DASH Payroll" },
-      { property: "og:description", content: "Masuk ke DASH Payroll sebagai admin." },
+      { property: "og:title", content: "Masuk — Dash PULSE" },
+      { property: "og:description", content: "Masuk ke Dash PULSE sebagai admin." },
       { property: "og:url", content: "https://price-set-show.lovable.app/login" },
       { property: "og:type", content: "website" },
     ],
@@ -121,7 +121,7 @@ function LoginPage() {
 
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm">
-          <h1 className="text-xl font-semibold mb-1">Masuk ke DASH</h1>
+          <h1 className="text-xl font-semibold mb-1">Masuk ke Dash PULSE</h1>
           <p className="text-sm text-muted-foreground mb-4">
             {mode === "admin"
               ? "Masuk dengan email & password admin Anda. Akun baru hanya dapat dibuat oleh administrator."

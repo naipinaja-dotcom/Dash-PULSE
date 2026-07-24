@@ -98,7 +98,7 @@ function buildEmailHtml(weekStart: string, weekEnd: string, perClient: ReturnTyp
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash Payroll Engine — Weekly PNL Push.</p>
+    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash PULSE — Weekly PNL Push.</p>
   </div>`;
 }
 

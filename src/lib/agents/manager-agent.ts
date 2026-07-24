@@ -22,7 +22,7 @@ export interface ManagerAnalysis {
   manager_summary: string;
 }
 
-const SYSTEM_PROMPT = `You are an Operations Manager at a delivery/payroll company (Dash Payroll) responsible for action planning.
+const SYSTEM_PROMPT = `You are an Operations Manager at a delivery/payroll company (Dash PULSE) responsible for action planning.
 Convert root-cause analysis into concrete, prioritized actions with owners.
 Respond with a single valid JSON object only — no markdown fences, no extra text.`;
 

@@ -34,25 +34,14 @@ export const reverseGeocodeDistricts = createServerFn({ method: "POST" })
     data.points.forEach((p) => uniquePoints.set(keyOf(p), p));
 
     const districtByKey = new Map<string, string | null>();
-    // ponytail: debug log sementara buat lihat bentuk respons ORS asli — hapus
-    // setelah ketauan kenapa district ke-isi salah (lihat percakapan 2026-07-27).
-    let debugLogged = 0;
     for (const [key, p] of uniquePoints) {
       try {
         const url = `https://api.openrouteservice.org/geocode/reverse?api_key=${apiKey}&point.lon=${p.lng}&point.lat=${p.lat}&size=1`;
         const res = await fetch(url);
         const json: any = await res.json();
-        if (debugLogged < 5) {
-          console.log("[geocode-debug]", JSON.stringify({ lat: p.lat, lng: p.lng, status: res.status, json }));
-          debugLogged++;
-        }
         const props = json?.features?.[0]?.properties;
         districtByKey.set(key, props?.county || props?.localadmin || props?.locality || null);
-      } catch (e) {
-        if (debugLogged < 5) {
-          console.log("[geocode-debug]", JSON.stringify({ lat: p.lat, lng: p.lng, error: (e as Error).message }));
-          debugLogged++;
-        }
+      } catch {
         districtByKey.set(key, null);
       }
       await new Promise((r) => setTimeout(r, 1600));

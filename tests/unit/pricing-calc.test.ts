@@ -456,6 +456,23 @@ describe("calcScheme — modular_v2 rate_by tanpa dimensi", () => {
     expect(res.perRow[1].fee).toBe(10000);
   });
 
+  it("delivery_type: RETURN flat + DELIVERY fallback ke tarif per-area (rates campur)", () => {
+    // Kasus nyata: admin mau RETURN kena flat, DELIVERY biasa kena tarif
+    // per-district — dua-duanya digabung dalam 1 rates list, match_column
+    // "Area" diabaikan selama rate_by masih "delivery_type". Match delivery_type
+    // dulu (ketemu buat RETURN), fallback ke district kalau row-nya DELIVERY.
+    const e = modularEnv("delivery_type", [
+      { key: "KOTA JAKARTA BARAT", rate: 14000 },
+      { key: "RETURN", rate: 15000 },
+    ]);
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", delivery_type: "DELIVERY", district: "Jakarta Barat" }),
+      row({ rider_id: "R1", delivery_type: "RETURN", district: "Jakarta Barat" }),
+    ]);
+    expect(res.perRow[0].fee).toBe(14000); // DELIVERY -> fallback match district (prefix-insensitive)
+    expect(res.perRow[1].fee).toBe(15000); // RETURN -> match delivery_type langsung
+  });
+
   it("column: rate per Area walau Distance/Weight off", () => {
     const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "Area");
     const res = calcScheme(e, [row({ rider_id: "R1", district: "Jakarta Pusat" })]);

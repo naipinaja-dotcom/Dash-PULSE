@@ -190,10 +190,21 @@ function DeliveryUpload() {
         else if (field === "distance_km") found = parsed[0].find((h) => /distance/i.test(h));
         else if (field === "weight_kg") found = parsed[0].find((h) => /weight/i.test(h));
         else if (field === "destination_address")
-          found = parsed[0].find((h) => /destination/i.test(h) && !/lat|long/i.test(h));
-        else if (field === "destination_lat") found = parsed[0].find((h) => /^lat|latitude/i.test(h));
+          found = parsed[0].find(
+            (h) => /destination/i.test(h) && !/lat|long|coordinate|koordinat/i.test(h),
+          );
+        // Lat/Long bisa 2 kolom terpisah, ATAU 1 kolom gabungan "lat, lng"
+        // dalam satu sel (mis. "Destination Coordinate": "-6.17942, 106.710177").
+        // Kalau gak ada kolom terpisah, dua-duanya di-map ke kolom gabungan yang
+        // sama — nanti dipecah pas baca baris (lihat parseCombinedCoord di analyze()).
+        else if (field === "destination_lat")
+          found =
+            parsed[0].find((h) => /^lat|latitude/i.test(h)) ??
+            parsed[0].find((h) => /coordinate|koordinat/i.test(h));
         else if (field === "destination_lng")
-          found = parsed[0].find((h) => /^lon|^lng|longitude/i.test(h));
+          found =
+            parsed[0].find((h) => /^lon|^lng|longitude/i.test(h)) ??
+            parsed[0].find((h) => /coordinate|koordinat/i.test(h));
         // Tanggal patokan fee = tanggal barang DIKIRIM. Nama kolomnya beda-beda di data mentah.
         else if (field === "delivery_date")
           found =
@@ -277,8 +288,22 @@ function DeliveryUpload() {
       return clientId || null; // baris tanpa nilai client -> pakai default dropdown
     };
 
+    // Kolom lat/lng gabungan ("lat, lng" dalam 1 sel) ke-map ke header yang
+    // SAMA buat destination_lat & destination_lng (lihat onFile) — split di
+    // sini kalau kedetect begitu, dari kolom terpisah kalau nggak.
+    const isCombinedCoord = !!mapping["destination_lat"] && mapping["destination_lat"] === mapping["destination_lng"];
+    const parseCombinedCoord = (v: string | null): [number, number] | null => {
+      if (!v) return null;
+      const parts = v
+        .split(/[,;]\s*|\s+/)
+        .map((s) => parseFloat(s))
+        .filter((n) => !isNaN(n));
+      return parts.length >= 2 ? [parts[0], parts[1]] : null;
+    };
+
     const recordsRaw = rows.map((r) => {
       const driverCode = get(r, "driver_code");
+      const combinedCoord = isCombinedCoord ? parseCombinedCoord(get(r, "destination_lat")) : null;
       return {
         client_id: hasClientColumn ? resolveClientId(get(r, "client_name")) : clientId || null,
         rider_id: driverCode ? (riderMap.get(driverCode) ?? null) : null,
@@ -295,14 +320,18 @@ function DeliveryUpload() {
         sender_name: get(r, "sender_name"),
         receiver_name: get(r, "receiver_name"),
         service_type: get(r, "service_type"),
-        destination_lat: (() => {
-          const v = get(r, "destination_lat");
-          return v ? parseFloat(v) : null;
-        })(),
-        destination_lng: (() => {
-          const v = get(r, "destination_lng");
-          return v ? parseFloat(v) : null;
-        })(),
+        destination_lat: combinedCoord
+          ? combinedCoord[0]
+          : (() => {
+              const v = get(r, "destination_lat");
+              return v ? parseFloat(v) : null;
+            })(),
+        destination_lng: combinedCoord
+          ? combinedCoord[1]
+          : (() => {
+              const v = get(r, "destination_lng");
+              return v ? parseFloat(v) : null;
+            })(),
       };
     });
 

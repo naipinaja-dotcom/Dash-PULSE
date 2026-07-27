@@ -97,6 +97,23 @@ const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g
 const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) => r.rider_id || r.driver_code || "(tanpa rider)";
 const isCompleted = (r: DeliveryRow) => norm(r.status) === "completed";
 
+// Override tarif per-area ditulis manual pakai prefix administratif ("Kota
+// Jakarta Pusat", "Kabupaten Tangerang"), tapi district hasil reverse-geocode
+// (lihat admin.upload.tsx) balikin nama polos ("Jakarta Pusat", "Tangerang")
+// — OSM/ORS gak nyimpen prefix "Kota"/"Kabupaten" di level itu. Exact match
+// dicoba DULU (gak ubah matching yang udah kepake sekarang, termasuk yang
+// kebetulan district-nya nyimpen nama toko/outlet, bukan area asli), baru
+// kalau gak ketemu, coba lagi setelah prefix dibuang dari dua-duanya.
+const stripAreaPrefix = (s: string) => s.replace(/^(kota|kabupaten)\s+/, "");
+const normArea = (s: unknown) => stripAreaPrefix(norm(s));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findByKey(items: any[], value: string): any {
+  return (
+    items.find((x: { key: string }) => norm(x.key) === norm(value)) ??
+    items.find((x: { key: string }) => normArea(x.key) === normArea(value))
+  );
+}
+
 function resolveField(row: DeliveryRow, columnName: string): string {
   const c = norm(columnName);
   if (c.includes("service") || c.includes("layanan")) return String(row.service_type ?? "");
@@ -172,7 +189,7 @@ export function calcFlatComponent(rows: DeliveryRow[], cfg: any): number[] {
       if (billable) {
         if (cfg.rate_by === "flat") rate = Number(cfg.flat_rate) || 0;
         else {
-          const hit = (cfg.rates || []).find((x: { key: string }) => norm(x.key) === norm(resolveField(r, cfg.match_column)));
+          const hit = findByKey(cfg.rates || [], resolveField(r, cfg.match_column));
           rate = hit ? Number(hit.rate) || 0 : Number(cfg.default_rate) || 0;
         }
       }
@@ -227,7 +244,7 @@ export function calcThresholdComponent(rows: DeliveryRow[], cfg: any): number[] 
     const byStoreDay = groupBy(rrows, (r) => resolveField(r, cfg.group_by) + "||" + r.delivery_date);
     for (const [, grp] of byStoreDay) {
       const storeVal = resolveField(grp[0], cfg.group_by);
-      const rule = (cfg.rules || []).find((x: { key: string }) => norm(x.key) === norm(storeVal));
+      const rule = findByKey(cfg.rules || [], storeVal);
       const threshold = Number(rule?.threshold ?? cfg.default?.threshold) || 0;
       const rate = Number(rule?.rate ?? cfg.default?.rate) || 0;
       const totalKg = grp.reduce((s, r) => s + (Number(r.weight_kg) || 0), 0);
@@ -279,7 +296,7 @@ export function calcRangeComponent(
     if (rateSettings.rate_by === "flat") return Number(band.base_fee) || 0;
     const colName = rateSettings.rate_by === "delivery_type" ? "delivery type" : rateSettings.match_column;
     const fieldVal = resolveField(r, colName);
-    const hit = rateSettings.rates.find((x) => norm(x.key) === norm(fieldVal));
+    const hit = findByKey(rateSettings.rates, fieldVal);
     return hit ? Number(hit.rate) || 0 : Number(band.base_fee) || 0;
   };
 
@@ -348,7 +365,7 @@ export function calcModularDeliveryComponent(rows: DeliveryRow[], cfg: ModularDe
     const colName = rateSettings.rate_by === "delivery_type" ? "delivery type" : rateSettings.match_column;
     rows.forEach((r, i) => {
       const fieldVal = resolveField(r, colName);
-      const hit = rateSettings.rates.find((x) => norm(x.key) === norm(fieldVal));
+      const hit = findByKey(rateSettings.rates, fieldVal);
       out[i] += hit ? Number(hit.rate) || 0 : 0;
     });
   }

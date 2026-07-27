@@ -95,9 +95,14 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
 
         // detail mentah periode ini (buat drill-down + active dates)
         const [delivs, atts] = await Promise.all([
+          // Cuma COMPLETED yang beneran dihitung fee-nya (calcScheme filter isCompleted)
+          // — FAILED/PENDING_PICKUP dkk selalu fee=0 di sini, cuma numpuk baris
+          // Rp0 di worksheet finance tanpa guna. Tetap kesimpen apa adanya di
+          // delivery_records buat BCR Analytics, cuma di-exclude dari view ini.
           fetchAllRows<{ rider_id: string | null; delivery_date: string; distance_km: number | null; weight_kg: number | null; delivery_type: string | null; district: string | null; fee: number }>(
             (c, from, to) => c.from("delivery_records" as any)
               .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
+              .ilike("status", "completed")
               .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end).range(from, to)),
           fetchAllRows<{ rider_id: string | null; log_date: string; clock_in: string | null; clock_out: string | null; duration_minutes: number | null; is_late: boolean; is_absent: boolean; fee: number }>(
             (c, from, to) => (c as any).from("attendance_logs")

@@ -352,11 +352,19 @@ function DeliveryUpload() {
 
     // Auto-isi district yang kosong dari koordinat (reverse geocoding ORS) —
     // CSV operasional sering ada Lat/Long tapi kolom district-nya kosong/gak
-    // ada sama sekali. Cuma jalan buat baris yang district-nya kosong DAN
-    // punya koordinat; kalau session admin habis atau ORS error, di-skip
+    // ada sama sekali. Kalau session admin habis atau ORS error, di-skip
     // (bukan gagalin seluruh upload) — district tetap bisa diisi manual.
+    //
+    // Beberapa sistem operasional export kolom "District" isinya alamat
+    // lengkap (duplikat dari destination_address), bukan nama district
+    // singkat kayak yang dipakai override per-area di Pricing Scheme
+    // ("Jakarta Pusat", dll — semua <40 karakter). Nilai district sepanjang
+    // itu gak berguna buat matching pricing, jadi tetap dianggap "kosong"
+    // dan ditimpa hasil geocode kalau koordinatnya ada.
+    // ponytail: ambang 40 karakter, naikkan kalau ada nama district legit yang lebih panjang.
+    const looksLikeFullAddress = (d: string | null) => !d || d.trim().length > 40;
     const needsGeocode = records.filter(
-      (r) => !r.district && r.destination_lat != null && r.destination_lng != null,
+      (r) => looksLikeFullAddress(r.district) && r.destination_lat != null && r.destination_lng != null,
     );
     if (needsGeocode.length > 0) {
       if (!session?.access_token) {

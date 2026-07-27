@@ -147,6 +147,24 @@ describe("calcScheme / flat_unit", () => {
     const res = calcScheme(e, rows);
     expect(res.subtotal).toBe(8000);
   });
+
+  it("rate table: area override matches even when 'Kota'/'Kabupaten' prefix differs", () => {
+    // Override keys are typed manually with the admin prefix ("Kota Jakarta
+    // Pusat"), but reverse-geocoded district values come back bare
+    // ("Jakarta Pusat") — the prefix must not block the match.
+    const e = env({
+      type: "flat_unit",
+      config: {
+        rate_by: "table",
+        match_column: "district",
+        rates: [{ key: "Kota Jakarta Pusat", rate: 12000 }],
+        default_rate: 3000,
+      },
+    });
+    const rows = [row({ rider_id: "R1", district: "Jakarta Pusat" })];
+    const res = calcScheme(e, rows);
+    expect(res.subtotal).toBe(12000);
+  });
 });
 
 // ==================================================================

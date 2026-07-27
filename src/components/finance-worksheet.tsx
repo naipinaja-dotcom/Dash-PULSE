@@ -19,7 +19,7 @@ const sb = supabase as any;
 
 export type Run = { id: string; name: string; period_start: string; period_end: string; status: string; client_id?: string | null };
 
-type DelivDetail = { date: string; km: number | null; kg: number | null; type: string | null; fee: number };
+type DelivDetail = { date: string; km: number | null; kg: number | null; type: string | null; district: string | null; fee: number };
 type AttDetail = { date: string; clockIn: string | null; clockOut: string | null; dur: number | null; late: boolean; absent: boolean; fee: number };
 
 type RiderRow = {
@@ -95,9 +95,9 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
 
         // detail mentah periode ini (buat drill-down + active dates)
         const [delivs, atts] = await Promise.all([
-          fetchAllRows<{ rider_id: string | null; delivery_date: string; distance_km: number | null; weight_kg: number | null; delivery_type: string | null; fee: number }>(
+          fetchAllRows<{ rider_id: string | null; delivery_date: string; distance_km: number | null; weight_kg: number | null; delivery_type: string | null; district: string | null; fee: number }>(
             (c, from, to) => c.from("delivery_records" as any)
-              .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, fee")
+              .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
               .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end).range(from, to)),
           fetchAllRows<{ rider_id: string | null; log_date: string; clock_in: string | null; clock_out: string | null; duration_minutes: number | null; is_late: boolean; is_absent: boolean; fee: number }>(
             (c, from, to) => (c as any).from("attendance_logs")
@@ -110,7 +110,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         for (const r of delivs) {
           if (!r.rider_id) continue;
           (delivByRider.get(r.rider_id) ?? delivByRider.set(r.rider_id, []).get(r.rider_id)!)
-            .push({ date: r.delivery_date, km: r.distance_km, kg: r.weight_kg, type: r.delivery_type, fee: Number(r.fee) || 0 });
+            .push({ date: r.delivery_date, km: r.distance_km, kg: r.weight_kg, type: r.delivery_type, district: r.district, fee: Number(r.fee) || 0 });
           const s = datesByRider.get(r.rider_id) ?? new Set<string>();
           s.add(r.delivery_date); datesByRider.set(r.rider_id, s);
         }
@@ -208,13 +208,13 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     return [header, ...body, grand];
   };
   const detailRows = (): Cell[][] => {
-    const header: Cell[] = ["Driver Name", "Kode Mitra", "Client", "Tanggal", "Jenis", "Jarak (km)", "Berat (kg)", "OTP / Status", "Fee"];
+    const header: Cell[] = ["Driver Name", "Kode Mitra", "Client", "Tanggal", "Jenis", "Jarak (km)", "Berat (kg)", "District", "OTP / Status", "Fee"];
     const out: Cell[][] = [header];
     for (const r of rows) {
-      for (const d of r.deliv) out.push([r.name, r.employeeId, r.clientName, d.date, "Kiriman", d.km ?? "", d.kg ?? "", d.type ?? "", d.fee]);
-      for (const a of r.att) out.push([r.name, r.employeeId, r.clientName, a.date, "Absensi", "", "", otpLabel(a), a.fee]);
+      for (const d of r.deliv) out.push([r.name, r.employeeId, r.clientName, d.date, "Kiriman", d.km ?? "", d.kg ?? "", d.district ?? "", d.type ?? "", d.fee]);
+      for (const a of r.att) out.push([r.name, r.employeeId, r.clientName, a.date, "Absensi", "", "", "", otpLabel(a), a.fee]);
       const sub = r.deliv.reduce((s, d) => s + d.fee, 0) + r.att.reduce((s, a) => s + a.fee, 0);
-      out.push(["", "", "", "", "", "", "", `Subtotal ${r.name}`, sub]);
+      out.push(["", "", "", "", "", "", "", "", `Subtotal ${r.name}`, sub]);
     }
     return out;
   };
@@ -403,18 +403,19 @@ function RiderDetail({ r }: { r: RiderRow }) {
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Kiriman ({r.deliv.length})</div>
           <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-xs whitespace-nowrap bg-card">
-              <thead className="bg-muted text-left"><tr><th className="px-3 py-1.5">Tanggal</th><th className="text-right px-3">Jarak (km)</th><th className="text-right px-3">Berat (kg)</th><th className="px-3">Tipe</th><th className="text-right px-3">Fee</th></tr></thead>
+              <thead className="bg-muted text-left"><tr><th className="px-3 py-1.5">Tanggal</th><th className="text-right px-3">Jarak (km)</th><th className="text-right px-3">Berat (kg)</th><th className="px-3">District</th><th className="px-3">Tipe</th><th className="text-right px-3">Fee</th></tr></thead>
               <tbody>
                 {r.deliv.map((d, i) => (
                   <tr key={i} className="border-t border-border">
                     <td className="px-3 py-1.5">{d.date}</td>
                     <td className="text-right px-3 tabular-nums">{d.km ?? "—"}</td>
                     <td className="text-right px-3 tabular-nums">{d.kg ?? "—"}</td>
+                    <td className="px-3">{d.district ?? "—"}</td>
                     <td className="px-3">{d.type ?? "—"}</td>
                     <td className="text-right px-3 tabular-nums">{rp(d.fee)}</td>
                   </tr>
                 ))}
-                <tr className="border-t border-border-strong font-medium"><td className="px-3 py-1.5" colSpan={4}>Subtotal kiriman</td><td className="text-right px-3 tabular-nums">{rp(delivSum)}</td></tr>
+                <tr className="border-t border-border-strong font-medium"><td className="px-3 py-1.5" colSpan={5}>Subtotal kiriman</td><td className="text-right px-3 tabular-nums">{rp(delivSum)}</td></tr>
               </tbody>
             </table>
           </div>

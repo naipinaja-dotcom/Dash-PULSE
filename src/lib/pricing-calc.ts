@@ -121,6 +121,25 @@ function resolveField(row: DeliveryRow, columnName: string): string {
   return String(row.district ?? "");
 }
 
+// Beberapa skema pakai rate_by="delivery_type" tapi rates-nya CAMPUR: key
+// "RETURN" (flat) + nama-nama district (buat DELIVERY biasa, per-area) —
+// match_column="Area" ada di config tapi diabaikan selama rate_by masih
+// "delivery_type". Coba match delivery_type dulu (biasanya cuma nemu pas
+// baris RETURN), baru fallback ke district kalau row-nya DELIVERY biasa yang
+// mestinya kena tarif per-area. Skema yang murni delivery_type-only (rates
+// cuma berisi DELIVERY/RETURN, gak ada nama area) gak kepengaruh — fallback
+// district cuma jalan kalau match delivery_type gagal duluan.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveRateHit(row: DeliveryRow, rateSettings: { rate_by: string; match_column: string; rates: any[] }) {
+  if (rateSettings.rate_by === "delivery_type") {
+    return (
+      findByKey(rateSettings.rates, resolveField(row, "delivery type")) ??
+      findByKey(rateSettings.rates, String(row.district ?? ""))
+    );
+  }
+  return findByKey(rateSettings.rates, resolveField(row, rateSettings.match_column));
+}
+
 export function stepTierFee(tier: StepTier | null | undefined, value: number): number {
   if (!tier) return 0;
   let fee = tier.base_fee || 0;
@@ -294,9 +313,7 @@ export function calcRangeComponent(
   // gak ada rule yang cocok, fallback ke base_fee band itu.
   const flatFee = (r: DeliveryRow, band: RangeRow): number => {
     if (rateSettings.rate_by === "flat") return Number(band.base_fee) || 0;
-    const colName = rateSettings.rate_by === "delivery_type" ? "delivery type" : rateSettings.match_column;
-    const fieldVal = resolveField(r, colName);
-    const hit = findByKey(rateSettings.rates, fieldVal);
+    const hit = resolveRateHit(r, rateSettings);
     return hit ? Number(hit.rate) || 0 : Number(band.base_fee) || 0;
   };
 
@@ -362,10 +379,8 @@ export function calcModularDeliveryComponent(rows: DeliveryRow[], cfg: ModularDe
   // yang udah diisi admin bakal nyantol gak pernah dipakai — di sini
   // diterapin langsung sebagai base fee per baris.
   if (!cfg.distance?.enabled && !cfg.weight?.enabled && rateSettings.rate_by !== "flat") {
-    const colName = rateSettings.rate_by === "delivery_type" ? "delivery type" : rateSettings.match_column;
     rows.forEach((r, i) => {
-      const fieldVal = resolveField(r, colName);
-      const hit = findByKey(rateSettings.rates, fieldVal);
+      const hit = resolveRateHit(r, rateSettings);
       out[i] += hit ? Number(hit.rate) || 0 : 0;
     });
   }

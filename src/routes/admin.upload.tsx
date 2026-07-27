@@ -7,6 +7,8 @@ import { parseCSV } from "@/lib/csv";
 import { resolveOrCreateRiders } from "@/lib/rider-lookup";
 import { classifyAllClients } from "@/lib/delivery-classification";
 import { cleanDuplicateDeliveries } from "@/lib/delivery-dedup";
+import { reverseGeocodeDistricts } from "@/lib/api/geocoding.functions";
+import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { Upload, FileText, Loader2, AlertTriangle, X, RefreshCw, Trash2 } from "lucide-react";
@@ -71,6 +73,8 @@ const DELIVERY_FIELDS = [
   "sender_name",
   "receiver_name",
   "service_type",
+  "destination_lat",
+  "destination_lng",
 ];
 
 interface DeliveryPreview {
@@ -90,6 +94,7 @@ interface DeliveryPreview {
 
 function DeliveryUpload() {
   const posthog = usePostHog();
+  const { session } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -186,6 +191,9 @@ function DeliveryUpload() {
         else if (field === "weight_kg") found = parsed[0].find((h) => /weight/i.test(h));
         else if (field === "destination_address")
           found = parsed[0].find((h) => /destination/i.test(h) && !/lat|long/i.test(h));
+        else if (field === "destination_lat") found = parsed[0].find((h) => /^lat|latitude/i.test(h));
+        else if (field === "destination_lng")
+          found = parsed[0].find((h) => /^lon|^lng|longitude/i.test(h));
         // Tanggal patokan fee = tanggal barang DIKIRIM. Nama kolomnya beda-beda di data mentah.
         else if (field === "delivery_date")
           found =
@@ -287,6 +295,14 @@ function DeliveryUpload() {
         sender_name: get(r, "sender_name"),
         receiver_name: get(r, "receiver_name"),
         service_type: get(r, "service_type"),
+        destination_lat: (() => {
+          const v = get(r, "destination_lat");
+          return v ? parseFloat(v) : null;
+        })(),
+        destination_lng: (() => {
+          const v = get(r, "destination_lng");
+          return v ? parseFloat(v) : null;
+        })(),
       };
     });
 
@@ -304,6 +320,37 @@ function DeliveryUpload() {
       ),
     );
     const droppedStatusCount = recordsRaw.length - records.length;
+
+    // Auto-isi district yang kosong dari koordinat (reverse geocoding ORS) —
+    // CSV operasional sering ada Lat/Long tapi kolom district-nya kosong/gak
+    // ada sama sekali. Cuma jalan buat baris yang district-nya kosong DAN
+    // punya koordinat; kalau session admin habis atau ORS error, di-skip
+    // (bukan gagalin seluruh upload) — district tetap bisa diisi manual.
+    const needsGeocode = records.filter(
+      (r) => !r.district && r.destination_lat != null && r.destination_lng != null,
+    );
+    if (needsGeocode.length > 0) {
+      if (!session?.access_token) {
+        toast.warning("Sesi admin habis — district dari koordinat dilewati, isi manual kalau perlu.");
+      } else {
+        try {
+          const { districts } = await reverseGeocodeDistricts({
+            data: {
+              adminToken: session.access_token,
+              points: needsGeocode.map((r) => ({
+                lat: r.destination_lat as number,
+                lng: r.destination_lng as number,
+              })),
+            },
+          });
+          needsGeocode.forEach((r, i) => {
+            if (districts[i]) r.district = districts[i];
+          });
+        } catch (e) {
+          toast.warning(`Gagal isi district dari koordinat: ${(e as Error).message}`);
+        }
+      }
+    }
 
     // Deteksi duplikat: kunci = dash_delivery_id DAN provider_order_id
     // dua-duanya harus sama baru dianggap duplikat. Kalau cuma salah satu
@@ -898,15 +945,45 @@ function AttendanceUpload() {
     // duration null sebagai sinyal "belum selesai" buat di-skip di bawah.
     const isValidTime = (s: string) => /^\d{1,2}:\d{2}(:\d{2})?$/.test(s.trim());
 
+    // Format device/tracking mentah (mis. export "attendance data") gak punya
+    // kolom Date/Duration sendiri — Clock-in/out-nya datetime penuh
+    // ("2026-07-27 08:55:37"). Pecah jadi date+time di sini biar log_date &
+    // duration bisa diturunkan otomatis, tanpa perlu convert file manual dulu.
+    const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/;
+    const splitDateTime = (s: string) => {
+      const m = s.trim().match(DATETIME_RE);
+      return m ? { date: m[1], time: m[2] } : null;
+    };
+
     let ongoingSkipped = 0;
     const allLogs = rows.flatMap((r) => {
       const code = r[iCode];
-      const duration = parseDur(r[iDur] ?? "");
+      const inRaw = (r[iIn] ?? "").trim();
       const outRaw = (r[iOut] ?? "").trim();
-      if (outRaw && !isValidTime(outRaw)) {
+      const inDT = splitDateTime(inRaw);
+      const outDT = outRaw ? splitDateTime(outRaw) : null;
+
+      if (outRaw && !isValidTime(outRaw) && !outDT) {
         // shift belum selesai (mis. "(ongoing)") — skip, bukan force-insert
         ongoingSkipped++;
         return [];
+      }
+
+      let duration = parseDur(r[iDur] ?? "");
+      let logDate = parseIndoDate(r[iDate] ?? "");
+      let clockIn = inRaw || null;
+      let clockOut = outRaw || null;
+      if (inDT) {
+        logDate = logDate || inDT.date;
+        clockIn = inDT.time;
+        if (outDT) {
+          clockOut = outDT.time;
+          if (duration == null) {
+            const inMs = new Date(`${inDT.date}T${inDT.time}`).getTime();
+            const outMs = new Date(`${outDT.date}T${outDT.time}`).getTime();
+            duration = Math.round((outMs - inMs) / 60000);
+          }
+        }
       }
       if (duration == null) {
         ongoingSkipped++;
@@ -927,11 +1004,11 @@ function AttendanceUpload() {
         driver_code: code,
         client_name: clientNameRaw,
         client_id,
-        log_date: parseIndoDate(r[iDate] ?? "") || new Date().toISOString().slice(0, 10),
-        clock_in: r[iIn] || null,
-        clock_out: outRaw || null,
+        log_date: logDate || new Date().toISOString().slice(0, 10),
+        clock_in: clockIn,
+        clock_out: clockOut,
         duration_minutes: duration,
-        is_absent: !r[iIn],
+        is_absent: !inRaw,
         is_late: otpRaw === "late",
       }];
     });

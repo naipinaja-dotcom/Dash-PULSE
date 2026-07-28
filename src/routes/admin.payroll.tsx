@@ -913,7 +913,7 @@ function PayrollPage() {
                           title={
                             activeRun.status === "draft" ? "Finalize dulu" : "Download bulk payment"
                           }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] disabled:opacity-40 hover:bg-muted transition-colors"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 disabled:active:scale-100 hover:border-primary-border hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
                         >
                           {exportingBulk ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />

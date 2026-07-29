@@ -6,7 +6,12 @@ import { toCSV, downloadCSV } from "@/lib/csv";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { listPricingSchemes } from "@/lib/pricing-store";
 import { describeScheme, type RateCard } from "@/lib/rate-card";
+import { calcAttendanceComponent, findShiftFor, type AttendanceLogRow } from "@/lib/pricing-calc";
 import { downloadXLS, rateCardsToRows, type Cell } from "@/lib/finance-export";
+import {
+  type DelivDetail, type AttDetail, type RiderRow, rp, otpLabel, durLabel,
+  isAttendanceOnlyRun, attendanceDetailRows, attendanceSummaryRows,
+} from "@/lib/attendance-worksheet-export";
 import { getClientExportTemplate, ALL_EXPORT_COLUMN_KEYS } from "@/lib/export-template";
 import { toast } from "sonner";
 import { Download, Loader2, ChevronRight, FileSpreadsheet, ChevronDown } from "lucide-react";
@@ -18,29 +23,6 @@ import {
 const sb = supabase as any;
 
 export type Run = { id: string; name: string; period_start: string; period_end: string; status: string; client_id?: string | null };
-
-type DelivDetail = { date: string; km: number | null; kg: number | null; type: string | null; district: string | null; fee: number };
-type AttDetail = { date: string; clockIn: string | null; clockOut: string | null; dur: number | null; late: boolean; absent: boolean; fee: number };
-
-type RiderRow = {
-  detailId: string;
-  rider_id: string;
-  name: string;
-  employeeId: string;
-  clientName: string;
-  orderCount: number;
-  feeRider: number;
-  activeDates: number;
-  ded: Record<string, number>;
-  total: number;
-  remarks: string;
-  deliv: DelivDetail[];
-  att: AttDetail[];
-};
-
-const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
-const otpLabel = (a: AttDetail) => (a.absent ? "ABSEN" : a.late ? "LATE" : "ONTIME");
-const durLabel = (m: number | null) => (m == null ? "—" : `${Math.floor(m / 60)}j ${m % 60}m`);
 
 export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
   const [rows, setRows] = useState<RiderRow[]>([]);
@@ -71,9 +53,26 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         // langsung ke payroll_details — biar konsisten sama ClientReport.
         // `id:detail_id` biar bentuk objeknya gak berubah dari sebelumnya.
         const { data: details, error: e1 } = await sb.from("report_summary_weekly")
-          .select("id:detail_id, rider_id, client_id, delivery_count, gross_earning, net_pay, remarks, rider_name, rider_employee_id, client_name")
+          .select("id:detail_id, rider_id, client_id, delivery_count, gross_earning, net_pay, remarks, rider_name, rider_employee_id, client_name, incentive")
           .eq("run_id", runId);
         if (e1) throw e1;
+
+        // Skema rider (attendance) dipindah ke sini (sebelum attByRider dibangun)
+        // — dibutuhkan buat replay findShiftFor/calcAttendanceComponent per baris
+        // attendance (label shift + pecah base/overtime vs insentif ontime buat
+        // Ringkasan). Skema yang sama juga dipakai lagi di bawah buat Rate Card.
+        const clientIds = new Set<string>((details ?? []).map((d: { client_id: string | null }) => d.client_id).filter(Boolean) as string[]);
+        const allSchemes = await listPricingSchemes();
+        const riderSchemes = allSchemes.filter((s) => s.scheme_for === "rider" && (s.client_id === null || clientIds.has(s.client_id)));
+        const attSchemeByClient = new Map<string, (typeof riderSchemes)[number]>();
+        let globalAttScheme: (typeof riderSchemes)[number] | null = null;
+        for (const s of riderSchemes) {
+          if (s.category !== "attendance") continue;
+          if (s.client_id === null) globalAttScheme = s;
+          else attSchemeByClient.set(s.client_id, s);
+        }
+        const resolveAttScheme = (clientId: string | null) =>
+          (clientId && attSchemeByClient.get(clientId)) || globalAttScheme || null;
 
         // potongan per detail → kolom dinamis
         const detailIds = (details ?? []).map((d: { id: string }) => d.id);
@@ -104,11 +103,39 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
               .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
               .ilike("status", "completed")
               .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end).range(from, to)),
-          fetchAllRows<{ rider_id: string | null; log_date: string; clock_in: string | null; clock_out: string | null; duration_minutes: number | null; is_late: boolean; is_absent: boolean; fee: number }>(
+          fetchAllRows<{ rider_id: string | null; client_id: string | null; pitstop_name: string | null; log_date: string; clock_in: string | null; clock_out: string | null; duration_minutes: number | null; is_late: boolean; is_absent: boolean; fee: number }>(
             (c, from, to) => (c as any).from("attendance_logs")
-              .select("rider_id, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee")
+              .select("rider_id, client_id, pitstop_name, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee")
               .gte("log_date", run.period_start).lte("log_date", run.period_end).range(from, to)),
         ]);
+
+        // Replay base/overtime/insentif-ontime per baris pakai config skema
+        // attendance yang berlaku SEKARANG, dikelompokkan per client (cfg beda
+        // per client) — cuma buat pecah tampilan Ringkasan, gak menimpa `fee`
+        // yang sudah dikomit. Baris tanpa skema attendance yang cocok (mis.
+        // client-nya pakai skema delivery/hybrid) dibiarkan base=fee, overtime=0,
+        // incentiveAmt=0 — aman, gak recompute apa-apa buat kasus itu.
+        const attsByClientKey = new Map<string, typeof atts>();
+        for (const a of atts) {
+          const key = a.client_id ?? "";
+          (attsByClientKey.get(key) ?? attsByClientKey.set(key, []).get(key)!).push(a);
+        }
+        const compByRowKey = new Map<string, { base: number; overtime: number; incentiveAmt: number; shiftLabel: string | null }>();
+        for (const [clientKey, group] of attsByClientKey) {
+          const scheme = resolveAttScheme(clientKey || null);
+          const cfg = scheme?.params?.config as any;
+          const shifts = Array.isArray(cfg?.shifts) ? cfg.shifts : [];
+          const logs: AttendanceLogRow[] = group.map((a) => ({
+            log_date: a.log_date, clock_in: a.clock_in, duration_minutes: a.duration_minutes, is_late: a.is_late, is_absent: a.is_absent,
+          }));
+          const comp = cfg ? calcAttendanceComponent(logs, cfg) : group.map(() => ({ daily_base: 0, overtime: 0, incentive: 0 }));
+          group.forEach((a, i) => {
+            const shift = shifts.length > 0 ? findShiftFor(a.clock_in, shifts) : null;
+            compByRowKey.set(`${a.rider_id}|${a.log_date}|${a.clock_in ?? ""}`, {
+              base: comp[i].daily_base, overtime: comp[i].overtime, incentiveAmt: comp[i].incentive, shiftLabel: shift?.label ?? null,
+            });
+          });
+        }
 
         const delivByRider = new Map<string, DelivDetail[]>();
         const datesByRider = new Map<string, Set<string>>();
@@ -122,12 +149,19 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         const attByRider = new Map<string, AttDetail[]>();
         for (const a of atts) {
           if (!a.rider_id) continue;
+          const fee = Number(a.fee) || 0;
+          const comp = compByRowKey.get(`${a.rider_id}|${a.log_date}|${a.clock_in ?? ""}`);
           (attByRider.get(a.rider_id) ?? attByRider.set(a.rider_id, []).get(a.rider_id)!)
-            .push({ date: a.log_date, clockIn: a.clock_in, clockOut: a.clock_out, dur: a.duration_minutes, late: !!a.is_late, absent: !!a.is_absent, fee: Number(a.fee) || 0 });
+            .push({
+              date: a.log_date, clockIn: a.clock_in, clockOut: a.clock_out, dur: a.duration_minutes, late: !!a.is_late, absent: !!a.is_absent, fee,
+              pitstop: a.pitstop_name, clientId: a.client_id,
+              shiftLabel: comp?.shiftLabel ?? null,
+              base: comp ? comp.base : fee, overtime: comp?.overtime ?? 0, incentiveAmt: comp?.incentiveAmt ?? 0,
+            });
         }
 
         const built: RiderRow[] = (details ?? []).map((d: {
-          id: string; rider_id: string; delivery_count: number; gross_earning: number; net_pay: number; remarks: string | null;
+          id: string; rider_id: string; delivery_count: number; gross_earning: number; net_pay: number; remarks: string | null; incentive?: number | null;
           rider_name?: string | null; rider_employee_id?: string | null; client_name?: string | null;
         }) => ({
           detailId: d.id,
@@ -139,6 +173,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           feeRider: Number(d.gross_earning),
           activeDates: datesByRider.get(d.rider_id)?.size ?? 0,
           ded: dedByDetail.get(d.id) ?? {},
+          incentive: Number(d.incentive) || 0,
           total: Number(d.net_pay),
           remarks: d.remarks ?? "",
           deliv: (delivByRider.get(d.rider_id) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
@@ -148,11 +183,8 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         setDedTypes([...typeSet].sort());
         setRows(built);
 
-        // rate card: skema rider untuk client yg ada di run ini (atau global/null)
-        const clientIds = new Set<string>((details ?? []).map((d: { client_id: string | null }) => d.client_id).filter(Boolean) as string[]);
-        const schemes = await listPricingSchemes();
-        const relevant = schemes.filter((s) => s.scheme_for === "rider" && (s.client_id === null || clientIds.has(s.client_id)));
-        setRateCards(relevant.map(describeScheme));
+        // Rate card: schemes udah di-fetch di atas (riderSchemes) — reuse, gak query lagi.
+        setRateCards(riderSchemes.map(describeScheme));
       } catch (e) {
         toast.error((e as Error).message);
       } finally {
@@ -224,16 +256,25 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     return out;
   };
 
+  // Run yang murni attendance (semua rider tanpa data kiriman sama sekali) —
+  // pakai layout Detail/Ringkasan yang beda (lihat lib/attendance-worksheet-export.ts),
+  // mengikuti format sheet referensi ops (Pitstop Name, Shift, breakdown Total
+  // Fee vs Incentive Ontime terpisah). Run delivery/hybrid tetap pakai
+  // detailRows/summaryRows generik di atas — TIDAK diubah.
+  const isAttendanceOnly = isAttendanceOnlyRun(rows);
+
   const exportExcel = () => {
     const sheets = [
       { name: "Rate Card (PKS)", rows: rateCards.length ? rateCardsToRows(rateCards) : [["(tidak ada skema rider untuk client di run ini)"]] },
-      { name: "Detail", rows: detailRows() },
-      { name: "Ringkasan", rows: summaryRows() },
+      { name: "Detail", rows: isAttendanceOnly ? attendanceDetailRows(rows) : detailRows() },
+      { name: "Ringkasan", rows: isAttendanceOnly ? attendanceSummaryRows(rows, run) : summaryRows() },
     ];
     downloadXLS(`worksheet-${run?.name ?? runId}`, sheets);
   };
-  const exportSummaryCSV = () => downloadCSV(`ringkasan-${run?.name ?? runId}.csv`, toCSV(summaryRows()));
-  const exportDetailCSV = () => downloadCSV(`detail-${run?.name ?? runId}.csv`, toCSV(detailRows()));
+  const exportSummaryCSV = () =>
+    downloadCSV(`ringkasan-${run?.name ?? runId}.csv`, toCSV(isAttendanceOnly ? attendanceSummaryRows(rows, run) : summaryRows()));
+  const exportDetailCSV = () =>
+    downloadCSV(`detail-${run?.name ?? runId}.csv`, toCSV(isAttendanceOnly ? attendanceDetailRows(rows) : detailRows()));
 
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } = usePagination(rows, 20);
 

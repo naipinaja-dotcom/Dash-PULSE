@@ -549,7 +549,12 @@ function timeToMinutes(t: string): number {
 // Cari shift yang cocok berdasar jam clock-in. Kalau tidak ada yang cocok
 // (clock-in di luar semua jendela shift, atau clock_in kosong), return null
 // — caller fallback ke tarif flat (cfg.full_fee/standard_minutes lama).
-function findShiftFor(clockIn: string | null | undefined, shifts: ShiftConfig[]): ShiftConfig | null {
+// Exported juga buat finance-worksheet.tsx — dipakai nge-label ulang shift
+// per baris attendance di Reports (data ini gak disimpan permanen, cuma
+// dipakai sesaat pas hitung fee, jadi di-derive ulang dari config skema
+// yang berlaku SEKARANG — sama seperti Rate Card panel yang juga baca
+// skema saat ini, bukan snapshot historis pas commit).
+export function findShiftFor(clockIn: string | null | undefined, shifts: ShiftConfig[]): ShiftConfig | null {
   if (!clockIn) return null;
   const m = timeToMinutes(clockIn);
   for (const s of shifts) {

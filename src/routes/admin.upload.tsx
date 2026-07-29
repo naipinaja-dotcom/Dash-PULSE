@@ -953,6 +953,7 @@ function AttendanceUpload() {
     const iCode = idx("kode"),
       iName = idx("name"),
       iClient = idx("client"),
+      iPitstop = idx("pitstop"),
       iDate = idx("date"),
       iIn = idx("clock-in"),
       iOut = idx("clock-out"),
@@ -1041,11 +1042,13 @@ function AttendanceUpload() {
       }
       if (!client_id && clientId) client_id = clientId;
       const otpRaw = iOtp >= 0 ? (r[iOtp] ?? "").trim().toLowerCase() : "";
+      const pitstopName = iPitstop >= 0 ? (r[iPitstop] ?? null) : null;
       return [{
         batch_id: batch.id,
         rider_id: code ? (riderMap.get(code) ?? null) : null,
         driver_code: code,
         client_name: clientNameRaw,
+        pitstop_name: pitstopName,
         client_id,
         log_date: logDate || new Date().toISOString().slice(0, 10),
         clock_in: clockIn,

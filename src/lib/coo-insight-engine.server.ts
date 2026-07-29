@@ -13,7 +13,9 @@ import { getServerConfig } from "./config.server";
 import { runWorkerAgent } from "./agents/worker-agent";
 import { runLeadAgent } from "./agents/lead-agent";
 import { runManagerAgent } from "./agents/manager-agent";
-import { runCooAgent } from "./agents/coo-agent";
+import { runCooAgent, type CooAnalysis } from "./agents/coo-agent";
+import { sendSlackMessage } from "./notify/slack.server";
+import { sendEmail } from "./notify/email.server";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
@@ -58,6 +60,56 @@ async function findSnapshot(
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data ?? null;
+}
+
+const SEVERITY_EMOJI: Record<string, string> = { HIGH: "🔴", MEDIUM: "🟡", LOW: "🟢" };
+
+// Pesan susulan Slack/Email, dikirim SETELAH Weekly PNL Push (cron terpisah,
+// lihat api.coo-insight.ts) — biar kalau Hermes/OpenRouter lambat/gagal,
+// pesan PNL mingguan yang lebih kritis tetap udah terkirim duluan. Ringkas
+// dari cooAnalysis (brief eksekutif), bukan dump mentah worker/lead/manager.
+function buildCooSlackText(weekStart: string, weekEnd: string, coo: CooAnalysis) {
+  const lines = [
+    `*🧭 COO Insight — ${weekStart} → ${weekEnd}*`,
+    coo.headline,
+    "",
+    "*Top Concerns:*",
+    ...coo.top_concerns.map((c) => `${SEVERITY_EMOJI[c.severity] ?? "•"} ${c.concern} — ${c.reason}`),
+    "",
+    "*Top Actions:*",
+    ...coo.top_actions.map(
+      (a) => `${a.rank}. ${a.action} (${a.owner}, ROI: ${a.roi}) — ${a.approve === "YES" ? "✅ approve" : "⏸️ hold"}`,
+    ),
+    "",
+    coo.coo_brief,
+  ];
+  return lines.join("\n");
+}
+
+function buildCooEmailHtml(weekStart: string, weekEnd: string, coo: CooAnalysis) {
+  const concernRows = coo.top_concerns
+    .map(
+      (c) =>
+        `<li><b>[${c.severity}]</b> ${c.concern} — <span style="color:#666">${c.reason}</span></li>`,
+    )
+    .join("");
+  const actionRows = coo.top_actions
+    .map(
+      (a) =>
+        `<li>#${a.rank} ${a.action} — <i>${a.owner}</i>, ROI: ${a.roi} — ${a.approve === "YES" ? "✅ Approve" : "⏸️ Hold"}</li>`,
+    )
+    .join("");
+  return `
+  <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
+    <h2>🧭 COO Insight — ${weekStart} → ${weekEnd}</h2>
+    <p><b>${coo.headline}</b></p>
+    <h3>Top Concerns</h3>
+    <ul>${concernRows}</ul>
+    <h3>Top Actions</h3>
+    <ul>${actionRows}</ul>
+    <p>${coo.coo_brief}</p>
+    <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash PULSE — COO Insight (follow-up Weekly PNL Push).</p>
+  </div>`;
 }
 
 export async function generateCooInsightReport(weekStart: string, weekEnd: string) {
@@ -150,6 +202,18 @@ export async function generateCooInsightReport(weekStart: string, weekEnd: strin
     },
   });
 
+  // Pesan susulan ke Slack/Email — dikirim di sini (SETELAH semua analisis
+  // Hermes selesai), bukan digabung ke handler pnl-weekly-push, biar
+  // pemisahan reliability yang udah didesain (lihat komentar atas file) tetap
+  // kejaga: kalau Hermes lambat/gagal, ini cuma bikin pesan susulan telat/gak
+  // kekirim — pesan PNL mingguan yang lebih kritis udah lebih dulu jalan.
+  const slackResult = await sendSlackMessage(buildCooSlackText(weekStart, weekEnd, cooAnalysis));
+  const emailResult = await sendEmail({
+    subject: `COO Insight — ${weekStart} → ${weekEnd}`,
+    html: buildCooEmailHtml(weekStart, weekEnd, cooAnalysis),
+  });
+  const pushStatus = { slack: slackResult, email: emailResult };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: saved, error: insErr } = await (admin as any)
     .from("coo_insight_reports")
@@ -162,6 +226,7 @@ export async function generateCooInsightReport(weekStart: string, weekEnd: strin
         lead_analysis: leadAnalysis,
         manager_analysis: managerAnalysis,
         coo_analysis: cooAnalysis,
+        push_status: pushStatus,
         generated_by: getServerConfig().hermesModel,
         generated_at: new Date().toISOString(),
       },
@@ -179,6 +244,7 @@ export async function generateCooInsightReport(weekStart: string, weekEnd: strin
     leadAnalysis,
     managerAnalysis,
     cooAnalysis,
+    pushStatus,
   };
 }
 

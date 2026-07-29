@@ -108,10 +108,16 @@ const stripAreaPrefix = (s: string) => s.replace(/^(kota|kabupaten)\s+/, "");
 const normArea = (s: unknown) => stripAreaPrefix(norm(s));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function findByKey(items: any[], value: string): any {
-  return (
-    items.find((x: { key: string }) => norm(x.key) === norm(value)) ??
-    items.find((x: { key: string }) => normArea(x.key) === normArea(value))
-  );
+  const exact = items.find((x: { key: string }) => norm(x.key) === norm(value));
+  if (exact) return exact;
+  // Skema yang punya "Kota X" DAN "Kabupaten X" sekaligus (dua area beda,
+  // biasanya tarif beda juga) sama-sama luntur ke "x" begitu prefix dibuang
+  // — nama polos hasil geocode gak ngasih tau area yang mana yang benar.
+  // Kalau fallback ini nemu LEBIH DARI SATU kandidat, itu ambigu: mending
+  // dianggap gak match sama sekali (jatuh ke base_fee default band) daripada
+  // asal pilih kandidat pertama dan kasih tarif area yang salah.
+  const candidates = items.filter((x: { key: string }) => normArea(x.key) === normArea(value));
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 function resolveField(row: DeliveryRow, columnName: string): string {

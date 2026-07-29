@@ -21,12 +21,13 @@ export interface ShiftRow {
   label: string;
   start_time: string; // "04:00"
   end_time: string;   // "09:00"
+  late_after: string; // "06:10" — clock-in lewat ini = telat (ontime bonus hangus). Kosong = pakai flag data.
   full_fee: string;
   standard_hours: string;
 }
 
 export function emptyShiftRow(n: number): ShiftRow {
-  return { label: `Shift ${n}`, start_time: "", end_time: "", full_fee: "100000", standard_hours: "8" };
+  return { label: `Shift ${n}`, start_time: "", end_time: "", late_after: "", full_fee: "100000", standard_hours: "8" };
 }
 
 export interface AttendanceState {
@@ -67,6 +68,7 @@ export function buildAttendanceConfig(a: AttendanceState): Record<string, unknow
       ? a.shifts.filter((s) => s.start_time && s.end_time).map((s, i) => ({
           shift_number: i + 1, label: s.label.trim() || `Shift ${i + 1}`,
           start_time: s.start_time, end_time: s.end_time,
+          late_after: s.late_after || undefined,
           full_fee: parseRupiah(s.full_fee), standard_minutes: (Number(s.standard_hours) || 0) * 60,
         }))
       : [],
@@ -88,6 +90,7 @@ export function loadAttendanceState(c: any): AttendanceState {
     shiftsOn: shifts.length > 0,
     shifts: shifts.map((s) => ({
       label: s.label ?? "", start_time: s.start_time ?? "", end_time: s.end_time ?? "",
+      late_after: s.late_after ?? "",
       full_fee: String(s.full_fee ?? ""), standard_hours: String((Number(s.standard_minutes) || 0) / 60 || ""),
     })),
     deliveryCompOn: !!c.delivery_component?.enabled,
@@ -178,7 +181,7 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
                   className="max-w-[180px] font-medium" />
                 <RowDeleteBtn onClick={() => patch({ shifts: value.shifts.filter((_, idx) => idx !== i) })} />
               </div>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <div>
                   <FieldLabel>Clock-in Dari</FieldLabel>
                   <TextInput type="time" value={s.start_time} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, start_time: e.target.value } : x)) })} />
@@ -186,6 +189,10 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
                 <div>
                   <FieldLabel>Sampai (eksklusif)</FieldLabel>
                   <TextInput type="time" value={s.end_time} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, end_time: e.target.value } : x)) })} />
+                </div>
+                <div>
+                  <FieldLabel>Batas Ontime</FieldLabel>
+                  <TextInput type="time" value={s.late_after} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, late_after: e.target.value } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Fee Penuh (Rp)</FieldLabel>
@@ -196,6 +203,11 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
                   <TextInput type="number" value={s.standard_hours} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, standard_hours: e.target.value } : x)) })} />
                 </div>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                "Batas Ontime" opsional — clock-in lewat jam ini = telat, insentif ontime-only hangus.
+                Kosongkan kalau telat ditentukan dari data (kolom OTP upload). Jendela "Clock-in Dari/Sampai"
+                boleh lebih lebar dari batas ontime (mis. pagi 03:00–12:00, batas ontime 06:10).
+              </p>
             </div>
           ))}
           <AddRowBtn onClick={() => patch({ shifts: [...value.shifts, emptyShiftRow(value.shifts.length + 1)] })}>Tambah Shift</AddRowBtn>

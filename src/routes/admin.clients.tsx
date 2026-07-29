@@ -7,13 +7,14 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { fetchAllRows } from "@/lib/fetch-all";
-import { Plus, Pencil, Trash2, Loader2, Search, Download, FileSpreadsheet } from "lucide-react";
+import { Pencil, Trash2, Loader2, Search, FileSpreadsheet, RefreshCw } from "lucide-react";
 import {
   EXPORT_COLUMNS,
   ALL_EXPORT_COLUMN_KEYS,
   getClientExportTemplate,
   saveClientExportTemplate,
 } from "@/lib/export-template";
+import { loadApiProviders } from "@/lib/api/providers.functions";
 
 export const Route = createFileRoute("/admin/clients")({ component: ClientsPage });
 
@@ -53,26 +54,6 @@ function clientInitials(name: string) {
     .toUpperCase();
 }
 
-function downloadCSV(rows: Client[], schemeOf: Map<string, string>) {
-  const header = ["No", "Kode", "Client", "Skema Revenue", "Dibuat"];
-  const lines = rows.map((c, i) =>
-    [
-      i + 1,
-      c.code,
-      c.name,
-      schemeOf.get(c.id) ?? "—",
-      c.created_at ? new Date(c.created_at).toLocaleDateString("id-ID") : "—",
-    ]
-      .map(String)
-      .join(","),
-  );
-  const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "clients.csv";
-  a.click();
-}
-
 function ClientsPage() {
   const [rows, setRows] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +63,73 @@ function ClientsPage() {
   const [tab, setTab] = useState<"assisted" | "self-service">("assisted");
   // client_id → calc_type of their revenue (client) pricing scheme
   const [schemeOf, setSchemeOf] = useState<Map<string, string>>(new Map());
+  const [syncing, setSyncing] = useState(false);
+  // nama client (lowercase) → business unit (revenue_stream provider), buat kolom BU.
+  const [buOf, setBuOf] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (!token) return;
+        const { providers } = await loadApiProviders({ data: { token } });
+        const m = new Map<string, string>();
+        for (const p of providers) m.set(p.name.trim().toLowerCase(), p.revenueStreams.join(", "));
+        setBuOf(m);
+      } catch {
+        /* diamkan — kolom BU tampil "—" kalau gagal */
+      }
+    })();
+  }, []);
+
+  // Sync client dari mgmt API: tiap provider (SCHEDULED_INSTANT + X_DOCK) jadi
+  // client. Match existing by NAMA (case-insensitive) — yang belum ada dibuat.
+  // Link client↔provider dipetakan by nama saat Hitung Fee (tanpa kolom/migrasi).
+  const syncFromApi = async () => {
+    setSyncing(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token ?? "";
+      const { providers } = await loadApiProviders({ data: { token } });
+      const { data: existing } = await supabase.from("clients").select("id, name, code");
+      const haveName = new Set((existing ?? []).map((c) => c.name.trim().toLowerCase()));
+      const haveCode = new Set((existing ?? []).map((c) => (c.code ?? "").trim().toUpperCase()));
+
+      let created = 0;
+      let skippedCode = 0;
+      for (const p of providers) {
+        if (haveName.has(p.name.trim().toLowerCase())) continue; // sudah ada (by nama)
+        // code wajib unik — kalau bentrok, beri suffix id biar tetap kebuat.
+        let code = (p.code ?? `PRV${p.id}`).trim().toUpperCase();
+        if (haveCode.has(code)) code = `${code}-${p.id}`;
+        if (haveCode.has(code)) {
+          skippedCode++;
+          continue;
+        }
+        const { error } = await (supabase as any)
+          .from("clients")
+          .insert({ code, name: p.name, active: true });
+        if (error) {
+          skippedCode++;
+          continue;
+        }
+        haveName.add(p.name.trim().toLowerCase());
+        haveCode.add(code);
+        created++;
+      }
+      toast.success(
+        `Sync selesai: ${created} client baru dari ${providers.length} provider API` +
+          (skippedCode ? `, ${skippedCode} dilewati (kode bentrok)` : "") +
+          ".",
+      );
+      await load();
+    } catch (e) {
+      toast.error(`Sync client gagal: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -156,19 +204,17 @@ function ClientsPage() {
         <div className="flex gap-2 items-center ml-auto">
           <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />
           <button
-            onClick={() => downloadCSV(filtered, schemeOf)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground hover:border-primary-border hover:text-primary transition-colors"
+            onClick={syncFromApi}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            title="Tarik semua provider (SCHEDULED_INSTANT + X_DOCK) dari API jadi client"
           >
-            <Download className="w-3.5 h-3.5" /> Download
-          </button>
-          <button
-            onClick={() => {
-              setEdit(null);
-              setOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-medium hover:opacity-90 transition-opacity"
-          >
-            <Plus className="w-3.5 h-3.5" /> Tambah client
+            {syncing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            {syncing ? "Menyinkron…" : "Sync dari API"}
           </button>
         </div>
       </div>
@@ -180,6 +226,9 @@ function ClientsPage() {
             <tr className="border-b border-border">
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
                 Client
+              </th>
+              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
+                Business Unit
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
                 Skema Revenue
@@ -195,13 +244,13 @@ function ClientsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} className="p-8 text-center">
+                <td colSpan={5} className="p-8 text-center">
                   <Loader2 className="w-4 h-4 animate-spin inline text-primary" />
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-muted-foreground text-[11px]">
+                <td colSpan={5} className="p-8 text-center text-muted-foreground text-[11px]">
                   Belum ada client
                 </td>
               </tr>
@@ -228,6 +277,18 @@ function ClientsPage() {
                           </div>
                         </div>
                       </div>
+                    </td>
+                    <td className="p-3">
+                      {(() => {
+                        const bu = buOf.get(c.name.trim().toLowerCase());
+                        return bu ? (
+                          <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                            {bu}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">—</span>
+                        );
+                      })()}
                     </td>
                     <td className="p-3">
                       {scheme ? (

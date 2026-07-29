@@ -1060,19 +1060,28 @@ function AttendanceUpload() {
     // per hari). Tanpa ini, re-upload file yang sama numpuk baris identik tak
     // terbatas di attendance_logs setiap kali — sama seperti pola dedup yang
     // dipakai di upload Delivery (lihat analyzePreview di atas).
+    // Kalau ada 2+ baris untuk rider+tanggal yang sama DALAM SATU FILE (mis.
+    // device absensi ngirim baris glitch clock-in=clock-out 0 menit selain
+    // shift asli), pilih durasi TERPANJANG — bukan asal baris yang muncul
+    // duluan, supaya shift asli gak ketiban baris glitch/parsial.
     const keyOf = (code: string | null | undefined, date: string) => `${code ?? ""}|${date}`;
-    const seenInFile = new Set<string>();
+    const bestByKey = new Map<string, (typeof allLogs)[number]>();
     const logs: typeof allLogs = [];
     let fileRepeatCount = 0;
     for (const log of allLogs) {
-      const key = keyOf(log.driver_code, log.log_date);
-      if (log.driver_code && seenInFile.has(key)) {
-        fileRepeatCount++;
+      if (!log.driver_code) {
+        logs.push(log);
         continue;
       }
-      seenInFile.add(key);
-      logs.push(log);
+      const key = keyOf(log.driver_code, log.log_date);
+      const prev = bestByKey.get(key);
+      if (prev) {
+        fileRepeatCount++;
+        if ((log.duration_minutes ?? 0) <= (prev.duration_minutes ?? 0)) continue;
+      }
+      bestByKey.set(key, log);
     }
+    logs.push(...bestByKey.values());
 
     const codesForDedup = Array.from(
       new Set(logs.map((l) => l.driver_code).filter((c): c is string => !!c)),

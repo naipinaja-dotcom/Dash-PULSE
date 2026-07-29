@@ -25,8 +25,20 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { ClientCombobox } from "@/components/client-combobox";
 import { resolveRiderIdentities } from "@/lib/rider-lookup";
 import { findOrCreatePayrollRun, generatePayrollDetails } from "@/lib/payroll-generate";
+import {
+  loadLiveFeeDeliveries,
+  type LiveFeeDeliveriesResult,
+  type LiveDeliveryRow,
+} from "@/lib/api/live-fee-deliveries.functions";
+import { upsertLiveDeliveries } from "@/lib/sync-live-deliveries";
+import { upsertLiveAttendance } from "@/lib/sync-live-attendance";
+import {
+  loadLiveFeeAttendance,
+  type LiveAttendanceRow,
+} from "@/lib/api/live-fee-attendance.functions";
+import { loadApiProviders, type ApiProvider } from "@/lib/api/providers.functions";
 import { useAuth } from "@/lib/auth";
-import { Loader2, Play, AlertTriangle, Info, Save, ChevronRight } from "lucide-react";
+import { Loader2, Play, AlertTriangle, Info, Save, ChevronRight, Radio, Database } from "lucide-react";
 
 export const Route = createFileRoute("/admin/calculate")({ component: CalculatePage });
 
@@ -69,6 +81,29 @@ function CalculatePage() {
   const [combinedResult, setCombinedResult] = useState<CombinedCalcResult | null>(null);
   const [riderNames, setRiderNames] = useState<Record<string, string>>({});
   const [ranScheme, setRanScheme] = useState<PricingScheme | null>(null);
+  // Kalau hasil terakhir ditarik dari API live (bukan delivery_records), simpan
+  // metadata-nya buat badge + guard commit (baris live tidak punya id DB).
+  const [liveMeta, setLiveMeta] = useState<LiveFeeDeliveriesResult["meta"] | null>(null);
+  // Baris live terakhir yang ditarik dari API (buat tombol "Sync ke Database").
+  const [liveRows, setLiveRows] = useState<LiveDeliveryRow[]>([]);
+  const [liveAttRows, setLiveAttRows] = useState<LiveAttendanceRow[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  // Daftar provider API — client ditautkan ke provider by NAMA (client disync
+  // dari API, jadi namanya sama). Tanpa kolom/mapping manual.
+  const [providers, setProviders] = useState<ApiProvider[]>([]);
+  const selectedClient = clients.find((c) => c.id === clientId) ?? null;
+  const matchedProvider = selectedClient
+    ? (providers.find(
+        (p) => p.name.trim().toLowerCase() === selectedClient.name.trim().toLowerCase(),
+      ) ?? null)
+    : null;
+  const apiProviderId = matchedProvider?.id ?? null;
+  // BU dari revenue_stream provider — kalau cuma 1 stream, pakai itu buat
+  // mempersempit tarikan; kalau lebih, biarkan "Semua BU" (filter provider di sisi kita).
+  const apiBusinessUnit =
+    matchedProvider && matchedProvider.revenueStreams.length === 1
+      ? matchedProvider.revenueStreams[0]
+      : "";
   // Rincian per-baris (order/hari) per rider, dipakai buat drill-down preview
   // sebelum commit — lihat komentar di RiderFeeDrilldown.
   const [drilldown, setDrilldown] = useState<Record<string, DrilldownRow[]>>({});
@@ -82,8 +117,20 @@ function CalculatePage() {
       .from("clients")
       .select("id, name")
       .order("name")
-      .then(({ data }) => setClients(data ?? []));
+      .then(({ data }) => setClients((data ?? []) as ClientLite[]));
     listPricingSchemes().then(setSchemes);
+    // Provider API buat menautkan client↔provider by nama.
+    (async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (!token) return;
+        const r = await loadApiProviders({ data: { token } });
+        setProviders(r.providers);
+      } catch (e) {
+        toast.error(`Gagal muat provider API: ${(e as Error).message}`);
+      }
+    })();
   }, []);
 
   // skema yang cocok untuk client terpilih (khusus client itu + yang "semua client")
@@ -99,6 +146,11 @@ function CalculatePage() {
       return toast.error("Skema ini versi lama — buka & simpan ulang di halaman Pricing dulu.");
     }
     if (from > to) return toast.error("Tanggal 'dari' tidak boleh setelah 'sampai'");
+    if (apiProviderId && scheme.category !== "delivery") {
+      toast.message(
+        "Provider API di-set, tapi skema ini bukan 'Per Pengiriman' — sumber live baru untuk skema Per Pengiriman. Skema ini memakai data upload (DB).",
+      );
+    }
 
     setRunning(true);
     setResult(null);
@@ -106,6 +158,9 @@ function CalculatePage() {
     setCombinedResult(null);
     setDrilldown({});
     setExpandedRider(null);
+    setLiveMeta(null);
+    setLiveRows([]);
+    setLiveAttRows([]);
     try {
       if (scheme.category === "hybrid") {
         // Fetch delivery records
@@ -170,19 +225,42 @@ function CalculatePage() {
         });
         setDrilldown(ddHybrid);
       } else if (scheme.category === "attendance") {
-        // STEP 1: Fetch semua attendance_logs di rentang tanggal & client ini (tanpa join riders)
-        let q = (supabase as any)
-          .from("attendance_logs")
-          .select("id, rider_id, driver_code, log_date, clock_in, duration_minutes, is_late, is_absent")
-          .gte("log_date", from)
-          .lte("log_date", to);
-        if (clientId) q = q.eq("client_id", clientId);
-        const { data, error } = await q;
-        if (error) throw error;
-
-        const rowsPlain = (data ?? []) as AttendanceLogRow[];
-        if (rowsPlain.length === 0)
-          toast.message("Tidak ada data absensi di rentang & client ini.");
+        // STEP 1: Ambil absensi. Kalau client-nya ter-map ke provider API (mis.
+        // Alfagift), tarik LIVE dari logbook API (clock-in/out). Selain itu dari DB.
+        let rowsPlain: AttendanceLogRow[];
+        if (apiProviderId) {
+          const { data: sess } = await supabase.auth.getSession();
+          const token = sess.session?.access_token ?? "";
+          const live = await loadLiveFeeAttendance({
+            data: { token, providerId: apiProviderId, from, to },
+          });
+          rowsPlain = live.rows;
+          setLiveAttRows(live.rows);
+          setLiveMeta({
+            provider_id: live.meta.provider_id,
+            business_unit: `Attendance${live.meta.ongoing ? ` · ${live.meta.ongoing} ongoing (bonus saja)` : ""}${live.meta.pending ? ` · ${live.meta.pending} pending approval` : ""}`,
+            fetched: live.meta.fetched,
+            matched: live.meta.matched,
+            from: live.meta.from,
+            to: live.meta.to,
+          });
+          if (rowsPlain.length === 0)
+            toast.message("API tersambung, tapi tidak ada absensi (clock-out) di rentang ini.");
+        } else {
+          let q = (supabase as any)
+            .from("attendance_logs")
+            .select(
+              "id, rider_id, driver_code, log_date, clock_in, duration_minutes, is_late, is_absent",
+            )
+            .gte("log_date", from)
+            .lte("log_date", to);
+          if (clientId) q = q.eq("client_id", clientId);
+          const { data, error } = await q;
+          if (error) throw error;
+          rowsPlain = (data ?? []) as AttendanceLogRow[];
+          if (rowsPlain.length === 0)
+            toast.message("Tidak ada data absensi di rentang & client ini.");
+        }
 
         // STEP 2-3: resolve identitas rider dari rider_id ATAU fallback kode mitra,
         // biar baris yang link rider_id-nya putus tetap kehitung & ketemu namanya.
@@ -239,21 +317,41 @@ function CalculatePage() {
         });
         setDrilldown(ddAtt);
       } else {
-        // STEP 1: Fetch semua delivery_records di rentang tanggal & client ini (tanpa join riders)
-        let q = supabase
-          .from("delivery_records")
-          .select(
-            "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
-          )
-          .gte("delivery_date", from)
-          .lte("delivery_date", to);
-        if (clientId) q = q.eq("client_id", clientId);
-        const { data, error } = await q;
-        if (error) throw error;
-
-        const rowsPlain = (data ?? []) as unknown as DeliveryRow[];
-        if (rowsPlain.length === 0) {
-          toast.message("Tidak ada data pengiriman di rentang & client ini.");
+        // STEP 1: Ambil baris pengiriman. Kalau client-nya sudah di-map ke
+        // provider API (dropdown di atas), tarik LIVE dari API — tanpa upload ke
+        // delivery_records dulu. Selain itu, tetap dari delivery_records.
+        let rowsPlain: DeliveryRow[];
+        if (apiProviderId) {
+          const { data: sess } = await supabase.auth.getSession();
+          const token = sess.session?.access_token ?? "";
+          const live = await loadLiveFeeDeliveries({
+            data: {
+              token,
+              providerId: apiProviderId,
+              businessUnit: apiBusinessUnit || null,
+              from,
+              to,
+            },
+          });
+          rowsPlain = live.rows;
+          setLiveMeta(live.meta);
+          setLiveRows(live.rows);
+          if (rowsPlain.length === 0)
+            toast.message("API tersambung, tapi tidak ada pengiriman di rentang & provider ini.");
+        } else {
+          let q = supabase
+            .from("delivery_records")
+            .select(
+              "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+            )
+            .gte("delivery_date", from)
+            .lte("delivery_date", to);
+          if (clientId) q = q.eq("client_id", clientId);
+          const { data, error } = await q;
+          if (error) throw error;
+          rowsPlain = (data ?? []) as unknown as DeliveryRow[];
+          if (rowsPlain.length === 0)
+            toast.message("Tidak ada data pengiriman di rentang & client ini.");
         }
 
         // STEP 2-3: resolve identitas rider dari rider_id ATAU fallback kode mitra,
@@ -303,8 +401,143 @@ function CalculatePage() {
     }
   };
 
+  // Sync baris live terakhir ke delivery_records (persist), biar bisa di-commit
+  // ke Payroll & dipakai laporan. Dedup by dash_delivery_id (overwrite yang lama).
+  const syncToDb = async () => {
+    if (!clientId) return toast.error("Pilih client dulu.");
+    if (!liveRows.length) return toast.error("Belum ada data live — klik Hitung dulu.");
+    const ALLOWED = new Set(["COMPLETED", "FAILED"]);
+    const usable = liveRows.filter((r) => ALLOWED.has(String(r.status ?? "").trim().toUpperCase()));
+    const dropped = liveRows.length - usable.length;
+    if (usable.length === 0)
+      return toast.error("Tidak ada baris COMPLETED/FAILED untuk disimpan.");
+    if (
+      !(await confirmDialog({
+        title: "Sync ke database?",
+        description: `${usable.length} pengiriman (COMPLETED/FAILED) dari API akan disimpan/di-update ke delivery_records untuk client ini${dropped > 0 ? `. ${dropped} baris status transien dilewati` : ""}. Baris dengan Dash ID yang sama akan ditimpa (refresh).`,
+        confirmText: "Sync",
+        danger: false,
+      }))
+    )
+      return;
+
+    setSyncing(true);
+    try {
+      // Fee hasil hitung per dash_delivery_id (result.perRow.id = deliveryID).
+      const feeByDashId = new Map<string, number>(
+        (result?.perRow ?? [])
+          .filter((r) => r.id)
+          .map((r) => [String(r.id), Number(r.fee) || 0]),
+      );
+      const res = await upsertLiveDeliveries(
+        clientId,
+        liveRows,
+        `API sync · ${liveMeta?.business_unit ?? "?"} · ${from}..${to}`,
+        feeByDashId,
+      );
+      let runNote = "";
+      if (ranScheme?.scheme_for === "rider") {
+        const clientName = clients.find((c) => c.id === clientId)?.name ?? "Client";
+        const run = await findOrCreatePayrollRun({
+          clientId,
+          clientName,
+          periodStart: from,
+          periodEnd: to,
+        });
+        await generatePayrollDetails(run);
+        runNote = ` Payroll Run "${clientName}" siap direview.`;
+      }
+      posthog.capture("live_deliveries_synced", {
+        client_id: clientId,
+        provider_id: liveMeta?.provider_id ?? null,
+        inserted: res.inserted,
+        overwritten: res.overwritten,
+        dropped: res.dropped,
+        period_from: from,
+        period_to: to,
+      });
+      toast.success(
+        `Sync selesai: ${res.inserted} baris tersimpan (fee ikut disimpan)` +
+          (res.overwritten ? `, ${res.overwritten} lama ditimpa` : "") +
+          (res.ridersCreated ? `, ${res.ridersCreated} rider baru` : "") +
+          (res.dropped ? `, ${res.dropped} status transien dilewati` : "") +
+          "." +
+          runNote,
+      );
+    } catch (e) {
+      toast.error(`Sync gagal: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Sync absensi live terakhir ke attendance_logs (overwrite periode).
+  const syncAttToDb = async () => {
+    if (!clientId) return toast.error("Pilih client dulu.");
+    if (!liveAttRows.length) return toast.error("Belum ada data absensi live — klik Hitung dulu.");
+    if (
+      !(await confirmDialog({
+        title: "Sync absensi ke database?",
+        description: `${liveAttRows.length} shift absensi dari API akan menimpa attendance_logs client ini di periode ${from} → ${to}.`,
+        confirmText: "Sync",
+        danger: false,
+      }))
+    )
+      return;
+    setSyncing(true);
+    try {
+      // Fee hasil hitung, sejajar dgn liveAttRows (attResult.perRow 1:1 dgn input).
+      const fees = attResult?.perRow.map((r) => Number(r.fee) || 0) ?? [];
+      const res = await upsertLiveAttendance(
+        clientId,
+        liveAttRows,
+        from,
+        to,
+        `API sync attendance · ${from}..${to}`,
+        fees,
+      );
+      // Buat/isi Payroll Run (kalau skema rider) — fee sudah tersimpan di DB.
+      let runNote = "";
+      if (ranScheme?.scheme_for === "rider") {
+        const clientName = clients.find((c) => c.id === clientId)?.name ?? "Client";
+        const run = await findOrCreatePayrollRun({
+          clientId,
+          clientName,
+          periodStart: from,
+          periodEnd: to,
+        });
+        await generatePayrollDetails(run);
+        runNote = ` Payroll Run "${clientName}" siap direview.`;
+      }
+      posthog.capture("live_attendance_synced", {
+        client_id: clientId,
+        provider_id: liveMeta?.provider_id ?? null,
+        inserted: res.inserted,
+        period_from: from,
+        period_to: to,
+      });
+      toast.success(
+        `Sync selesai: ${res.inserted} shift tersimpan (fee ikut disimpan)` +
+          (res.ridersCreated ? `, ${res.ridersCreated} rider baru` : "") +
+          "." +
+          runNote,
+      );
+    } catch (e) {
+      toast.error(`Sync gagal: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const commit = async () => {
     if (!ranScheme || ranScheme.scheme_for !== "rider") return;
+    // Hasil live dari API tidak punya id delivery_records — commit (update by id)
+    // tidak berlaku. Simulasi ini fokus preview perhitungan, bukan persist.
+    if (liveMeta) {
+      return toast.message(
+        "Untuk data LIVE, pakai tombol 'Sync ke Database' — itu langsung menyimpan fee ke DB + membuat Payroll Run sekaligus. Tombol Commit ini khusus data hasil upload.",
+      );
+    }
     const isAttendance = ranScheme.category === "attendance";
     const isCombined = ranScheme.category === "hybrid";
     const rows = isAttendance
@@ -492,6 +725,34 @@ function CalculatePage() {
             ))}
           </select>
         </div>
+
+        {/* Status integrasi API (mapping di-set di menu Clients) */}
+        {clientId && (
+          <div className="md:col-span-2 flex items-start gap-2 text-xs text-muted-foreground">
+            <Radio className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            {apiProviderId ? (
+              <span>
+                Client ini ter-integrasi API — provider{" "}
+                <code className="font-mono">#{apiProviderId}</code>
+                {apiBusinessUnit ? (
+                  <>
+                    {" "}
+                    · BU <code className="font-mono">{apiBusinessUnit}</code>
+                  </>
+                ) : (
+                  <> · semua BU</>
+                )}
+                . Data pengiriman ditarik <strong>LIVE</strong> dari dashelectric (tanpa upload).
+              </span>
+            ) : (
+              <span>
+                Client ini belum di-mapping ke provider API — Hitung Fee pakai data upload
+                (delivery_records). Atur mapping di menu <strong>Clients</strong>.
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Dari Tanggal</label>
           <input
@@ -521,6 +782,38 @@ function CalculatePage() {
           </button>
         </div>
       </div>
+
+      {liveMeta && (
+        <div className="rounded-md border border-primary/40 bg-primary-soft px-3.5 py-2.5 mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-primary-soft-foreground">
+          <div className="flex items-start gap-2.5 flex-1 min-w-[240px]">
+            <Radio className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-medium">Sumber data: API live (dashelectric)</span> —{" "}
+              <code className="font-mono">{liveMeta.business_unit}</code>, provider{" "}
+              <code className="font-mono">#{liveMeta.provider_id}</code>. Ditarik {liveMeta.fetched},
+              cocok <strong>{liveMeta.matched}</strong> untuk client ini. Ini preview
+              {liveRows.length > 0 || liveAttRows.length > 0 ? (
+                <>
+                  {" "}
+                  — klik <strong>Sync ke Database</strong> untuk simpan fee ke DB + buat Payroll Run.
+                </>
+              ) : (
+                <> (tidak disimpan ke database).</>
+              )}
+            </div>
+          </div>
+          {(liveRows.length > 0 || liveAttRows.length > 0) && (
+            <button
+              onClick={liveRows.length > 0 ? syncToDb : syncAttToDb}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 flex-shrink-0"
+            >
+              {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+              {syncing ? "Menyinkron…" : "Sync ke Database"}
+            </button>
+          )}
+        </div>
+      )}
 
       {result && ranScheme && (
         <>

@@ -539,6 +539,10 @@ export interface ShiftConfig {
   end_time: string;   // "HH:MM" — batas atas (eksklusif)
   full_fee: number;
   standard_minutes: number;
+  // Opsional: batas jam ontime. Clock-in LEWAT jam ini = telat → insentif
+  // ontime_only tidak cair. Kalau kosong, telat pakai flag is_late dari data
+  // (mis. kolom OTP upload). Contoh Alfagift: shift pagi "06:10", siang "14:10".
+  late_after?: string; // "HH:MM"
 }
 
 function timeToMinutes(t: string): number {
@@ -660,11 +664,18 @@ export function calcAttendanceComponent(logs: AttendanceLogRow[], cfg: any): Att
       overtime = Math.round(((actualMin - effStandardMin) / 60) * overtimeRatePerHour);
     }
 
+    // Telat: kalau shift punya `late_after`, hitung dari clock-in vs jam itu
+    // (config-driven, per-client). Kalau tidak, pakai flag is_late dari data.
+    let late = !!r.is_late;
+    if (shift && shift.late_after && r.clock_in) {
+      late = timeToMinutes(r.clock_in) > timeToMinutes(shift.late_after);
+    }
+
     let incentive = 0;
     for (const inc of incentives) {
       const amount = Number(inc.amount) || 0;
       if (inc.condition === "always") incentive += amount;
-      else if (inc.condition === "ontime_only" && !r.is_late) incentive += amount;
+      else if (inc.condition === "ontime_only" && !late) incentive += amount;
     }
 
     return { daily_base, overtime, incentive };

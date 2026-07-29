@@ -1056,45 +1056,44 @@ function AttendanceUpload() {
       }];
     });
 
-    // Deteksi duplikat: kunci = driver_code + log_date (1 rider cuma boleh 1 log
-    // per hari). Tanpa ini, re-upload file yang sama numpuk baris identik tak
-    // terbatas di attendance_logs setiap kali — sama seperti pola dedup yang
-    // dipakai di upload Delivery (lihat analyzePreview di atas).
-    // Kalau ada 2+ baris untuk rider+tanggal yang sama DALAM SATU FILE (mis.
-    // device absensi ngirim baris glitch clock-in=clock-out 0 menit selain
-    // shift asli), pilih durasi TERPANJANG — bukan asal baris yang muncul
-    // duluan, supaya shift asli gak ketiban baris glitch/parsial.
-    const keyOf = (code: string | null | undefined, date: string) => `${code ?? ""}|${date}`;
-    const bestByKey = new Map<string, (typeof allLogs)[number]>();
+    // Deteksi duplikat: kunci = driver_code + log_date + clock_in + duration_minutes.
+    // SENGAJA bukan cuma driver_code + log_date — 1 rider BISA punya lebih dari
+    // 1 shift asli dalam sehari (mis. double shift / cover shift orang lain,
+    // masing-masing clock_in dan/atau durasinya beda), jadi baris-baris begitu
+    // HARUS dua-duanya disimpan, bukan ditimpa satu sama lain. Yang dianggap
+    // duplikat murni ("dibuang"/ditimpa) HANYA kalau ke-4 nilai itu sama persis
+    // — itu berarti baris yang sama betul-betul terulang (mis. file yang sama
+    // di-upload lagi), bukan shift yang berbeda.
+    const keyOf = (code: string | null | undefined, date: string, clockIn: string | null, duration: number | null) =>
+      `${code ?? ""}|${date}|${clockIn ?? ""}|${duration ?? ""}`;
+    const seenInFile = new Set<string>();
     const logs: typeof allLogs = [];
     let fileRepeatCount = 0;
     for (const log of allLogs) {
-      if (!log.driver_code) {
-        logs.push(log);
+      const key = keyOf(log.driver_code, log.log_date, log.clock_in, log.duration_minutes);
+      if (log.driver_code && seenInFile.has(key)) {
+        fileRepeatCount++;
         continue;
       }
-      const key = keyOf(log.driver_code, log.log_date);
-      const prev = bestByKey.get(key);
-      if (prev) {
-        fileRepeatCount++;
-        if ((log.duration_minutes ?? 0) <= (prev.duration_minutes ?? 0)) continue;
-      }
-      bestByKey.set(key, log);
+      seenInFile.add(key);
+      logs.push(log);
     }
-    logs.push(...bestByKey.values());
 
     const codesForDedup = Array.from(
       new Set(logs.map((l) => l.driver_code).filter((c): c is string => !!c)),
     );
-    const existing = await inChunks<{ id: string; driver_code: string; log_date: string }>(
-      "attendance_logs",
-      "driver_code",
-      codesForDedup,
-      "id, driver_code, log_date",
+    const existing = await inChunks<{
+      id: string;
+      driver_code: string;
+      log_date: string;
+      clock_in: string | null;
+      duration_minutes: number | null;
+    }>("attendance_logs", "driver_code", codesForDedup, "id, driver_code, log_date, clock_in, duration_minutes");
+    const existingByKey = new Map(
+      existing.map((e) => [keyOf(e.driver_code, e.log_date, e.clock_in, e.duration_minutes), e.id]),
     );
-    const existingByKey = new Map(existing.map((e) => [keyOf(e.driver_code, e.log_date), e.id]));
     const overwriteIds = logs
-      .map((l) => existingByKey.get(keyOf(l.driver_code, l.log_date)))
+      .map((l) => existingByKey.get(keyOf(l.driver_code, l.log_date, l.clock_in, l.duration_minutes)))
       .filter((id): id is string => !!id);
 
     if (overwriteIds.length) {

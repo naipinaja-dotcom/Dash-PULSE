@@ -85,21 +85,34 @@ function ClientsPage() {
 
   // Sync client dari mgmt API: tiap provider (SCHEDULED_INSTANT + X_DOCK) jadi
   // client. Match existing by NAMA (case-insensitive) — yang belum ada dibuat.
-  // Link client↔provider dipetakan by nama saat Hitung Fee (tanpa kolom/migrasi).
+  // Link client<->provider disimpan di clients.provider_id (dipakai cron
+  // live-fee-sync yang gak punya sesi admin buat name-match runtime) — client
+  // yang sudah ada tapi belum ke-link (provider_id null) di-backfill juga.
   const syncFromApi = async () => {
     setSyncing(true);
     try {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token ?? "";
       const { providers } = await loadApiProviders({ data: { token } });
-      const { data: existing } = await supabase.from("clients").select("id, name, code");
-      const haveName = new Set((existing ?? []).map((c) => c.name.trim().toLowerCase()));
-      const haveCode = new Set((existing ?? []).map((c) => (c.code ?? "").trim().toUpperCase()));
+      const { data: existing } = await (supabase as any).from("clients").select("id, name, code, provider_id");
+      const byName = new Map<string, any>((existing ?? []).map((c: any) => [c.name.trim().toLowerCase(), c]));
+      const haveCode = new Set((existing ?? []).map((c: any) => (c.code ?? "").trim().toUpperCase()));
 
       let created = 0;
+      let linked = 0;
       let skippedCode = 0;
       for (const p of providers) {
-        if (haveName.has(p.name.trim().toLowerCase())) continue; // sudah ada (by nama)
+        const existingClient = byName.get(p.name.trim().toLowerCase());
+        if (existingClient) {
+          if (existingClient.provider_id == null) {
+            const { error } = await (supabase as any)
+              .from("clients")
+              .update({ provider_id: p.id })
+              .eq("id", existingClient.id);
+            if (!error) linked++;
+          }
+          continue;
+        }
         // code wajib unik — kalau bentrok, beri suffix id biar tetap kebuat.
         let code = (p.code ?? `PRV${p.id}`).trim().toUpperCase();
         if (haveCode.has(code)) code = `${code}-${p.id}`;
@@ -109,17 +122,17 @@ function ClientsPage() {
         }
         const { error } = await (supabase as any)
           .from("clients")
-          .insert({ code, name: p.name, active: true });
+          .insert({ code, name: p.name, active: true, provider_id: p.id });
         if (error) {
           skippedCode++;
           continue;
         }
-        haveName.add(p.name.trim().toLowerCase());
+        byName.set(p.name.trim().toLowerCase(), { id: "", name: p.name, code, provider_id: p.id });
         haveCode.add(code);
         created++;
       }
       toast.success(
-        `Sync selesai: ${created} client baru dari ${providers.length} provider API` +
+        `Sync selesai: ${created} client baru, ${linked} client lama di-link ke provider, dari ${providers.length} provider API` +
           (skippedCode ? `, ${skippedCode} dilewati (kode bentrok)` : "") +
           ".",
       );

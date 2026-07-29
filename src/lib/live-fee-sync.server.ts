@@ -1,0 +1,214 @@
+// Live Fee Auto-Sync — cron 2x/hari yang mengotomasi persis apa yang admin
+// lakukan manual di "Hitung Fee" (lihat syncToDb/syncAttToDb di
+// admin.calculate.tsx): tarik data LIVE dari mgmt API dashelectric per client
+// yang sudah di-link ke provider (clients.provider_id), hitung fee pakai
+// skema pricing client itu, simpan ke delivery_records/attendance_logs, lalu
+// findOrCreatePayrollRun + generatePayrollDetails — SAMA PERSIS urutannya
+// dengan yang terjadi kalau admin klik "Sync ke Database" manual. Cron ini
+// TIDAK menambah behavior baru (tidak Finalize/Publish — itu tetap manual).
+//
+// Kenapa perlu file terpisah (bukan reuse createServerFn di
+// src/lib/api/live-fee-*.functions.ts apa adanya): fungsi-fungsi itu
+// mensyaratkan sesi admin login (assertAuth cek JWT user) dan nulis pakai
+// client anon (kena RLS) — cron gak punya keduanya. Endpoint cron ini sendiri
+// sudah dilindungi secret header (lihat api.live-fee-sync.ts), jadi di sini
+// langsung pakai getSupabaseAdmin() (service role) + panggil inti fetch yang
+// sudah dipisah dari assertAuth (fetchLiveDeliveries/fetchLiveAttendance/
+// fetchApiProviders).
+//
+// Client<->provider linkage: dibaca dari clients.provider_id (kolom baru,
+// lihat migration 20260730000000_clients_provider_id.sql) — BUKAN name-match
+// runtime seperti di admin.calculate.tsx, karena cron gak punya daftar
+// clients+providers di memori UI buat dicocokkan.
+import { getSupabaseAdmin } from "./supabase-admin.server";
+import { getServerConfig } from "./config.server";
+import { normalize } from "./pricing-store";
+import { pickPricingScheme } from "./pnl-engine";
+import { calcScheme, calcAttendanceScheme } from "./pricing-calc";
+import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
+import { fetchLiveDeliveries } from "./api/live-fee-deliveries.functions";
+import { fetchLiveAttendance } from "./api/live-fee-attendance.functions";
+import { upsertLiveDeliveries } from "./sync-live-deliveries";
+import { upsertLiveAttendance } from "./sync-live-attendance";
+import { findOrCreatePayrollRun, generatePayrollDetails } from "./payroll-generate";
+
+type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
+
+// Window rolling 2 hari (kemarin + hari ini, kalender Asia/Jakarta) tiap kali
+// cron jalan — bukan coba pas-in ke batas periode payroll (itu urusan
+// payroll-workflow yang jalan setelahnya). Overlap antar-run aman karena
+// upsertLiveDeliveries/upsertLiveAttendance idempotent (dedup by dash id /
+// overwrite by date range).
+// ponytail: window fix 2 hari, kalau cron sempat mati >2 hari data yang
+// terlewat gak ke-backfill otomatis — perlu jalanin manual dari Hitung Fee.
+const JKT_OFFSET_MS = 7 * 60 * 60 * 1000;
+function jktToday(): string {
+  return new Date(Date.now() + JKT_OFFSET_MS).toISOString().slice(0, 10);
+}
+function defaultWindow(): { from: string; to: string } {
+  const to = jktToday();
+  const fromDt = new Date(`${to}T00:00:00Z`);
+  fromDt.setUTCDate(fromDt.getUTCDate() - 1);
+  return { from: fromDt.toISOString().slice(0, 10), to };
+}
+
+interface ClientRow {
+  id: string;
+  name: string;
+  provider_id: number | null;
+}
+
+export interface LiveFeeSyncClientResult {
+  client_id: string;
+  client_name: string;
+  category: string | null;
+  delivery?: { fetched: number; inserted: number; overwritten: number };
+  attendance?: { fetched: number; inserted: number };
+  payroll_run_id?: string;
+  error?: string;
+}
+
+export interface LiveFeeSyncResult {
+  from: string;
+  to: string;
+  clientsChecked: number;
+  clientsSynced: number;
+  results: LiveFeeSyncClientResult[];
+}
+
+async function syncOneClient(
+  admin: SupabaseAdmin,
+  client: ClientRow,
+  provider: ApiProvider,
+  dashToken: string,
+  schemesRaw: unknown[],
+  from: string,
+  to: string,
+): Promise<LiveFeeSyncClientResult> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const schemes = (schemesRaw as any[]).map(normalize);
+  const scheme = pickPricingScheme(schemes, client.id, "rider");
+  const out: LiveFeeSyncClientResult = {
+    client_id: client.id,
+    client_name: client.name,
+    category: scheme?.category ?? null,
+  };
+  if (!scheme) return out; // client belum punya skema rider aktif — skip diam-diam (sama seperti payroll-workflow)
+
+  const businessUnit = provider.revenueStreams.length === 1 ? provider.revenueStreams[0] : null;
+  const label = `Auto-sync ${from}..${to}`;
+
+  if (scheme.category === "attendance") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cfg = scheme.params.config as any;
+    const shifts = Array.isArray(cfg?.shifts) ? cfg.shifts : [];
+    const live = await fetchLiveAttendance(dashToken, provider.id, from, to, shifts);
+    const res = calcAttendanceScheme(scheme.params, live.rows);
+    const fees = res.perRow.map((r) => Number(r.fee) || 0);
+    const sync = await upsertLiveAttendance(client.id, live.rows, from, to, label, fees, admin);
+    out.attendance = { fetched: live.meta.fetched, inserted: sync.inserted };
+  } else {
+    // "delivery" & legacy "hybrid" (skema hybrid gak lagi ditawarkan baru,
+    // tapi yang lama masih harus tetap kehitung — dispatch sama seperti
+    // admin.calculate.tsx/pnl-engine.ts) sama-sama sumber datanya dari
+    // delivery live; hybrid butuh attendance juga tapi belum dipakai client
+    // manapun yang di-link provider hari ini — cukup delivery dulu.
+    const live = await fetchLiveDeliveries(dashToken, provider.id, businessUnit, from, to);
+    const res = calcScheme(scheme.params, live.rows);
+    const feeByDashId = new Map<string, number>(
+      res.perRow.filter((r) => r.id).map((r) => [String(r.id), Number(r.fee) || 0]),
+    );
+    const sync = await upsertLiveDeliveries(client.id, live.rows, label, feeByDashId, admin);
+    out.delivery = {
+      fetched: live.meta.fetched,
+      inserted: sync.inserted,
+      overwritten: sync.overwritten,
+    };
+  }
+
+  if (scheme.scheme_for === "rider") {
+    const run = await findOrCreatePayrollRun(
+      { clientId: client.id, clientName: client.name, periodStart: from, periodEnd: to },
+      admin,
+    );
+    await generatePayrollDetails(run, admin);
+    out.payroll_run_id = run.id;
+  }
+  return out;
+}
+
+export async function runLiveFeeSync(opts: {
+  triggeredBy: "cron" | "manual";
+  from?: string;
+  to?: string;
+}): Promise<LiveFeeSyncResult> {
+  const admin = getSupabaseAdmin();
+  const { from, to } = opts.from && opts.to ? { from: opts.from, to: opts.to } : defaultWindow();
+
+  const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
+  if (!raw)
+    throw new Error("DASH_MGMT_API_TOKEN belum di-set di server — isi di .env lalu restart.");
+  const dashToken = `Bearer ${raw}`;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminAny = admin as any;
+  const [{ data: clientsRaw, error: cErr }, providers, { data: schemesRaw, error: sErr }] =
+    await Promise.all([
+      adminAny
+        .from("clients")
+        .select("id, name, provider_id")
+        .eq("active", true)
+        .not("provider_id", "is", null),
+      fetchApiProviders(dashToken),
+      adminAny
+        .from("pricing_schemes")
+        .select(
+          "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
+        ),
+    ]);
+  if (cErr) throw new Error(`Gagal ambil clients: ${cErr.message}`);
+  if (sErr) throw new Error(`Gagal ambil pricing_schemes: ${sErr.message}`);
+
+  const clients = (clientsRaw ?? []) as ClientRow[];
+  const providerById = new Map(providers.map((p) => [p.id, p]));
+
+  const results: LiveFeeSyncClientResult[] = [];
+  for (const client of clients) {
+    const provider = client.provider_id != null ? providerById.get(client.provider_id) : undefined;
+    if (!provider) {
+      results.push({
+        client_id: client.id,
+        client_name: client.name,
+        category: null,
+        error: "provider_id tidak ketemu di mgmt API",
+      });
+      continue;
+    }
+    try {
+      results.push(
+        await syncOneClient(admin, client, provider, dashToken, schemesRaw ?? [], from, to),
+      );
+    } catch (e) {
+      results.push({
+        client_id: client.id,
+        client_name: client.name,
+        category: null,
+        error: (e as Error).message,
+      });
+    }
+  }
+
+  return {
+    from,
+    to,
+    clientsChecked: clients.length,
+    clientsSynced: results.filter((r) => !r.error).length,
+    results,
+  };
+}
+
+export function verifyLiveFeeSyncSecret(headerValue: string | null): boolean {
+  const expected = getServerConfig().liveFeeSyncSecret;
+  if (!expected) return false;
+  return !!headerValue && headerValue === expected;
+}

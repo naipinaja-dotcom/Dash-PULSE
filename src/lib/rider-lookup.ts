@@ -4,15 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 // ditempel ke rider — itu nempel per delivery/attendance row (1 rider bisa
 // jalan untuk banyak client). Fungsi ini nyari rider yang sudah ada by kode;
 // kode yang belum terdaftar otomatis dibikinkan rider baru (tanpa client_id).
+// `client` opsional buat caller server-only (cron/workflow) tanpa sesi admin
+// login — sama pola dengan resolveRiderIdentities di bawah.
 export async function resolveOrCreateRiders(
   codes: (string | null | undefined)[],
   namesByCode: Record<string, string> = {},
+  client: typeof supabase = supabase,
 ): Promise<{ map: Map<string, string>; createdCodes: string[] }> {
   const uniqueCodes = Array.from(new Set(codes.filter((c): c is string => !!c && c.trim() !== "").map((c) => c.trim())));
   const map = new Map<string, string>();
   if (uniqueCodes.length === 0) return { map, createdCodes: [] };
 
-  const { data: existing, error: selErr } = await supabase
+  const { data: existing, error: selErr } = await client
     .from("riders")
     .select("id, employee_id")
     .in("employee_id", uniqueCodes);
@@ -27,7 +30,7 @@ export async function resolveOrCreateRiders(
     full_name: namesByCode[code]?.trim() || code,
     status: "active" as const,
   }));
-  const { data: inserted, error: insErr } = await supabase.from("riders").insert(toInsert).select("id, employee_id");
+  const { data: inserted, error: insErr } = await client.from("riders").insert(toInsert).select("id, employee_id");
   if (insErr) throw insErr;
   (inserted ?? []).forEach((r) => map.set(r.employee_id, r.id));
   return { map, createdCodes: missing };

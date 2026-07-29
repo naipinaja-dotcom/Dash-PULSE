@@ -31,6 +31,37 @@ async function assertAuth(token: string) {
   if (!res.ok) throw new Error("Sesi tidak valid — coba login ulang.");
 }
 
+// Inti tarik provider — dipisah dari createServerFn supaya bisa dipanggil dari
+// cron (src/lib/live-fee-sync.server.ts), yang gak punya sesi admin login buat
+// lolos assertAuth dan udah dilindungi secret header-nya sendiri. `dashToken`
+// sudah termasuk prefix "Bearer ".
+export async function fetchApiProviders(dashToken: string): Promise<ApiProvider[]> {
+  const byId = new Map<number, ApiProvider>();
+  for (const rs of REVENUE_STREAMS) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = `${API}?page=${page}&size=${PAGE_SIZE}&search=&revenue_stream=${encodeURIComponent(rs)}`;
+      const res = await fetch(url, { headers: { Authorization: dashToken } });
+      if (!res.ok) {
+        if (res.status === 401) throw new Error("Token mgmt API ditolak / kadaluarsa (401)");
+        throw new Error(`Provider API error ${res.status}`);
+      }
+      const json: any = await res.json();
+      const list: any[] = json?.data ?? [];
+      for (const p of list) {
+        const existing = byId.get(p.id);
+        if (existing) {
+          if (!existing.revenueStreams.includes(rs)) existing.revenueStreams.push(rs);
+        } else {
+          byId.set(p.id, { id: p.id, code: p.code ?? null, name: p.name, revenueStreams: [rs] });
+        }
+      }
+      const last = json?.pagination?.lastPage ?? json?.pagination?.last_page ?? 1;
+      if (list.length === 0 || page >= last) break;
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export const loadApiProviders = createServerFn({ method: "GET" })
   .inputValidator(z.object({ token: z.string().min(1) }))
   .handler(async ({ data }): Promise<{ providers: ApiProvider[] }> => {
@@ -41,30 +72,6 @@ export const loadApiProviders = createServerFn({ method: "GET" })
       throw new Error("DASH_MGMT_API_TOKEN belum di-set di server — isi di .env lalu restart.");
     const token = `Bearer ${raw}`;
 
-    const byId = new Map<number, ApiProvider>();
-    for (const rs of REVENUE_STREAMS) {
-      for (let page = 1; page <= MAX_PAGES; page++) {
-        const url = `${API}?page=${page}&size=${PAGE_SIZE}&search=&revenue_stream=${encodeURIComponent(rs)}`;
-        const res = await fetch(url, { headers: { Authorization: token } });
-        if (!res.ok) {
-          if (res.status === 401) throw new Error("Token mgmt API ditolak / kadaluarsa (401)");
-          throw new Error(`Provider API error ${res.status}`);
-        }
-        const json: any = await res.json();
-        const list: any[] = json?.data ?? [];
-        for (const p of list) {
-          const existing = byId.get(p.id);
-          if (existing) {
-            if (!existing.revenueStreams.includes(rs)) existing.revenueStreams.push(rs);
-          } else {
-            byId.set(p.id, { id: p.id, code: p.code ?? null, name: p.name, revenueStreams: [rs] });
-          }
-        }
-        const last = json?.pagination?.lastPage ?? json?.pagination?.last_page ?? 1;
-        if (list.length === 0 || page >= last) break;
-      }
-    }
-
-    const providers = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const providers = await fetchApiProviders(token);
     return { providers };
   });

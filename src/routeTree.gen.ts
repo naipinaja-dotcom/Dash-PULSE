@@ -9,56 +9,47 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as RiderRouteImport } from './routes/rider'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as AdminBcrAnalyticsRouteImport } from './routes/admin.bcr-analytics'
-import { Route as AdminCalculateRouteImport } from './routes/admin.calculate'
-import { Route as AdminClientsRouteImport } from './routes/admin.clients'
-import { Route as AdminCooInsightsRouteImport } from './routes/admin.coo-insights'
-import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
-import { Route as AdminDataCheckRouteImport } from './routes/admin.data-check'
-import { Route as AdminDeductionsRouteImport } from './routes/admin.deductions'
-import { Route as AdminDriverAnalyticsRouteImport } from './routes/admin.driver-analytics'
-import { Route as AdminInvoicesRouteImport } from './routes/admin.invoices'
-import { Route as AdminPayrollRouteImport } from './routes/admin.payroll'
-import { Route as AdminPnlRouteImport } from './routes/admin.pnl'
-import { Route as AdminPnlDashboardRouteImport } from './routes/admin.pnl-dashboard'
-import { Route as AdminRemindersRouteImport } from './routes/admin.reminders'
-import { Route as AdminReportsRouteImport } from './routes/admin.reports'
-import { Route as AdminRevenueAnalyticsRouteImport } from './routes/admin.revenue-analytics'
-import { Route as AdminRidersRouteImport } from './routes/admin.riders'
-import { Route as AdminShipmentAnalyticsRouteImport } from './routes/admin.shipment-analytics'
-import { Route as AdminUploadRouteImport } from './routes/admin.upload'
-import { Route as AdminUsersRouteImport } from './routes/admin.users'
-import { Route as ApiCooInsightRouteImport } from './routes/api.coo-insight'
-import { Route as ApiDataImportRouteImport } from './routes/api.data-import'
-import { Route as ApiExecutiveDashboardRouteImport } from './routes/api.executive-dashboard'
-import { Route as ApiPayrollReminderRouteImport } from './routes/api.payroll-reminder'
-import { Route as ApiPayrollWorkflowRouteImport } from './routes/api.payroll-workflow'
-import { Route as ApiPnlWeeklyPushRouteImport } from './routes/api.pnl-weekly-push'
-import { Route as RiderDashboardRouteImport } from './routes/rider.dashboard'
-import { Route as RiderPayslipsRouteImport } from './routes/rider.payslips'
+import { Route as RiderRouteImport } from './routes/rider'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as RiderProfileRouteImport } from './routes/rider.profile'
+import { Route as RiderPayslipsRouteImport } from './routes/rider.payslips'
+import { Route as RiderDashboardRouteImport } from './routes/rider.dashboard'
+import { Route as ApiPnlWeeklyPushRouteImport } from './routes/api.pnl-weekly-push'
+import { Route as ApiPayrollWorkflowRouteImport } from './routes/api.payroll-workflow'
+import { Route as ApiPayrollReminderRouteImport } from './routes/api.payroll-reminder'
+import { Route as ApiLiveFeeSyncRouteImport } from './routes/api.live-fee-sync'
+import { Route as ApiExecutiveDashboardRouteImport } from './routes/api.executive-dashboard'
+import { Route as ApiDataImportRouteImport } from './routes/api.data-import'
+import { Route as ApiCooInsightRouteImport } from './routes/api.coo-insight'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminUploadRouteImport } from './routes/admin.upload'
+import { Route as AdminShipmentAnalyticsRouteImport } from './routes/admin.shipment-analytics'
+import { Route as AdminRidersRouteImport } from './routes/admin.riders'
+import { Route as AdminRevenueAnalyticsRouteImport } from './routes/admin.revenue-analytics'
+import { Route as AdminReportsRouteImport } from './routes/admin.reports'
+import { Route as AdminRemindersRouteImport } from './routes/admin.reminders'
+import { Route as AdminPnlDashboardRouteImport } from './routes/admin.pnl-dashboard'
+import { Route as AdminPnlRouteImport } from './routes/admin.pnl'
+import { Route as AdminPayrollRouteImport } from './routes/admin.payroll'
+import { Route as AdminInvoicesRouteImport } from './routes/admin.invoices'
+import { Route as AdminDriverAnalyticsRouteImport } from './routes/admin.driver-analytics'
+import { Route as AdminDeductionsRouteImport } from './routes/admin.deductions'
+import { Route as AdminDataCheckRouteImport } from './routes/admin.data-check'
+import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AdminCooInsightsRouteImport } from './routes/admin.coo-insights'
+import { Route as AdminClientsRouteImport } from './routes/admin.clients'
+import { Route as AdminCalculateRouteImport } from './routes/admin.calculate'
+import { Route as AdminBcrAnalyticsRouteImport } from './routes/admin.bcr-analytics'
 import { Route as AdminPricingIndexRouteImport } from './routes/admin.pricing.index'
-import { Route as AdminPricingIdRouteImport } from './routes/admin.pricing.$id'
 import { Route as AdminPricingNewRouteImport } from './routes/admin.pricing.new'
+import { Route as AdminPricingIdRouteImport } from './routes/admin.pricing.$id'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RiderRoute = RiderRouteImport.update({
@@ -66,139 +57,24 @@ const RiderRoute = RiderRouteImport.update({
   path: '/rider',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminBcrAnalyticsRoute = AdminBcrAnalyticsRouteImport.update({
-  id: '/bcr-analytics',
-  path: '/bcr-analytics',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminCalculateRoute = AdminCalculateRouteImport.update({
-  id: '/calculate',
-  path: '/calculate',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminClientsRoute = AdminClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminCooInsightsRoute = AdminCooInsightsRouteImport.update({
-  id: '/coo-insights',
-  path: '/coo-insights',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminDashboardRoute = AdminDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminDataCheckRoute = AdminDataCheckRouteImport.update({
-  id: '/data-check',
-  path: '/data-check',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminDeductionsRoute = AdminDeductionsRouteImport.update({
-  id: '/deductions',
-  path: '/deductions',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminDriverAnalyticsRoute = AdminDriverAnalyticsRouteImport.update({
-  id: '/driver-analytics',
-  path: '/driver-analytics',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminInvoicesRoute = AdminInvoicesRouteImport.update({
-  id: '/invoices',
-  path: '/invoices',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminPayrollRoute = AdminPayrollRouteImport.update({
-  id: '/payroll',
-  path: '/payroll',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminPnlRoute = AdminPnlRouteImport.update({
-  id: '/pnl',
-  path: '/pnl',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminPnlDashboardRoute = AdminPnlDashboardRouteImport.update({
-  id: '/pnl-dashboard',
-  path: '/pnl-dashboard',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminRemindersRoute = AdminRemindersRouteImport.update({
-  id: '/reminders',
-  path: '/reminders',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminReportsRoute = AdminReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminRevenueAnalyticsRoute = AdminRevenueAnalyticsRouteImport.update({
-  id: '/revenue-analytics',
-  path: '/revenue-analytics',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminRidersRoute = AdminRidersRouteImport.update({
-  id: '/riders',
-  path: '/riders',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminShipmentAnalyticsRoute = AdminShipmentAnalyticsRouteImport.update({
-  id: '/shipment-analytics',
-  path: '/shipment-analytics',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminUploadRoute = AdminUploadRouteImport.update({
-  id: '/upload',
-  path: '/upload',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AdminRoute,
-} as any)
-const ApiCooInsightRoute = ApiCooInsightRouteImport.update({
-  id: '/api/coo-insight',
-  path: '/api/coo-insight',
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDataImportRoute = ApiDataImportRouteImport.update({
-  id: '/api/data-import',
-  path: '/api/data-import',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiExecutiveDashboardRoute = ApiExecutiveDashboardRouteImport.update({
-  id: '/api/executive-dashboard',
-  path: '/api/executive-dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPayrollReminderRoute = ApiPayrollReminderRouteImport.update({
-  id: '/api/payroll-reminder',
-  path: '/api/payroll-reminder',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPayrollWorkflowRoute = ApiPayrollWorkflowRouteImport.update({
-  id: '/api/payroll-workflow',
-  path: '/api/payroll-workflow',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPnlWeeklyPushRoute = ApiPnlWeeklyPushRouteImport.update({
-  id: '/api/pnl-weekly-push',
-  path: '/api/pnl-weekly-push',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RiderDashboardRoute = RiderDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const RiderProfileRoute = RiderProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => RiderRoute,
 } as any)
 const RiderPayslipsRoute = RiderPayslipsRouteImport.update({
@@ -206,24 +82,154 @@ const RiderPayslipsRoute = RiderPayslipsRouteImport.update({
   path: '/payslips',
   getParentRoute: () => RiderRoute,
 } as any)
-const RiderProfileRoute = RiderProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
+const RiderDashboardRoute = RiderDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => RiderRoute,
+} as any)
+const ApiPnlWeeklyPushRoute = ApiPnlWeeklyPushRouteImport.update({
+  id: '/api/pnl-weekly-push',
+  path: '/api/pnl-weekly-push',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPayrollWorkflowRoute = ApiPayrollWorkflowRouteImport.update({
+  id: '/api/payroll-workflow',
+  path: '/api/payroll-workflow',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPayrollReminderRoute = ApiPayrollReminderRouteImport.update({
+  id: '/api/payroll-reminder',
+  path: '/api/payroll-reminder',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLiveFeeSyncRoute = ApiLiveFeeSyncRouteImport.update({
+  id: '/api/live-fee-sync',
+  path: '/api/live-fee-sync',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExecutiveDashboardRoute = ApiExecutiveDashboardRouteImport.update({
+  id: '/api/executive-dashboard',
+  path: '/api/executive-dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDataImportRoute = ApiDataImportRouteImport.update({
+  id: '/api/data-import',
+  path: '/api/data-import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCooInsightRoute = ApiCooInsightRouteImport.update({
+  id: '/api/coo-insight',
+  path: '/api/coo-insight',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUploadRoute = AdminUploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminShipmentAnalyticsRoute = AdminShipmentAnalyticsRouteImport.update({
+  id: '/shipment-analytics',
+  path: '/shipment-analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRidersRoute = AdminRidersRouteImport.update({
+  id: '/riders',
+  path: '/riders',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRevenueAnalyticsRoute = AdminRevenueAnalyticsRouteImport.update({
+  id: '/revenue-analytics',
+  path: '/revenue-analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminReportsRoute = AdminReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRemindersRoute = AdminRemindersRouteImport.update({
+  id: '/reminders',
+  path: '/reminders',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPnlDashboardRoute = AdminPnlDashboardRouteImport.update({
+  id: '/pnl-dashboard',
+  path: '/pnl-dashboard',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPnlRoute = AdminPnlRouteImport.update({
+  id: '/pnl',
+  path: '/pnl',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPayrollRoute = AdminPayrollRouteImport.update({
+  id: '/payroll',
+  path: '/payroll',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminInvoicesRoute = AdminInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDriverAnalyticsRoute = AdminDriverAnalyticsRouteImport.update({
+  id: '/driver-analytics',
+  path: '/driver-analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDeductionsRoute = AdminDeductionsRouteImport.update({
+  id: '/deductions',
+  path: '/deductions',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDataCheckRoute = AdminDataCheckRouteImport.update({
+  id: '/data-check',
+  path: '/data-check',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCooInsightsRoute = AdminCooInsightsRouteImport.update({
+  id: '/coo-insights',
+  path: '/coo-insights',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminClientsRoute = AdminClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCalculateRoute = AdminCalculateRouteImport.update({
+  id: '/calculate',
+  path: '/calculate',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminBcrAnalyticsRoute = AdminBcrAnalyticsRouteImport.update({
+  id: '/bcr-analytics',
+  path: '/bcr-analytics',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminPricingIndexRoute = AdminPricingIndexRouteImport.update({
   id: '/pricing/',
   path: '/pricing/',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminPricingIdRoute = AdminPricingIdRouteImport.update({
-  id: '/pricing/$id',
-  path: '/pricing/$id',
-  getParentRoute: () => AdminRoute,
-} as any)
 const AdminPricingNewRoute = AdminPricingNewRouteImport.update({
   id: '/pricing/new',
   path: '/pricing/new',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPricingIdRoute = AdminPricingIdRouteImport.update({
+  id: '/pricing/$id',
+  path: '/pricing/$id',
   getParentRoute: () => AdminRoute,
 } as any)
 
@@ -255,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/api/coo-insight': typeof ApiCooInsightRoute
   '/api/data-import': typeof ApiDataImportRoute
   '/api/executive-dashboard': typeof ApiExecutiveDashboardRoute
+  '/api/live-fee-sync': typeof ApiLiveFeeSyncRoute
   '/api/payroll-reminder': typeof ApiPayrollReminderRoute
   '/api/payroll-workflow': typeof ApiPayrollWorkflowRoute
   '/api/pnl-weekly-push': typeof ApiPnlWeeklyPushRoute
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/api/coo-insight': typeof ApiCooInsightRoute
   '/api/data-import': typeof ApiDataImportRoute
   '/api/executive-dashboard': typeof ApiExecutiveDashboardRoute
+  '/api/live-fee-sync': typeof ApiLiveFeeSyncRoute
   '/api/payroll-reminder': typeof ApiPayrollReminderRoute
   '/api/payroll-workflow': typeof ApiPayrollWorkflowRoute
   '/api/pnl-weekly-push': typeof ApiPnlWeeklyPushRoute
@@ -332,6 +340,7 @@ export interface FileRoutesById {
   '/api/coo-insight': typeof ApiCooInsightRoute
   '/api/data-import': typeof ApiDataImportRoute
   '/api/executive-dashboard': typeof ApiExecutiveDashboardRoute
+  '/api/live-fee-sync': typeof ApiLiveFeeSyncRoute
   '/api/payroll-reminder': typeof ApiPayrollReminderRoute
   '/api/payroll-workflow': typeof ApiPayrollWorkflowRoute
   '/api/pnl-weekly-push': typeof ApiPnlWeeklyPushRoute
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | '/api/coo-insight'
     | '/api/data-import'
     | '/api/executive-dashboard'
+    | '/api/live-fee-sync'
     | '/api/payroll-reminder'
     | '/api/payroll-workflow'
     | '/api/pnl-weekly-push'
@@ -410,6 +420,7 @@ export interface FileRouteTypes {
     | '/api/coo-insight'
     | '/api/data-import'
     | '/api/executive-dashboard'
+    | '/api/live-fee-sync'
     | '/api/payroll-reminder'
     | '/api/payroll-workflow'
     | '/api/pnl-weekly-push'
@@ -448,6 +459,7 @@ export interface FileRouteTypes {
     | '/api/coo-insight'
     | '/api/data-import'
     | '/api/executive-dashboard'
+    | '/api/live-fee-sync'
     | '/api/payroll-reminder'
     | '/api/payroll-workflow'
     | '/api/pnl-weekly-push'
@@ -468,6 +480,7 @@ export interface RootRouteChildren {
   ApiCooInsightRoute: typeof ApiCooInsightRoute
   ApiDataImportRoute: typeof ApiDataImportRoute
   ApiExecutiveDashboardRoute: typeof ApiExecutiveDashboardRoute
+  ApiLiveFeeSyncRoute: typeof ApiLiveFeeSyncRoute
   ApiPayrollReminderRoute: typeof ApiPayrollReminderRoute
   ApiPayrollWorkflowRoute: typeof ApiPayrollWorkflowRoute
   ApiPnlWeeklyPushRoute: typeof ApiPnlWeeklyPushRoute
@@ -475,25 +488,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rider': {
@@ -503,193 +502,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RiderRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/bcr-analytics': {
-      id: '/admin/bcr-analytics'
-      path: '/bcr-analytics'
-      fullPath: '/admin/bcr-analytics'
-      preLoaderRoute: typeof AdminBcrAnalyticsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/calculate': {
-      id: '/admin/calculate'
-      path: '/calculate'
-      fullPath: '/admin/calculate'
-      preLoaderRoute: typeof AdminCalculateRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/clients': {
-      id: '/admin/clients'
-      path: '/clients'
-      fullPath: '/admin/clients'
-      preLoaderRoute: typeof AdminClientsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/coo-insights': {
-      id: '/admin/coo-insights'
-      path: '/coo-insights'
-      fullPath: '/admin/coo-insights'
-      preLoaderRoute: typeof AdminCooInsightsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/dashboard': {
-      id: '/admin/dashboard'
-      path: '/dashboard'
-      fullPath: '/admin/dashboard'
-      preLoaderRoute: typeof AdminDashboardRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/data-check': {
-      id: '/admin/data-check'
-      path: '/data-check'
-      fullPath: '/admin/data-check'
-      preLoaderRoute: typeof AdminDataCheckRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/deductions': {
-      id: '/admin/deductions'
-      path: '/deductions'
-      fullPath: '/admin/deductions'
-      preLoaderRoute: typeof AdminDeductionsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/driver-analytics': {
-      id: '/admin/driver-analytics'
-      path: '/driver-analytics'
-      fullPath: '/admin/driver-analytics'
-      preLoaderRoute: typeof AdminDriverAnalyticsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/invoices': {
-      id: '/admin/invoices'
-      path: '/invoices'
-      fullPath: '/admin/invoices'
-      preLoaderRoute: typeof AdminInvoicesRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/payroll': {
-      id: '/admin/payroll'
-      path: '/payroll'
-      fullPath: '/admin/payroll'
-      preLoaderRoute: typeof AdminPayrollRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/pnl': {
-      id: '/admin/pnl'
-      path: '/pnl'
-      fullPath: '/admin/pnl'
-      preLoaderRoute: typeof AdminPnlRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/pnl-dashboard': {
-      id: '/admin/pnl-dashboard'
-      path: '/pnl-dashboard'
-      fullPath: '/admin/pnl-dashboard'
-      preLoaderRoute: typeof AdminPnlDashboardRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/reminders': {
-      id: '/admin/reminders'
-      path: '/reminders'
-      fullPath: '/admin/reminders'
-      preLoaderRoute: typeof AdminRemindersRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/reports': {
-      id: '/admin/reports'
-      path: '/reports'
-      fullPath: '/admin/reports'
-      preLoaderRoute: typeof AdminReportsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/revenue-analytics': {
-      id: '/admin/revenue-analytics'
-      path: '/revenue-analytics'
-      fullPath: '/admin/revenue-analytics'
-      preLoaderRoute: typeof AdminRevenueAnalyticsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/riders': {
-      id: '/admin/riders'
-      path: '/riders'
-      fullPath: '/admin/riders'
-      preLoaderRoute: typeof AdminRidersRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/shipment-analytics': {
-      id: '/admin/shipment-analytics'
-      path: '/shipment-analytics'
-      fullPath: '/admin/shipment-analytics'
-      preLoaderRoute: typeof AdminShipmentAnalyticsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/upload': {
-      id: '/admin/upload'
-      path: '/upload'
-      fullPath: '/admin/upload'
-      preLoaderRoute: typeof AdminUploadRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/users': {
-      id: '/admin/users'
-      path: '/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AdminUsersRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/api/coo-insight': {
-      id: '/api/coo-insight'
-      path: '/api/coo-insight'
-      fullPath: '/api/coo-insight'
-      preLoaderRoute: typeof ApiCooInsightRouteImport
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/data-import': {
-      id: '/api/data-import'
-      path: '/api/data-import'
-      fullPath: '/api/data-import'
-      preLoaderRoute: typeof ApiDataImportRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/executive-dashboard': {
-      id: '/api/executive-dashboard'
-      path: '/api/executive-dashboard'
-      fullPath: '/api/executive-dashboard'
-      preLoaderRoute: typeof ApiExecutiveDashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/payroll-reminder': {
-      id: '/api/payroll-reminder'
-      path: '/api/payroll-reminder'
-      fullPath: '/api/payroll-reminder'
-      preLoaderRoute: typeof ApiPayrollReminderRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/payroll-workflow': {
-      id: '/api/payroll-workflow'
-      path: '/api/payroll-workflow'
-      fullPath: '/api/payroll-workflow'
-      preLoaderRoute: typeof ApiPayrollWorkflowRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/pnl-weekly-push': {
-      id: '/api/pnl-weekly-push'
-      path: '/api/pnl-weekly-push'
-      fullPath: '/api/pnl-weekly-push'
-      preLoaderRoute: typeof ApiPnlWeeklyPushRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/rider/dashboard': {
-      id: '/rider/dashboard'
-      path: '/dashboard'
-      fullPath: '/rider/dashboard'
-      preLoaderRoute: typeof RiderDashboardRouteImport
+    '/rider/profile': {
+      id: '/rider/profile'
+      path: '/profile'
+      fullPath: '/rider/profile'
+      preLoaderRoute: typeof RiderProfileRouteImport
       parentRoute: typeof RiderRoute
     }
     '/rider/payslips': {
@@ -699,12 +537,194 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RiderPayslipsRouteImport
       parentRoute: typeof RiderRoute
     }
-    '/rider/profile': {
-      id: '/rider/profile'
-      path: '/profile'
-      fullPath: '/rider/profile'
-      preLoaderRoute: typeof RiderProfileRouteImport
+    '/rider/dashboard': {
+      id: '/rider/dashboard'
+      path: '/dashboard'
+      fullPath: '/rider/dashboard'
+      preLoaderRoute: typeof RiderDashboardRouteImport
       parentRoute: typeof RiderRoute
+    }
+    '/api/pnl-weekly-push': {
+      id: '/api/pnl-weekly-push'
+      path: '/api/pnl-weekly-push'
+      fullPath: '/api/pnl-weekly-push'
+      preLoaderRoute: typeof ApiPnlWeeklyPushRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/payroll-workflow': {
+      id: '/api/payroll-workflow'
+      path: '/api/payroll-workflow'
+      fullPath: '/api/payroll-workflow'
+      preLoaderRoute: typeof ApiPayrollWorkflowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/payroll-reminder': {
+      id: '/api/payroll-reminder'
+      path: '/api/payroll-reminder'
+      fullPath: '/api/payroll-reminder'
+      preLoaderRoute: typeof ApiPayrollReminderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/live-fee-sync': {
+      id: '/api/live-fee-sync'
+      path: '/api/live-fee-sync'
+      fullPath: '/api/live-fee-sync'
+      preLoaderRoute: typeof ApiLiveFeeSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executive-dashboard': {
+      id: '/api/executive-dashboard'
+      path: '/api/executive-dashboard'
+      fullPath: '/api/executive-dashboard'
+      preLoaderRoute: typeof ApiExecutiveDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/data-import': {
+      id: '/api/data-import'
+      path: '/api/data-import'
+      fullPath: '/api/data-import'
+      preLoaderRoute: typeof ApiDataImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/coo-insight': {
+      id: '/api/coo-insight'
+      path: '/api/coo-insight'
+      fullPath: '/api/coo-insight'
+      preLoaderRoute: typeof ApiCooInsightRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/upload': {
+      id: '/admin/upload'
+      path: '/upload'
+      fullPath: '/admin/upload'
+      preLoaderRoute: typeof AdminUploadRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/shipment-analytics': {
+      id: '/admin/shipment-analytics'
+      path: '/shipment-analytics'
+      fullPath: '/admin/shipment-analytics'
+      preLoaderRoute: typeof AdminShipmentAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/riders': {
+      id: '/admin/riders'
+      path: '/riders'
+      fullPath: '/admin/riders'
+      preLoaderRoute: typeof AdminRidersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/revenue-analytics': {
+      id: '/admin/revenue-analytics'
+      path: '/revenue-analytics'
+      fullPath: '/admin/revenue-analytics'
+      preLoaderRoute: typeof AdminRevenueAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/reports': {
+      id: '/admin/reports'
+      path: '/reports'
+      fullPath: '/admin/reports'
+      preLoaderRoute: typeof AdminReportsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/reminders': {
+      id: '/admin/reminders'
+      path: '/reminders'
+      fullPath: '/admin/reminders'
+      preLoaderRoute: typeof AdminRemindersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/pnl-dashboard': {
+      id: '/admin/pnl-dashboard'
+      path: '/pnl-dashboard'
+      fullPath: '/admin/pnl-dashboard'
+      preLoaderRoute: typeof AdminPnlDashboardRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/pnl': {
+      id: '/admin/pnl'
+      path: '/pnl'
+      fullPath: '/admin/pnl'
+      preLoaderRoute: typeof AdminPnlRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/payroll': {
+      id: '/admin/payroll'
+      path: '/payroll'
+      fullPath: '/admin/payroll'
+      preLoaderRoute: typeof AdminPayrollRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/invoices': {
+      id: '/admin/invoices'
+      path: '/invoices'
+      fullPath: '/admin/invoices'
+      preLoaderRoute: typeof AdminInvoicesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/driver-analytics': {
+      id: '/admin/driver-analytics'
+      path: '/driver-analytics'
+      fullPath: '/admin/driver-analytics'
+      preLoaderRoute: typeof AdminDriverAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/deductions': {
+      id: '/admin/deductions'
+      path: '/deductions'
+      fullPath: '/admin/deductions'
+      preLoaderRoute: typeof AdminDeductionsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/data-check': {
+      id: '/admin/data-check'
+      path: '/data-check'
+      fullPath: '/admin/data-check'
+      preLoaderRoute: typeof AdminDataCheckRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/coo-insights': {
+      id: '/admin/coo-insights'
+      path: '/coo-insights'
+      fullPath: '/admin/coo-insights'
+      preLoaderRoute: typeof AdminCooInsightsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/clients': {
+      id: '/admin/clients'
+      path: '/clients'
+      fullPath: '/admin/clients'
+      preLoaderRoute: typeof AdminClientsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/calculate': {
+      id: '/admin/calculate'
+      path: '/calculate'
+      fullPath: '/admin/calculate'
+      preLoaderRoute: typeof AdminCalculateRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/bcr-analytics': {
+      id: '/admin/bcr-analytics'
+      path: '/bcr-analytics'
+      fullPath: '/admin/bcr-analytics'
+      preLoaderRoute: typeof AdminBcrAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/pricing/': {
       id: '/admin/pricing/'
@@ -713,18 +733,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPricingIndexRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/pricing/$id': {
-      id: '/admin/pricing/$id'
-      path: '/pricing/$id'
-      fullPath: '/admin/pricing/$id'
-      preLoaderRoute: typeof AdminPricingIdRouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/admin/pricing/new': {
       id: '/admin/pricing/new'
       path: '/pricing/new'
       fullPath: '/admin/pricing/new'
       preLoaderRoute: typeof AdminPricingNewRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/pricing/$id': {
+      id: '/admin/pricing/$id'
+      path: '/pricing/$id'
+      fullPath: '/admin/pricing/$id'
+      preLoaderRoute: typeof AdminPricingIdRouteImport
       parentRoute: typeof AdminRoute
     }
   }
@@ -805,6 +825,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCooInsightRoute: ApiCooInsightRoute,
   ApiDataImportRoute: ApiDataImportRoute,
   ApiExecutiveDashboardRoute: ApiExecutiveDashboardRoute,
+  ApiLiveFeeSyncRoute: ApiLiveFeeSyncRoute,
   ApiPayrollReminderRoute: ApiPayrollReminderRoute,
   ApiPayrollWorkflowRoute: ApiPayrollWorkflowRoute,
   ApiPnlWeeklyPushRoute: ApiPnlWeeklyPushRoute,

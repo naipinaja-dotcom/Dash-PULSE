@@ -60,5 +60,12 @@ export function getServerConfig() {
     // mingguan generate+validate+audit payroll. Sama polanya dgn
     // payrollReminderSecret, header `x-payroll-workflow-secret`.
     payrollWorkflowSecret: process.env.PAYROLL_WORKFLOW_SECRET?.trim(),
+
+    // Live Fee Auto-Sync (lihat src/lib/live-fee-sync.server.ts) — cron 2x/hari
+    // tarik data live dashelectric per client yang sudah di-link provider
+    // (clients.provider_id), lalu commit sama seperti "Sync ke Database"
+    // manual. Sama polanya dgn payrollWorkflowSecret, header
+    // `x-live-fee-sync-secret`.
+    liveFeeSyncSecret: process.env.LIVE_FEE_SYNC_SECRET?.trim(),
   };
 }

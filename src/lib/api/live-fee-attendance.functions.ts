@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import type { AttendanceLogRow } from "@/lib/pricing-calc";
+import type { AttendanceLogRow, ShiftConfig } from "@/lib/pricing-calc";
+import { findShiftFor } from "@/lib/pricing-calc";
 
 // Sumber data LIVE untuk skema Attendance (Per Kehadiran) di "Hitung Fee" —
 // tarik logbook clock-in/out langsung dari mgmt API (endpoint approval), map ke
@@ -54,19 +55,34 @@ function jktMinutes(iso: string): number | null {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
-// Aturan telat Alfagift (hasil kalibrasi ke total payroll): shift pagi mulai
-// 06:00, shift siang mulai 14:00, toleransi 10 menit. Clock-in lewat batas =
-// telat → TIDAK dapat bonus kehadiran (bonus bersifat ontime-only).
-// TODO: pindahkan ke config skema kalau ada client attendance lain dgn jam beda.
-const SHIFT_MORNING_START = 6 * 60; // 06:00
-const SHIFT_AFTERNOON_START = 14 * 60; // 14:00
-const LATE_TOLERANCE_MIN = 10;
-const AFTERNOON_CUTOFF = 10 * 60; // clock-in >= 10:00 dianggap shift siang
-function isLateClockIn(iso: string): boolean {
+function hhmmToMinutes(t: string): number {
+  const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+  return (h || 0) * 60 + (m || 0);
+}
+
+// Fallback kalibrasi Alfagift (dipakai HANYA kalau client belum setup shift +
+// "Batas Ontime" (late_after) di skema attendance-nya sama sekali): shift pagi
+// mulai 06:00, shift siang mulai 14:00, toleransi 10 menit.
+const FALLBACK_MORNING_START = 6 * 60; // 06:00
+const FALLBACK_AFTERNOON_START = 14 * 60; // 14:00
+const FALLBACK_LATE_TOLERANCE_MIN = 10;
+const FALLBACK_AFTERNOON_CUTOFF = 10 * 60; // clock-in >= 10:00 dianggap shift siang
+
+// Config-driven per-client (shift.late_after dari skema attendance client itu,
+// sama sumbernya dengan yang dipakai calcAttendanceComponent) — cuma jatuh ke
+// kalibrasi Alfagift kalau client belum setup shift/late_after sama sekali,
+// supaya client selain Alfagift (mis. hasil auto-sync ke banyak client
+// sekaligus) gak ikut kena jam Alfagift secara keliru.
+function isLateClockIn(iso: string, shifts: ShiftConfig[]): boolean {
   const m = jktMinutes(iso);
   if (m == null) return false;
-  const start = m < AFTERNOON_CUTOFF ? SHIFT_MORNING_START : SHIFT_AFTERNOON_START;
-  return m > start + LATE_TOLERANCE_MIN;
+  const clockInHHMM = jktTime(iso);
+  if (clockInHHMM && shifts.length > 0) {
+    const shift = findShiftFor(clockInHHMM, shifts);
+    if (shift?.late_after) return m > hhmmToMinutes(shift.late_after);
+  }
+  const start = m < FALLBACK_AFTERNOON_CUTOFF ? FALLBACK_MORNING_START : FALLBACK_AFTERNOON_START;
+  return m > start + FALLBACK_LATE_TOLERANCE_MIN;
 }
 
 async function apiGet(
@@ -113,7 +129,7 @@ export interface LiveAttendanceRow extends AttendanceLogRow {
   approval_type: string | null;
 }
 
-function toAttendanceRow(x: UpstreamRow): LiveAttendanceRow {
+function toAttendanceRow(x: UpstreamRow, shifts: ShiftConfig[]): LiveAttendanceRow {
   const inISO = x.clockInAt ?? "";
   const outISO = x.clockOutAt ?? null;
   const inT = Date.parse(inISO);
@@ -129,7 +145,7 @@ function toAttendanceRow(x: UpstreamRow): LiveAttendanceRow {
     clock_out: jktTime(outISO),
     duration_minutes: duration,
     // Telat dihitung dari clock-in vs jam mulai shift (bonus kehadiran ontime-only).
-    is_late: isLateClockIn(inISO),
+    is_late: isLateClockIn(inISO, shifts),
     is_absent: false, // record yang ada = hadir; yang absen tidak muncul di API
     client_name: x.clientNames ?? null,
     driver_name: (x.driverName ?? "").trim() || null,
@@ -150,6 +166,66 @@ export interface LiveFeeAttendanceResult {
   };
 }
 
+// Inti tarik+map — dipisah dari createServerFn supaya bisa dipanggil dari cron
+// (src/lib/live-fee-sync.server.ts), yang gak punya sesi admin login buat
+// lolos assertAuth dan udah dilindungi secret header-nya sendiri. `dashToken`
+// sudah termasuk prefix "Bearer ". `shifts` = config shift skema attendance
+// client itu (buat is_late per late_after — lihat isLateClockIn di atas).
+export async function fetchLiveAttendance(
+  dashToken: string,
+  providerId: number,
+  from: string,
+  to: string,
+  shifts: ShiftConfig[] = [],
+): Promise<LiveFeeAttendanceResult> {
+  if (from > to) throw new Error("Tanggal 'dari' tidak boleh setelah 'sampai'");
+
+  const first = await apiGet(dashToken, providerId, from, to, 1);
+  const upstream: UpstreamRow[] = [...(first?.data?.data ?? [])];
+  const pg = first?.data?.pagination ?? {};
+  const last = Math.min(pg.lastPage ?? pg.last_page ?? 1, MAX_PAGES);
+
+  if (last > 1) {
+    const pages: number[] = [];
+    for (let p = 2; p <= last; p++) pages.push(p);
+    const got: Record<number, UpstreamRow[]> = {};
+    let idx = 0;
+    const worker = async () => {
+      while (idx < pages.length) {
+        const p = pages[idx++];
+        const d = await apiGet(dashToken, providerId, from, to, p);
+        got[p] = d?.data?.data ?? [];
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, pages.length) }, worker));
+    for (const p of Object.keys(got).map(Number).sort((a, b) => a - b)) upstream.push(...got[p]);
+  }
+
+  // Semua shift yang log_date-nya di periode — TERMASUK yang masih "ongoing"
+  // (belum clock-out). Yang ongoing: durasi 0 (daily_base 0) tapi tetap
+  // dihitung "hadir" → dapat bonus kehadiran flat, sama persis dengan perilaku
+  // upload CSV (yang juga memasukkan baris ongoing). Kalau dibuang, total fee
+  // kurang sebesar (jumlah ongoing × bonus).
+  const rows = upstream
+    .map((x) => toAttendanceRow(x, shifts))
+    .filter((r) => r.log_date >= from && r.log_date <= to);
+  const ongoing = rows.filter((r) => !r.clock_out).length;
+  const pending = rows.filter((r) => r.approval_type === "PENDING").length;
+
+  return {
+    rows,
+    meta: {
+      provider_id: providerId,
+      fetched: upstream.length,
+      matched: rows.length,
+      ongoing,
+      pending,
+      from,
+      to,
+    },
+  };
+}
+
 export const loadLiveFeeAttendance = createServerFn({ method: "GET" })
   .inputValidator(
     z.object({
@@ -157,57 +233,15 @@ export const loadLiveFeeAttendance = createServerFn({ method: "GET" })
       providerId: z.number().int().positive(),
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal 'dari' tidak valid"),
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal 'sampai' tidak valid"),
+      shifts: z.array(z.any()).optional(), // ShiftConfig[] skema attendance client (buat late_after)
     }),
   )
   .handler(async ({ data }): Promise<LiveFeeAttendanceResult> => {
     await assertAuth(data.token);
-    if (data.from > data.to) throw new Error("Tanggal 'dari' tidak boleh setelah 'sampai'");
 
     const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
     if (!raw) throw new Error("DASH_MGMT_API_TOKEN belum di-set di server — isi di .env lalu restart.");
     const token = `Bearer ${raw}`;
 
-    const first = await apiGet(token, data.providerId, data.from, data.to, 1);
-    const upstream: UpstreamRow[] = [...(first?.data?.data ?? [])];
-    const pg = first?.data?.pagination ?? {};
-    const last = Math.min(pg.lastPage ?? pg.last_page ?? 1, MAX_PAGES);
-
-    if (last > 1) {
-      const pages: number[] = [];
-      for (let p = 2; p <= last; p++) pages.push(p);
-      const got: Record<number, UpstreamRow[]> = {};
-      let idx = 0;
-      const worker = async () => {
-        while (idx < pages.length) {
-          const p = pages[idx++];
-          const d = await apiGet(token, data.providerId, data.from, data.to, p);
-          got[p] = d?.data?.data ?? [];
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, pages.length) }, worker));
-      for (const p of Object.keys(got).map(Number).sort((a, b) => a - b)) upstream.push(...got[p]);
-    }
-
-    // Semua shift yang log_date-nya di periode — TERMASUK yang masih "ongoing"
-    // (belum clock-out). Yang ongoing: durasi 0 (daily_base 0) tapi tetap
-    // dihitung "hadir" → dapat bonus kehadiran flat, sama persis dengan perilaku
-    // upload CSV (yang juga memasukkan baris ongoing). Kalau dibuang, total fee
-    // kurang sebesar (jumlah ongoing × bonus).
-    const mapped = upstream.map(toAttendanceRow).filter((r) => r.log_date >= data.from && r.log_date <= data.to);
-    const rows = mapped;
-    const ongoing = rows.filter((r) => !r.clock_out).length;
-    const pending = rows.filter((r) => r.approval_type === "PENDING").length;
-
-    return {
-      rows,
-      meta: {
-        provider_id: data.providerId,
-        fetched: upstream.length,
-        matched: rows.length,
-        ongoing,
-        pending,
-        from: data.from,
-        to: data.to,
-      },
-    };
+    return fetchLiveAttendance(token, data.providerId, data.from, data.to, (data.shifts as ShiftConfig[]) ?? []);
   });

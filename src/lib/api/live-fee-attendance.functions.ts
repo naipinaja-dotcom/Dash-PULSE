@@ -166,6 +166,15 @@ export interface LiveFeeAttendanceResult {
   };
 }
 
+// TEMPORARY debug — buat diagnosa apa raw response API punya field lokasi/
+// pitstop yang belum kepetakan ke LiveAttendanceRow (attendance_logs.pitstop_name
+// selalu NULL buat data live-sync). Hapus setelah diagnosa selesai.
+export async function debugFetchRawAttendance(dashToken: string, providerId: number, from: string, to: string) {
+  const first = await apiGet(dashToken, providerId, from, to, 1);
+  const rows: UpstreamRow[] = first?.data?.data ?? [];
+  return rows.slice(0, 2);
+}
+
 // Inti tarik+map — dipisah dari createServerFn supaya bisa dipanggil dari cron
 // (src/lib/live-fee-sync.server.ts), yang gak punya sesi admin login buat
 // lolos assertAuth dan udah dilindungi secret header-nya sendiri. `dashToken`

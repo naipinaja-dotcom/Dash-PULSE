@@ -3,6 +3,8 @@ import { getRequest } from "@tanstack/react-start/server";
 import type {} from "@tanstack/react-start";
 import { runLiveFeeSync, verifyLiveFeeSyncSecret } from "@/lib/live-fee-sync.server";
 import { getPostHogClient } from "@/utils/posthog-server";
+// TEMPORARY debug import — hapus bareng blok debugRaw di bawah setelah diagnosa selesai.
+import { debugFetchRawAttendance } from "@/lib/api/live-fee-attendance.functions";
 
 // Endpoint cron 2x/hari buat Live Fee Auto-Sync — per client yang sudah
 // di-link ke provider (clients.provider_id), tarik data live dashelectric,
@@ -23,11 +25,30 @@ export const Route = createFileRoute("/api/live-fee-sync")({
             headers: { "Content-Type": "application/json" },
           });
         }
-        let body: { from?: string; to?: string } = {};
+        let body: { from?: string; to?: string; debugRaw?: boolean; providerId?: number } = {};
         try {
           body = await request!.json();
         } catch {
           // body kosong = default window rolling 2 hari (lihat defaultWindow())
+        }
+        // TEMPORARY debug branch — hapus bareng import debugFetchRawAttendance
+        // setelah diagnosa raw response API attendance selesai.
+        if (body.debugRaw && body.providerId) {
+          try {
+            const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
+            const token = `Bearer ${raw}`;
+            const from = body.from ?? "2026-07-29";
+            const to = body.to ?? "2026-07-30";
+            const sample = await debugFetchRawAttendance(token, body.providerId, from, to);
+            return new Response(JSON.stringify({ ok: true, sample }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch (e) {
+            return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
         }
         try {
           const result = await runLiveFeeSync({

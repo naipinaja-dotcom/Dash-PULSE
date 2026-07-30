@@ -20,6 +20,7 @@ export async function upsertLiveAttendance(
   to: string,
   label: string,
   fees: number[] = [], // fee hasil hitung, sejajar dengan `rows` (index-aligned)
+  client: typeof supabase = supabase, // admin client buat server-side (workflow)
 ): Promise<AttSyncResult> {
   const result: AttSyncResult = { total: rows.length, inserted: 0, ridersCreated: 0 };
   if (rows.length === 0) return result;
@@ -32,12 +33,13 @@ export async function upsertLiveAttendance(
   const { map: riderMap, createdCodes } = await resolveOrCreateRiders(
     rows.map((r) => r.driver_code),
     namesByCode,
+    client,
   );
   result.ridersCreated = createdCodes.length;
 
   // 2. Batch penanda sumber.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: batch, error: bErr } = await (supabase as any)
+  const { data: batch, error: bErr } = await (client as any)
     .from("upload_batches")
     .insert({ kind: "attendance", client_id: clientId, filename: label, row_count: rows.length })
     .select()
@@ -46,7 +48,7 @@ export async function upsertLiveAttendance(
 
   // 3. OVERWRITE: hapus absensi lama client ini di periode [from,to].
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: delErr } = await (supabase as any)
+  const { error: delErr } = await (client as any)
     .from("attendance_logs")
     .delete()
     .eq("client_id", clientId)
@@ -72,7 +74,7 @@ export async function upsertLiveAttendance(
   for (let i = 0; i < payloads.length; i += 200) {
     const chunk = payloads.slice(i, i + 200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from("attendance_logs").insert(chunk);
+    const { error } = await (client as any).from("attendance_logs").insert(chunk);
     if (error) throw error;
     result.inserted += chunk.length;
   }

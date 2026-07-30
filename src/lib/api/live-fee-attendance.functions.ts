@@ -162,52 +162,55 @@ export const loadLiveFeeAttendance = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<LiveFeeAttendanceResult> => {
     await assertAuth(data.token);
     if (data.from > data.to) throw new Error("Tanggal 'dari' tidak boleh setelah 'sampai'");
-
-    const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
-    if (!raw) throw new Error("DASH_MGMT_API_TOKEN belum di-set di server — isi di .env lalu restart.");
-    const token = `Bearer ${raw}`;
-
-    const first = await apiGet(token, data.providerId, data.from, data.to, 1);
-    const upstream: UpstreamRow[] = [...(first?.data?.data ?? [])];
-    const pg = first?.data?.pagination ?? {};
-    const last = Math.min(pg.lastPage ?? pg.last_page ?? 1, MAX_PAGES);
-
-    if (last > 1) {
-      const pages: number[] = [];
-      for (let p = 2; p <= last; p++) pages.push(p);
-      const got: Record<number, UpstreamRow[]> = {};
-      let idx = 0;
-      const worker = async () => {
-        while (idx < pages.length) {
-          const p = pages[idx++];
-          const d = await apiGet(token, data.providerId, data.from, data.to, p);
-          got[p] = d?.data?.data ?? [];
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, pages.length) }, worker));
-      for (const p of Object.keys(got).map(Number).sort((a, b) => a - b)) upstream.push(...got[p]);
-    }
-
-    // Semua shift yang log_date-nya di periode — TERMASUK yang masih "ongoing"
-    // (belum clock-out). Yang ongoing: durasi 0 (daily_base 0) tapi tetap
-    // dihitung "hadir" → dapat bonus kehadiran flat, sama persis dengan perilaku
-    // upload CSV (yang juga memasukkan baris ongoing). Kalau dibuang, total fee
-    // kurang sebesar (jumlah ongoing × bonus).
-    const mapped = upstream.map(toAttendanceRow).filter((r) => r.log_date >= data.from && r.log_date <= data.to);
-    const rows = mapped;
-    const ongoing = rows.filter((r) => !r.clock_out).length;
-    const pending = rows.filter((r) => r.approval_type === "PENDING").length;
-
+    const { rows, fetched } = await fetchLiveAttendanceRows(data.providerId, data.from, data.to);
     return {
       rows,
       meta: {
         provider_id: data.providerId,
-        fetched: upstream.length,
+        fetched,
         matched: rows.length,
-        ongoing,
-        pending,
+        ongoing: rows.filter((r) => !r.clock_out).length,
+        pending: rows.filter((r) => r.approval_type === "PENDING").length,
         from: data.from,
         to: data.to,
       },
     };
   });
+
+// Pure fetch+map — TANPA auth. Dipakai browser server-fn (di atas) DAN workflow
+// payroll server-side (cron). Termasuk shift ongoing. Baca token env sendiri.
+export async function fetchLiveAttendanceRows(
+  providerId: number,
+  from: string,
+  to: string,
+): Promise<{ rows: LiveAttendanceRow[]; fetched: number }> {
+  const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
+  if (!raw) throw new Error("DASH_MGMT_API_TOKEN belum di-set di server");
+  const token = `Bearer ${raw}`;
+
+  const first = await apiGet(token, providerId, from, to, 1);
+  const upstream: UpstreamRow[] = [...(first?.data?.data ?? [])];
+  const pg = first?.data?.pagination ?? {};
+  const last = Math.min(pg.lastPage ?? pg.last_page ?? 1, MAX_PAGES);
+
+  if (last > 1) {
+    const pages: number[] = [];
+    for (let p = 2; p <= last; p++) pages.push(p);
+    const got: Record<number, UpstreamRow[]> = {};
+    let idx = 0;
+    const worker = async () => {
+      while (idx < pages.length) {
+        const p = pages[idx++];
+        const d = await apiGet(token, providerId, from, to, p);
+        got[p] = d?.data?.data ?? [];
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, pages.length) }, worker));
+    for (const p of Object.keys(got).map(Number).sort((a, b) => a - b)) upstream.push(...got[p]);
+  }
+
+  const rows = upstream
+    .map(toAttendanceRow)
+    .filter((r) => r.log_date >= from && r.log_date <= to);
+  return { rows, fetched: upstream.length };
+}

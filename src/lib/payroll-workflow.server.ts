@@ -38,6 +38,8 @@ import { sendSlackMessage } from "./notify/slack.server";
 import { sendEmail } from "./notify/email.server";
 import { fetchAllRows } from "./fetch-all";
 import { pickPricingScheme } from "./pnl-engine";
+import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
+import { syncLiveForClient } from "./api/live-payroll.server";
 import { normalize } from "./pricing-store";
 import type { PricingScheme } from "./pricing-types";
 import {
@@ -94,7 +96,6 @@ export interface PayrollWorkflowResult {
 
 // Default kalau client belum di-custom di Reminder Calendar: Senin(1)-Minggu(0),
 // sama ritme dengan Weekly PNL Push.
-const DEFAULT_PERIOD_WEEKDAYS = { start: 1, end: 0, closeSameDay: false };
 
 // 0=Minggu..6=Sabtu (sama seperti kolom weekdays yang udah ada). Default:
 // periode dianggap JATUH TEMPO hari ini kalau KEMARIN persis hari
@@ -483,13 +484,34 @@ export async function runPayrollWorkflow(opts: {
   if (clientsErr) throw new Error(`Gagal ambil daftar client: ${clientsErr.message}`);
   const schemes: PricingScheme[] = (schemesRaw ?? []).map(normalize);
 
+  // Provider API buat auto-tarik data live untuk client yang ter-map (by nama).
+  // Kalau token/API gagal, JANGAN gagalin seluruh workflow — lanjut tanpa auto-live
+  // (client yang datanya sudah di DB/upload tetap kehitung seperti biasa).
+  let providerByName = new Map<string, ApiProvider>();
+  try {
+    const providers = await fetchApiProviders();
+    providerByName = new Map(providers.map((p) => [p.name.trim().toLowerCase(), p]));
+  } catch (e) {
+    console.error(
+      "[payroll-workflow] Gagal muat provider API, lanjut tanpa auto-live:",
+      (e as Error).message,
+    );
+  }
+
   const runs: PayrollWorkflowRunResult[] = [];
   const skippedClients: string[] = [];
   let hardError: string | null = null;
 
   try {
     for (const c of clients ?? []) {
-      const clientPeriods = periodsByClient.get(c.id) ?? [DEFAULT_PERIOD_WEEKDAYS];
+      // Client TANPA jadwal periode (di payroll_reminder_schedules) di-SKIP —
+      // jangan pakai default weekly, biar tidak bikin draft run untuk semua
+      // client yang belum diatur jadwalnya. Cuma client berjadwal yang diproses.
+      const clientPeriods = periodsByClient.get(c.id);
+      if (!clientPeriods || clientPeriods.length === 0) {
+        skippedClients.push(`${c.name} (tanpa jadwal)`);
+        continue;
+      }
 
       for (const p of clientPeriods) {
         const period = resolvePeriodIfDue(today, p.start, p.end, p.closeSameDay);
@@ -507,6 +529,30 @@ export async function runPayrollWorkflow(opts: {
         if (run.status !== "draft") {
           skippedClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
           continue;
+        }
+
+        // Kalau client ter-map ke provider API (by nama), tarik data live &
+        // upsert ke DB DULU — biar autoComputeFee di bawah punya datanya (tanpa
+        // perlu "Sync ke Database" manual). Gagal fetch tidak menggagalkan run;
+        // fallback ke data yang sudah ada di DB.
+        const provider = providerByName.get(c.name.trim().toLowerCase());
+        const clientScheme = pickPricingScheme(schemes, c.id, "rider");
+        if (provider && clientScheme) {
+          try {
+            await syncLiveForClient({
+              admin,
+              clientId: c.id,
+              provider,
+              scheme: clientScheme,
+              from: period.periodStart,
+              to: period.periodEnd,
+            });
+          } catch (e) {
+            console.error(
+              `[payroll-workflow] Auto-live gagal untuk ${c.name}, pakai data DB:`,
+              (e as Error).message,
+            );
+          }
         }
 
         const feeResult = await autoComputeFee(

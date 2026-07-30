@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import {
   Plus,
+  Play,
   Loader2,
   CheckCircle2,
   Send,
@@ -21,6 +22,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { generatePayrollDetails } from "@/lib/payroll-generate";
+import { triggerPayrollWorkflow } from "@/lib/api/payroll-workflow.functions";
 import { IncentiveEditor } from "@/components/incentive-editor";
 import {
   downloadBulkPaymentCSV,
@@ -623,6 +625,81 @@ function PayrollPage() {
     loadRuns();
   };
 
+  // Hapus MASSAL draft run yang KOSONG (tanpa detail rider) — biasanya run yang
+  // kebuat otomatis oleh workflow buat client yang belum ada aktivitas/jadwal.
+  // Cuma sentuh status draft & yang benar-benar 0 detail, jadi run yang ada
+  // datanya (fee sudah masuk) TIDAK ikut terhapus.
+  const [deletingBulk, setDeletingBulk] = useState(false);
+  const deleteEmptyDrafts = async () => {
+    const drafts = runs.filter((r) => r.status === "draft");
+    if (drafts.length === 0) return toast.message("Tidak ada draft run.");
+    const draftIds = drafts.map((r) => r.id);
+    // run mana yang PUNYA detail?
+    const { data: withDetails, error: dErr } = await (supabase as any)
+      .from("payroll_details")
+      .select("run_id")
+      .in("run_id", draftIds);
+    if (dErr) return toast.error(dErr.message);
+    const hasDetails = new Set((withDetails ?? []).map((d: any) => d.run_id));
+    const empties = drafts.filter((r) => !hasDetails.has(r.id));
+    if (empties.length === 0) return toast.message("Tidak ada draft run kosong untuk dihapus.");
+    if (
+      !(await confirmDialog({
+        title: `Hapus ${empties.length} draft run kosong?`,
+        description: `${empties.length} payroll run berstatus draft yang belum ada detail rider (kemungkinan dibuat otomatis oleh workflow untuk client tanpa aktivitas/jadwal) akan dihapus. Run yang sudah ada datanya tidak terpengaruh.`,
+        confirmText: "Hapus Semua",
+        danger: true,
+      }))
+    )
+      return;
+    setDeletingBulk(true);
+    const { error } = await (supabase as any)
+      .from("payroll_runs")
+      .delete()
+      .in(
+        "id",
+        empties.map((r) => r.id),
+      );
+    setDeletingBulk(false);
+    if (error) return toast.error(error.message);
+    posthog.capture("payroll_empty_drafts_deleted", { count: empties.length });
+    toast.success(`${empties.length} draft run kosong dihapus.`);
+    if (activeRun && empties.some((r) => r.id === activeRun.id)) setActiveRun(null);
+    loadRuns();
+  };
+
+  // Jalankan Payroll Workflow manual (sama dgn cron): tiap client berjadwal yg
+  // jatuh tempo → tarik data live API (kalau ter-map) → hitung → buat/isi run.
+  const [runningWorkflow, setRunningWorkflow] = useState(false);
+  const runWorkflowNow = async () => {
+    if (
+      !(await confirmDialog({
+        title: "Jalankan Payroll Workflow sekarang?",
+        description:
+          "Semua client BERJADWAL yang periodenya jatuh tempo hari ini akan diproses: tarik data live dari API (untuk client yang ter-map) → hitung fee → buat/isi Payroll Run. Sama seperti yang dijalankan cron otomatis.",
+        confirmText: "Jalankan",
+        danger: false,
+      }))
+    )
+      return;
+    setRunningWorkflow(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const adminToken = sess.session?.access_token ?? "";
+      const res = await triggerPayrollWorkflow({ data: { adminToken } });
+      toast.success(
+        `Workflow selesai: ${res.runsProcessed} run diproses` +
+          (res.skipped ? `, ${res.skipped} dilewati` : "") +
+          ".",
+      );
+      loadRuns();
+    } catch (e) {
+      toast.error(`Workflow gagal: ${(e as Error).message}`);
+    } finally {
+      setRunningWorkflow(false);
+    }
+  };
+
   // Bulk payment — file transfer bank buat Finance, format ngikutin persis
   // template yang udah dipakai (lihat src/lib/bulk-payment-export.ts).
   // Data bank rider (bank_name/bank_account/bank_account_holder) sengaja
@@ -721,6 +798,30 @@ function PayrollPage() {
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Refresh
           </button>
+
+          {!showHistory && (
+            <button
+              onClick={runWorkflowNow}
+              disabled={runningWorkflow || loading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:opacity-90 transition-opacity"
+              title="Jalankan payroll workflow manual (tarik data API + hitung + buat run) untuk semua client berjadwal yang jatuh tempo hari ini"
+            >
+              {runningWorkflow ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              {runningWorkflow ? "Menjalankan…" : "Run Workflow Sekarang"}
+            </button>
+          )}
+
+          {!showHistory && (
+            <button
+              onClick={deleteEmptyDrafts}
+              disabled={deletingBulk || loading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-destructive/40 text-destructive px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-destructive/10 transition-colors"
+              title="Hapus draft run yang belum ada detail rider (biasanya kebuat otomatis untuk client tanpa jadwal)"
+            >
+              {deletingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {deletingBulk ? "Menghapus…" : "Hapus Draft Kosong"}
+            </button>
+          )}
 
           {/* Toggle Aktif/History — history = udah published, gak nyampur sama
               run yang masih draft/finalized. Filter status doang, data TETAP

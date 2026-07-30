@@ -157,6 +157,95 @@ export interface LiveFeeDeliveriesResult {
   };
 }
 
+// Inti tarik+map+klasifikasi — dipisah dari createServerFn di bawah supaya bisa
+// dipanggil dari cron (src/lib/live-fee-sync.server.ts), yang gak punya sesi
+// admin login buat lolos assertAuth dan udah dilindungi secret header-nya
+// sendiri. `dashToken` di sini sudah termasuk prefix "Bearer ".
+export async function fetchLiveDeliveries(
+  dashToken: string,
+  providerId: number,
+  businessUnit: string | null,
+  from: string,
+  to: string,
+): Promise<LiveFeeDeliveriesResult> {
+  if (from > to) throw new Error("Tanggal 'dari' tidak boleh setelah 'sampai'");
+
+  // PENTING: API memfilter startDate/endDate berdasarkan `createdAt` (tanggal
+  // order DIBUAT), sedangkan periode payroll pakai tanggal SELESAI (completedAt,
+  // = delivery_date). Order bisa dibuat H-1/H-2 lalu selesai di periode.
+  // Solusi: tarik window createdAt lebih LEBAR (mundur BUFFER hari), lalu filter
+  // hasilnya by delivery_date sesuai [from, to]. Cocok dengan basis file upload.
+  const startDt = new Date(from + "T00:00:00Z");
+  startDt.setUTCDate(startDt.getUTCDate() - CREATED_BUFFER_DAYS);
+  const fetchStart = startDt.toISOString().slice(0, 10);
+  // UI 'sampai' inklusif; API endDate eksklusif → +1 hari.
+  const endDt = new Date(to + "T00:00:00Z");
+  endDt.setUTCDate(endDt.getUTCDate() + 1);
+  const endExclusive = endDt.toISOString().slice(0, 10);
+
+  const bu = businessUnit || null;
+  const first = await apiGet(dashToken, bu, fetchStart, endExclusive, 1);
+  const upstream: UpstreamRow[] = [...(first?.data ?? [])];
+  const pg = first?.pagination ?? {};
+  const last = Math.min(pg.last_page ?? pg.lastPage ?? 1, MAX_PAGES);
+
+  if (last > 1) {
+    const pages: number[] = [];
+    for (let p = 2; p <= last; p++) pages.push(p);
+    const got: Record<number, UpstreamRow[]> = {};
+    let idx = 0;
+    const worker = async () => {
+      while (idx < pages.length) {
+        const p = pages[idx++];
+        const d = await apiGet(dashToken, bu, fetchStart, endExclusive, p);
+        got[p] = d?.data ?? [];
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, pages.length) }, worker));
+    for (const p of Object.keys(got).map(Number).sort((a, b) => a - b)) upstream.push(...got[p]);
+  }
+
+  const matched = upstream.filter((x) => x.provider?.id === providerId);
+  const rows = matched.map(toDeliveryRow);
+
+  // Klasifikasi DELIVERY/RETURN — replikasi classifyDeliveryType: hub = nama
+  // pengirim (outlet) yang paling sering muncul; baris dari hub = DELIVERY,
+  // menuju hub = RETURN. Skema Wicked Pies pasang tarif beda (antar vs kembali).
+  const freq = new Map<string, number>();
+  for (const r of rows) if (r.sender_name) freq.set(r.sender_name, (freq.get(r.sender_name) ?? 0) + 1);
+  let hub: string | null = null;
+  let hubCount = 0;
+  freq.forEach((c, name) => {
+    if (c > hubCount) {
+      hub = name;
+      hubCount = c;
+    }
+  });
+  if (hub) {
+    for (const r of rows) {
+      if (r.sender_name === hub) r.delivery_type = "DELIVERY";
+      else if (r.receiver_name === hub) r.delivery_type = "RETURN";
+      // selain itu biarkan default "DELIVERY"
+    }
+  }
+
+  // Filter final berdasar tanggal SELESAI (delivery_date = completedAt) sesuai
+  // periode yang diminta — bukan createdAt. Ini yang bikin hasil match file upload.
+  const inPeriod = rows.filter((r) => r.delivery_date >= from && r.delivery_date <= to);
+
+  return {
+    rows: inPeriod,
+    meta: {
+      provider_id: providerId,
+      business_unit: bu ?? "SEMUA",
+      fetched: upstream.length,
+      matched: inPeriod.length,
+      from,
+      to,
+    },
+  };
+}
+
 export const loadLiveFeeDeliveries = createServerFn({ method: "GET" })
   .inputValidator(
     z.object({
@@ -169,7 +258,6 @@ export const loadLiveFeeDeliveries = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }): Promise<LiveFeeDeliveriesResult> => {
     await assertAuth(data.token);
-    if (data.from > data.to) throw new Error("Tanggal 'dari' tidak boleh setelah 'sampai'");
 
     const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
     if (!raw)
@@ -178,78 +266,5 @@ export const loadLiveFeeDeliveries = createServerFn({ method: "GET" })
       );
     const token = `Bearer ${raw}`;
 
-    // PENTING: API memfilter startDate/endDate berdasarkan `createdAt` (tanggal
-    // order DIBUAT), sedangkan periode payroll pakai tanggal SELESAI (completedAt,
-    // = delivery_date). Order bisa dibuat H-1/H-2 lalu selesai di periode.
-    // Solusi: tarik window createdAt lebih LEBAR (mundur BUFFER hari), lalu filter
-    // hasilnya by delivery_date sesuai [from, to]. Cocok dengan basis file upload.
-    const startDt = new Date(data.from + "T00:00:00Z");
-    startDt.setUTCDate(startDt.getUTCDate() - CREATED_BUFFER_DAYS);
-    const fetchStart = startDt.toISOString().slice(0, 10);
-    // UI 'sampai' inklusif; API endDate eksklusif → +1 hari.
-    const endDt = new Date(data.to + "T00:00:00Z");
-    endDt.setUTCDate(endDt.getUTCDate() + 1);
-    const endExclusive = endDt.toISOString().slice(0, 10);
-
-    const bu = data.businessUnit || null;
-    const first = await apiGet(token, bu, fetchStart, endExclusive, 1);
-    const upstream: UpstreamRow[] = [...(first?.data ?? [])];
-    const pg = first?.pagination ?? {};
-    const last = Math.min(pg.last_page ?? pg.lastPage ?? 1, MAX_PAGES);
-
-    if (last > 1) {
-      const pages: number[] = [];
-      for (let p = 2; p <= last; p++) pages.push(p);
-      const got: Record<number, UpstreamRow[]> = {};
-      let idx = 0;
-      const worker = async () => {
-        while (idx < pages.length) {
-          const p = pages[idx++];
-          const d = await apiGet(token, bu, fetchStart, endExclusive, p);
-          got[p] = d?.data ?? [];
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(MAX_WORKERS, pages.length) }, worker));
-      for (const p of Object.keys(got).map(Number).sort((a, b) => a - b)) upstream.push(...got[p]);
-    }
-
-    const matched = upstream.filter((x) => x.provider?.id === data.providerId);
-    const rows = matched.map(toDeliveryRow);
-
-    // Klasifikasi DELIVERY/RETURN — replikasi classifyDeliveryType: hub = nama
-    // pengirim (outlet) yang paling sering muncul; baris dari hub = DELIVERY,
-    // menuju hub = RETURN. Skema Wicked Pies pasang tarif beda (antar vs kembali).
-    const freq = new Map<string, number>();
-    for (const r of rows) if (r.sender_name) freq.set(r.sender_name, (freq.get(r.sender_name) ?? 0) + 1);
-    let hub: string | null = null;
-    let hubCount = 0;
-    freq.forEach((c, name) => {
-      if (c > hubCount) {
-        hub = name;
-        hubCount = c;
-      }
-    });
-    if (hub) {
-      for (const r of rows) {
-        if (r.sender_name === hub) r.delivery_type = "DELIVERY";
-        else if (r.receiver_name === hub) r.delivery_type = "RETURN";
-        // selain itu biarkan default "DELIVERY"
-      }
-    }
-
-    // Filter final berdasar tanggal SELESAI (delivery_date = completedAt) sesuai
-    // periode yang diminta — bukan createdAt. Ini yang bikin hasil match file upload.
-    const inPeriod = rows.filter((r) => r.delivery_date >= data.from && r.delivery_date <= data.to);
-
-    return {
-      rows: inPeriod,
-      meta: {
-        provider_id: data.providerId,
-        business_unit: bu ?? "SEMUA",
-        fetched: upstream.length,
-        matched: inPeriod.length,
-        from: data.from,
-        to: data.to,
-      },
-    };
+    return fetchLiveDeliveries(token, data.providerId, data.businessUnit ?? null, data.from, data.to);
   });

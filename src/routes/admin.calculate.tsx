@@ -42,7 +42,7 @@ import { Loader2, Play, AlertTriangle, Info, Save, ChevronRight, Radio, Database
 
 export const Route = createFileRoute("/admin/calculate")({ component: CalculatePage });
 
-type ClientLite = { id: string; name: string };
+type ClientLite = { id: string; name: string; provider_id?: number | null };
 
 function firstOfMonth() {
   const d = new Date();
@@ -88,14 +88,16 @@ function CalculatePage() {
   const [liveRows, setLiveRows] = useState<LiveDeliveryRow[]>([]);
   const [liveAttRows, setLiveAttRows] = useState<LiveAttendanceRow[]>([]);
   const [syncing, setSyncing] = useState(false);
-  // Daftar provider API — client ditautkan ke provider by NAMA (client disync
-  // dari API, jadi namanya sama). Tanpa kolom/mapping manual.
+  // Daftar provider API — client ditautkan ke provider lewat clients.provider_id
+  // (persisted, lihat migration clients_provider_id) kalau sudah pernah
+  // di-link; fallback name-match (client disync dari API, jadi namanya sama)
+  // buat client lama yang belum sempat di-link.
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const selectedClient = clients.find((c) => c.id === clientId) ?? null;
   const matchedProvider = selectedClient
-    ? (providers.find(
-        (p) => p.name.trim().toLowerCase() === selectedClient.name.trim().toLowerCase(),
-      ) ?? null)
+    ? ((selectedClient.provider_id != null ? providers.find((p) => p.id === selectedClient.provider_id) : null) ??
+        providers.find((p) => p.name.trim().toLowerCase() === selectedClient.name.trim().toLowerCase()) ??
+        null)
     : null;
   const apiProviderId = matchedProvider?.id ?? null;
   // BU dari revenue_stream provider — kalau cuma 1 stream, pakai itu buat
@@ -113,11 +115,11 @@ function CalculatePage() {
   const combinedPager = usePagination(combinedResult?.perRider ?? [], 20);
 
   useEffect(() => {
-    supabase
+    (supabase as any)
       .from("clients")
-      .select("id, name")
+      .select("id, name, provider_id")
       .order("name")
-      .then(({ data }) => setClients((data ?? []) as ClientLite[]));
+      .then(({ data }: { data: ClientLite[] | null }) => setClients((data ?? []) as ClientLite[]));
     listPricingSchemes().then(setSchemes);
     // Provider API buat menautkan client↔provider by nama.
     (async () => {
@@ -232,7 +234,7 @@ function CalculatePage() {
           const { data: sess } = await supabase.auth.getSession();
           const token = sess.session?.access_token ?? "";
           const live = await loadLiveFeeAttendance({
-            data: { token, providerId: apiProviderId, from, to },
+            data: { token, providerId: apiProviderId, from, to, shifts: (scheme.params.config as any)?.shifts ?? [] },
           });
           rowsPlain = live.rows;
           setLiveAttRows(live.rows);

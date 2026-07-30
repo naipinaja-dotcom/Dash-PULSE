@@ -19,11 +19,15 @@ export interface SyncResult {
 
 const ALLOWED_STATUSES = new Set(["COMPLETED", "FAILED"]);
 
+// `client` opsional buat caller server-only (cron live-fee-sync) tanpa sesi
+// admin login — pakai getSupabaseAdmin() (service role, bypass RLS) di situ.
+// Default anon `supabase` biar caller browser yang ada sekarang gak berubah.
 export async function upsertLiveDeliveries(
   clientId: string,
   rows: LiveDeliveryRow[],
   label: string,
   feeByDashId?: Map<string, number>, // fee hasil hitung per dash_delivery_id
+  client: typeof supabase = supabase,
 ): Promise<SyncResult> {
   const usable = rows.filter((r) =>
     ALLOWED_STATUSES.has(String(r.status ?? "").trim().toUpperCase()),
@@ -47,12 +51,13 @@ export async function upsertLiveDeliveries(
   const { map: riderMap, createdCodes } = await resolveOrCreateRiders(
     usable.map((r) => r.driver_code),
     namesByCode,
+    client,
   );
   result.ridersCreated = createdCodes.length;
 
   // 2. Batch penanda sumber.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: batch, error: bErr } = await (supabase as any)
+  const { data: batch, error: bErr } = await (client as any)
     .from("upload_batches")
     .insert({ kind: "delivery", client_id: clientId, filename: label, row_count: usable.length })
     .select()
@@ -86,7 +91,7 @@ export async function upsertLiveDeliveries(
   for (let i = 0; i < dashIds.length; i += 200) {
     const chunk = dashIds.slice(i, i + 200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error, count } = await (supabase as any)
+    const { error, count } = await (client as any)
       .from("delivery_records")
       .delete({ count: "exact" })
       .in("dash_delivery_id", chunk);
@@ -96,7 +101,7 @@ export async function upsertLiveDeliveries(
   for (let i = 0; i < payloads.length; i += 200) {
     const chunk = payloads.slice(i, i + 200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from("delivery_records").insert(chunk);
+    const { error } = await (client as any).from("delivery_records").insert(chunk);
     if (error) throw error;
     result.inserted += chunk.length;
   }

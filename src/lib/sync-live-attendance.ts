@@ -66,6 +66,7 @@ export async function upsertLiveAttendance(
     rider_id: r.driver_code ? (riderMap.get(r.driver_code) ?? null) : null,
     driver_code: r.driver_code,
     client_name: r.client_name,
+    pitstop_name: r.pitstop_name,
     log_date: r.log_date,
     clock_in: r.clock_in,
     clock_out: r.clock_out,

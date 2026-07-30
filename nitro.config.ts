@@ -9,16 +9,19 @@ import { defineConfig } from "nitro";
 // maxDuration: cron /api/live-fee-sync & /api/payroll-workflow ngerjain
 // banyak hal per invocation (tarik API dashelectric berhalaman-halaman,
 // hitung fee, upsert DB, generate Payroll Run) — /api/live-fee-sync sempat
-// kena FUNCTION_INVOCATION_TIMEOUT (default Vercel), sementara
-// /api/payroll-workflow sendiri sudah pernah makan 34 detik buat 1 client.
-// 60 detik dipilih sebagai limit aman yang didukung hampir semua tier Vercel
-// (termasuk Hobby) — naikkan lagi kalau ternyata masih kurang seiring makin
-// banyak client yang di-link/data yang diproses.
+// kena FUNCTION_INVOCATION_TIMEOUT di 60 detik (dikonfirmasi lewat runtime
+// log: "Task timed out after 60 seconds", jadi config INI beneran kepakai,
+// bukan default Vercel yang gak keubah). Diukur langsung: ~9 client di daftar
+// reminder makan ~17-18 detik/client (paginasi + retry ke mgmt API dashelectric,
+// hitung fee, upsert DB) = ~150-160 detik total, jauh di atas 60. 300 detik
+// dipilih sebagai limit umum yang didukung tier Vercel Pro tanpa perlu Fluid
+// Compute — naikkan lagi (butuh Fluid Compute buat >300s) kalau makin banyak
+// client di daftar reminder ke depannya.
 export default defineConfig({
   vercel: {
     functionRules: {
-      "/api/live-fee-sync": { maxDuration: 60 },
-      "/api/payroll-workflow": { maxDuration: 60 },
+      "/api/live-fee-sync": { maxDuration: 300 },
+      "/api/payroll-workflow": { maxDuration: 300 },
     },
   },
 });

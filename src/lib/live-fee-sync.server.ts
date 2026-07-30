@@ -1,7 +1,8 @@
 // Live Fee Auto-Sync — cron 2x/hari yang mengotomasi persis apa yang admin
 // lakukan manual di "Hitung Fee" (lihat syncToDb/syncAttToDb di
 // admin.calculate.tsx): tarik data LIVE dari mgmt API dashelectric per client
-// yang sudah di-link ke provider (clients.provider_id), hitung fee pakai
+// yang (a) sudah di-link ke provider (clients.provider_id) DAN (b) ada di
+// "daftar reminder" aktif (payroll_reminder_schedules) — hitung fee pakai
 // skema pricing client itu, simpan ke delivery_records/attendance_logs, lalu
 // findOrCreatePayrollRun + generatePayrollDetails — SAMA PERSIS urutannya
 // dengan yang terjadi kalau admin klik "Sync ke Database" manual. Cron ini
@@ -20,6 +21,15 @@
 // lihat migration 20260730000000_clients_provider_id.sql) — BUKAN name-match
 // runtime seperti di admin.calculate.tsx, karena cron gak punya daftar
 // clients+providers di memori UI buat dicocokkan.
+//
+// PENTING: provider_id cuma nandain "client ini BISA di-live-sync" — bukan
+// "client ini HARUS diproses tiap cron jalan". "Sync dari API" (admin.clients.tsx)
+// nge-link provider_id ke SEMUA client yang namanya match provider di mgmt API
+// (bisa puluhan), jadi scoping tambahan wajib ada: cuma client yang punya baris
+// aktif di payroll_reminder_schedules (level-client, rider_id null) — "daftar
+// reminder" yang sama dipakai payroll-workflow.server.ts buat nentuin client
+// mana yang payroll-nya beneran mau diurus terjadwal — yang diproses cron ini.
+// Client dengan provider_id tapi TANPA baris reminder aktif dilewati diam-diam.
 import { getSupabaseAdmin } from "./supabase-admin.server";
 import { getServerConfig } from "./config.server";
 import { normalize } from "./pricing-store";
@@ -152,24 +162,41 @@ export async function runLiveFeeSync(opts: {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adminAny = admin as any;
-  const [{ data: clientsRaw, error: cErr }, providers, { data: schemesRaw, error: sErr }] =
-    await Promise.all([
-      adminAny
-        .from("clients")
-        .select("id, name, provider_id")
-        .eq("active", true)
-        .not("provider_id", "is", null),
-      fetchApiProviders(dashToken),
-      adminAny
-        .from("pricing_schemes")
-        .select(
-          "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
-        ),
-    ]);
+  const [
+    { data: clientsRaw, error: cErr },
+    providers,
+    { data: schemesRaw, error: sErr },
+    { data: remindersRaw, error: rErr },
+  ] = await Promise.all([
+    adminAny
+      .from("clients")
+      .select("id, name, provider_id")
+      .eq("active", true)
+      .not("provider_id", "is", null),
+    fetchApiProviders(dashToken),
+    adminAny
+      .from("pricing_schemes")
+      .select(
+        "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
+      ),
+    // "Daftar reminder" — client_id level-client (rider_id null) yang aktif.
+    // Ini scoping WAJIB (lihat komentar di atas file) — provider_id doang
+    // gak cukup buat nandain client mana yang mau diproses cron ini.
+    adminAny
+      .from("payroll_reminder_schedules")
+      .select("client_id")
+      .eq("active", true)
+      .is("rider_id", null)
+      .not("client_id", "is", null),
+  ]);
   if (cErr) throw new Error(`Gagal ambil clients: ${cErr.message}`);
   if (sErr) throw new Error(`Gagal ambil pricing_schemes: ${sErr.message}`);
+  if (rErr) throw new Error(`Gagal ambil payroll_reminder_schedules: ${rErr.message}`);
 
-  const clients = (clientsRaw ?? []) as ClientRow[];
+  const remindedClientIds = new Set(
+    (remindersRaw ?? []).map((r: { client_id: string }) => r.client_id),
+  );
+  const clients = ((clientsRaw ?? []) as ClientRow[]).filter((c) => remindedClientIds.has(c.id));
   const providerById = new Map(providers.map((p) => [p.id, p]));
 
   const results: LiveFeeSyncClientResult[] = [];

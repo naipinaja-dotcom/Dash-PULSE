@@ -1394,6 +1394,13 @@ export type Database = {
       }
     }
     Functions: {
+      area_at_point: {
+        Args: {
+          p_lat: number
+          p_lng: number
+        }
+        Returns: string
+      }
       has_role: {
         Args: {
           p_role: Database["public"]["Enums"]["app_role"]

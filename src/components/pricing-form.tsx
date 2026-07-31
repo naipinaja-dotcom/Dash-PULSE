@@ -81,7 +81,7 @@ interface FormState {
   multiDropOn: boolean;
   multiDropFee: string;
   billingOn: boolean;
-  billing: { min_charge: string; admin_fee_flat: string; ppn_percent: string };
+  billing: { min_charge: string; admin_fee_flat: string; management_fee_percent: string; ppn_percent: string };
 }
 
 function emptyForm(): FormState {
@@ -94,7 +94,7 @@ function emptyForm(): FormState {
     multiDropOn: false,
     multiDropFee: "3000",
     billingOn: false,
-    billing: { min_charge: "", admin_fee_flat: "", ppn_percent: "11" },
+    billing: { min_charge: "", admin_fee_flat: "", management_fee_percent: "", ppn_percent: "11" },
   };
 }
 
@@ -135,6 +135,7 @@ function buildEnvelope(
         ? {
             min_charge: parseRupiah(f.billing.min_charge),
             admin_fee_flat: parseRupiah(f.billing.admin_fee_flat),
+            management_fee_percent: Number(f.billing.management_fee_percent) || 0,
             ppn_percent: Number(f.billing.ppn_percent) || 0,
           }
         : null,
@@ -196,6 +197,7 @@ function loadForm(scheme: PricingScheme | undefined): {
     form.billing = {
       min_charge: String(env.billing_addons.min_charge ?? ""),
       admin_fee_flat: String(env.billing_addons.admin_fee_flat ?? ""),
+      management_fee_percent: String(env.billing_addons.management_fee_percent ?? ""),
       ppn_percent: String(env.billing_addons.ppn_percent ?? ""),
     };
   }
@@ -535,16 +537,26 @@ function PricingFormInner({
         {schemeFor === "client" && (
           <ToggleBlock
             label="Billing Add-ons (khusus client)"
-            hint="Urutan hitung: min charge (lantai) → + admin fee → × (1 + PPN%). PPN paling akhir."
+            hint="Urutan hitung: min charge (lantai) → + management fee (% operational) → + admin fee → × (1 + PPN%). PPN paling akhir. Management/PPN kosong = gak muncul di invoice."
             on={f.billingOn}
             onToggle={(on) => patch({ billingOn: on })}
           >
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div className="flex flex-col gap-1.5">
                 <FieldLabel>Min Charge (Rp)</FieldLabel>
                 <RupiahInput
                   value={f.billing.min_charge}
                   onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Management Fee (%)</FieldLabel>
+                <TextInput
+                  value={f.billing.management_fee_percent}
+                  inputMode="decimal"
+                  onChange={(e) =>
+                    patch({ billing: { ...f.billing, management_fee_percent: e.target.value } })
+                  }
                 />
               </div>
               <div className="flex flex-col gap-1.5">

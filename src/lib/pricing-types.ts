@@ -219,6 +219,10 @@ export interface MultiDrop {
 export interface BillingAddons {
   min_charge: number;
   admin_fee_flat: number;
+  // Management fee = persen dari operational (subtotal revenue). Beda-beda per
+  // client, ada yang kena ada yang nggak — 0/kosong = gak kena, gak muncul di
+  // invoice. Umumnya dipakai client skema attendance/daily.
+  management_fee_percent: number;
   ppn_percent: number;
 }
 

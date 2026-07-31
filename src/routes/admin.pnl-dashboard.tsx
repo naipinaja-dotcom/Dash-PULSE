@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/lib/fetch-all";
 import { AdminLayout } from "@/components/admin-layout";
 import { listPricingSchemes } from "@/lib/pricing-store";
 import type { PricingScheme } from "@/lib/pricing-types";
@@ -135,21 +136,16 @@ function ExecutiveDashboard() {
     setRunning(true);
     setPerClient(null);
     try {
-      const [{ data, error }, { data: attData, error: attError }] = await Promise.all([
-        supabase
-          .from("delivery_records")
-          .select("client_id, rider_id, driver_code, delivery_date, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
-          .gte("delivery_date", from).lte("delivery_date", to),
-        (supabase as any)
-          .from("attendance_logs")
-          .select("rider_id, driver_code, client_name, log_date, clock_in, duration_minutes, is_late, is_absent")
-          .gte("log_date", from).lte("log_date", to),
+      const [all, attAll] = await Promise.all([
+        fetchAllRows<DeliveryRow & { client_id: string | null }>((c, f, t) =>
+          c.from("delivery_records")
+            .select("client_id, rider_id, driver_code, delivery_date, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
+            .gte("delivery_date", from).lte("delivery_date", to).range(f, t)),
+        fetchAllRows<AttendanceLogRow & { client_name: string | null }>((c, f, t) =>
+          (c as any).from("attendance_logs")
+            .select("rider_id, driver_code, client_name, log_date, clock_in, duration_minutes, is_late, is_absent")
+            .gte("log_date", from).lte("log_date", to).range(f, t)),
       ]);
-      if (error) throw error;
-      if (attError) throw attError;
-
-      const all = (data ?? []) as unknown as (DeliveryRow & { client_id: string | null })[];
-      const attAll = (attData ?? []) as unknown as (AttendanceLogRow & { client_name: string | null })[];
       const { perClient: pc } = computePnl(all, schemes, clients, attAll);
       setPerClient(pc);
       if (pc.length === 0) toast.message("Tidak ada data pengiriman di rentang ini.");

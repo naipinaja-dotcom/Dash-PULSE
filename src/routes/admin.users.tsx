@@ -69,18 +69,12 @@ function UsersPage() {
   const changeRole = async (uid: string, newRole: string) => {
     if (!newRole) return;
     setSavingId(uid);
-    // ganti role: hapus role lama user itu, lalu isi yang baru
-    const { error: de } = await supabase.from("user_roles").delete().eq("user_id", uid);
-    if (de) {
-      toast.error(de.message);
-      setSavingId(null);
-      return;
-    }
-    const { error: ie } = await supabase
-      .from("user_roles")
-      .insert({ user_id: uid, role: newRole as "admin" | "rider" });
-    if (ie) {
-      toast.error(ie.message);
+    const { error } = await supabase.rpc("change_user_role" as any, {
+      target_uid: uid,
+      new_role: newRole,
+    });
+    if (error) {
+      toast.error(error.message);
       setSavingId(null);
       return;
     }

@@ -63,7 +63,7 @@ export interface CalcResult {
   perRow: RowFee[]; // 1 entri per baris COMPLETED (buat commit ke DB)
   perRider: RiderLine[];
   subtotal: number;
-  billing?: { floored: boolean; admin_fee: number; ppn: number; final: number };
+  billing?: { floored: boolean; admin_fee: number; management_fee: number; ppn: number; final: number };
   grandTotal: number;
   completedRows: number;
   skippedRows: number;
@@ -85,11 +85,15 @@ function applyBillingAddons(
   let amt = subtotal;
   const floored = amt < (Number(billingAddons.min_charge) || 0);
   if (floored) amt = Number(billingAddons.min_charge) || 0;
+  // Management fee = persen dari operational (amt setelah min_charge). Client
+  // yang gak kena → persen 0 → management 0, perilaku sama seperti sebelum ada
+  // fitur ini (backward compatible).
+  const management = amt * ((Number(billingAddons.management_fee_percent) || 0) / 100);
   const admin = Number(billingAddons.admin_fee_flat) || 0;
-  amt += admin;
-  const ppn = amt * ((Number(billingAddons.ppn_percent) || 0) / 100);
-  const grandTotal = amt + ppn;
-  return { billing: { floored, admin_fee: admin, ppn, final: grandTotal }, grandTotal };
+  const beforeTax = amt + management + admin;
+  const ppn = beforeTax * ((Number(billingAddons.ppn_percent) || 0) / 100);
+  const grandTotal = beforeTax + ppn;
+  return { billing: { floored, admin_fee: admin, management_fee: management, ppn, final: grandTotal }, grandTotal };
 }
 
 // ---------------- helpers ----------------

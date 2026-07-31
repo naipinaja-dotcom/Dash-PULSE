@@ -554,6 +554,7 @@ export type Database = {
           detail_breakdown: Json | null
           id: string
           invoice_date: string
+          invoice_no: string | null
           period_end: string | null
           period_start: string | null
           rider_id: string | null
@@ -572,6 +573,7 @@ export type Database = {
           detail_breakdown?: Json | null
           id?: string
           invoice_date: string
+          invoice_no?: string | null
           period_end?: string | null
           period_start?: string | null
           rider_id?: string | null
@@ -590,6 +592,7 @@ export type Database = {
           detail_breakdown?: Json | null
           id?: string
           invoice_date?: string
+          invoice_no?: string | null
           period_end?: string | null
           period_start?: string | null
           rider_id?: string | null

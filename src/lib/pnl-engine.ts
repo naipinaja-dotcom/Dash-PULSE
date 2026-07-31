@@ -25,6 +25,8 @@ export interface ClientPnl {
   cost: number;
   margin: number | null;
   marginPct: number | null;
+  deliveryCount: number;
+  earliestDelivery: string | null;
   costRows: { date: string; fee: number }[];
   revenueRows: { date: string; fee: number }[];
 }
@@ -121,6 +123,7 @@ export function computePnl(
     const revenue = revResult ? revResult.grandTotal : null;
     const margin = revenue === null ? null : revenue - cost;
     const marginPct = revenue && revenue > 0 && margin !== null ? (margin / revenue) * 100 : null;
+    const dates = crows.map((r) => r.delivery_date).filter(Boolean).sort();
     perClient.push({
       clientId: cid,
       client: nameOf.get(cid) ?? "(tanpa client)",
@@ -128,6 +131,8 @@ export function computePnl(
       cost,
       margin,
       marginPct,
+      deliveryCount: crows.length,
+      earliestDelivery: dates[0] ?? null,
       costRows: costResult?.perRow ?? [],
       revenueRows: revResult?.perRow ?? [],
     });

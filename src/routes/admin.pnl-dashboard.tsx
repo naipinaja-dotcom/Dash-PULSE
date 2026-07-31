@@ -51,6 +51,7 @@ function ExecutiveDashboard() {
   const [snapshots, setSnapshots] = useState<PnlSnapshot[]>([]);
   const [pushing, setPushing] = useState(false);
   const [showPnlHistory, setShowPnlHistory] = useState(true);
+  const [missingExtra, setMissingExtra] = useState<Record<string, { payrollRuns: number; actualFee: number }>>({});
   const [deletingSnapshotId, setDeletingSnapshotId] = useState<string | null>(null);
 
   const loadSnapshots = () => {
@@ -152,6 +153,25 @@ function ExecutiveDashboard() {
       const { perClient: pc } = computePnl(all, schemes, clients, attAll);
       setPerClient(pc);
       if (pc.length === 0) toast.message("Tidak ada data pengiriman di rentang ini.");
+
+      const missing = pc.filter((r) => r.revenue === null);
+      if (missing.length > 0) {
+        const ids = missing.map((r) => r.clientId);
+        const [{ data: prData }, { data: feeData }] = await Promise.all([
+          (supabase as any).from("payroll_runs").select("client_id").in("client_id", ids),
+          supabase.from("delivery_records").select("client_id, fee").in("client_id", ids).gte("delivery_date", from).lte("delivery_date", to),
+        ]);
+        const extra: Record<string, { payrollRuns: number; actualFee: number }> = {};
+        for (const id of ids) {
+          extra[id] = {
+            payrollRuns: (prData ?? []).filter((r: any) => r.client_id === id).length,
+            actualFee: (feeData ?? []).filter((r: any) => r.client_id === id).reduce((s: number, r: any) => s + (Number(r.fee) || 0), 0),
+          };
+        }
+        setMissingExtra(extra);
+      } else {
+        setMissingExtra({});
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -359,21 +379,41 @@ function ExecutiveDashboard() {
             </div>
 
             <div className="rounded-xl border border-border bg-card shadow-sm p-5">
-              <h3 className="text-sm font-semibold mb-4">Client Tanpa Skema Revenue</h3>
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning" />
+                Client Tanpa Skema Revenue
+              </h3>
               {missingRevenue.length === 0 ? (
                 <div className="flex items-center gap-2 text-sm text-success">
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                   <span>Semua client sudah punya skema revenue (client-side).</span>
                 </div>
               ) : (
-                <ul className="space-y-2">
-                  {missingRevenue.map((r) => (
-                    <li key={r.clientId} className="flex justify-between items-center text-sm py-1.5 border-b border-border/50 last:border-0">
-                      <span className="font-medium">{r.client}</span>
-                      <span className="text-xs text-muted-foreground font-mono">Cost: {formatRupiah(r.cost)}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-3">
+                  {missingRevenue.map((r) => {
+                    const ex = missingExtra[r.clientId];
+                    return (
+                      <div key={r.clientId} className="rounded-lg border border-border/50 p-3 space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium text-sm">{r.client}</span>
+                          {ex && ex.payrollRuns > 0 && (
+                            <span className="text-[10px] font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded">PAYROLL RUN ADA</span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span>{r.deliveryCount} pengiriman</span>
+                          {r.earliestDelivery && <span>sejak {r.earliestDelivery}</span>}
+                          {ex && ex.actualFee > 0 && (
+                            <span className="text-foreground font-medium">Fee tercatat: {formatRupiah(ex.actualFee)}</span>
+                          )}
+                          {ex && ex.actualFee === 0 && r.deliveryCount > 0 && (
+                            <span className="text-destructive">Fee: Rp0 (risiko payroll kosong)</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>

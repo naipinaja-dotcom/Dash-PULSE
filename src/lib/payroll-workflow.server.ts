@@ -464,6 +464,7 @@ function buildNotification(result: PayrollWorkflowResult): {
 export async function runPayrollWorkflow(opts: {
   triggeredBy: "cron" | "manual" | "event";
   triggeredByUserId?: string;
+  closeSameDayFilter?: "h-1" | "same-day";
 }): Promise<PayrollWorkflowResult> {
   const admin = getSupabaseAdmin();
   const today = new Date();
@@ -492,6 +493,8 @@ export async function runPayrollWorkflow(opts: {
       const clientPeriods = periodsByClient.get(c.id) ?? [DEFAULT_PERIOD_WEEKDAYS];
 
       for (const p of clientPeriods) {
+        if (opts.closeSameDayFilter === "h-1" && p.closeSameDay) continue;
+        if (opts.closeSameDayFilter === "same-day" && !p.closeSameDay) continue;
         const period = resolvePeriodIfDue(today, p.start, p.end, p.closeSameDay);
         if (!period) continue; // periode ini belum jatuh tempo hari ini
 

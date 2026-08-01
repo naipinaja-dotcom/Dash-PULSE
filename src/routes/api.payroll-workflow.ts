@@ -31,6 +31,7 @@ export const Route = createFileRoute("/api/payroll-workflow")({
           clientId?: string;
           periodStart?: string;
           periodEnd?: string;
+          closeSameDayFilter?: "h-1" | "same-day";
         } = {};
         try {
           body = await request!.json();
@@ -59,7 +60,7 @@ export const Route = createFileRoute("/api/payroll-workflow")({
         }
         const triggeredBy = body.trigger === "manual" ? "manual" : body.trigger === "event" ? "event" : "cron";
         try {
-          const result = await runPayrollWorkflow({ triggeredBy });
+          const result = await runPayrollWorkflow({ triggeredBy, closeSameDayFilter: body.closeSameDayFilter });
           const posthog = getPostHogClient();
           posthog.capture({
             distinctId: "system-cron",

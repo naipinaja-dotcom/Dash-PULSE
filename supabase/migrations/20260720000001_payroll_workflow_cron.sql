@@ -1,6 +1,5 @@
--- Payroll Workflow — pg_cron scheduling (OES AI Workforce, payroll pertama)
+-- Payroll Workflow — pg_cron scheduling
 --
--- Sama seperti supabase/migrations/20260712010000_payroll_reminder_cron.sql —
 -- di-comment out karena butuh 2 nilai yang cuma diketahui pas deploy:
 --   1. URL production project ini (mis. https://xxxx.vercel.app)
 --   2. Isi env PAYROLL_WORKFLOW_SECRET yang sama persis dengan yang di-set di server
@@ -12,28 +11,33 @@
 --   4. Cek jadwal aktif: SELECT * FROM cron.job;
 --   5. Cek histori run: SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 --
--- Jadwal: SETIAP HARI, 2x (10:00 & 18:00 UTC = 17:00 & 01:00 WIB) — HARUS
--- harian, bukan cuma Senin, karena periode gajian sekarang custom per client
--- (lihat migration 20260720000002_payroll_period_schedule.sql & Reminder
--- Calendar) — ada client yang periodenya tutup hari Kamis, ada yang Senin,
--- dst. Endpoint sendiri yang nentuin client mana yang periodenya jatuh tempo
--- hari itu (lihat src/lib/payroll-workflow.server.ts, resolvePeriodIfDue) —
--- kalau gak ada yang jatuh tempo, workflow tetap jalan tapi runs[] kosong
--- (bukan error). 2x sehari ngikutin jam cutoff data kiriman client (semua
--- kiriman hari itu udah pasti selesai jam 17:00 WIB) — dipake juga sama opsi
--- "Tutup di hari yang sama" di Reminder Calendar (close_same_day).
+-- Jadwal: SETIAP HARI, 2 cron TERPISAH berdasarkan tipe tutup buku:
 --
--- STATUS: SUDAH AKTIF di project ini (jobname 'payroll-workflow-daily',
--- cek: SELECT * FROM cron.job;). Blok di bawah cuma buat referensi/rebuild
--- kalau project di-reset atau dipindah — jangan re-run tanpa cek dulu apakah
--- job dengan nama sama udah ada (bakal error "already exists").
+--   1. Jam 12:00 WIB (05:00 UTC) — hitung payroll client TUTUP H-1
+--      (close_same_day = false). Data udah lengkap dari sync 00:50 WIB.
+--
+--   2. Jam 17:00 WIB (10:00 UTC) — hitung payroll client TUTUP HARI SAMA
+--      (close_same_day = true). Data baru di-sync jam 16:50 WIB.
+--
+-- Urutan harian:
+--   00:50 WIB  live-fee-sync (tarik data)
+--   12:00 WIB  payroll-workflow H-1
+--   16:50 WIB  live-fee-sync (tarik data)
+--   17:00 WIB  payroll-workflow same-day
+--
+-- TIDAK ada safety net jam 01:00 — keesokan harinya sudah pencairan.
+--
+-- STATUS: Perlu diupdate di Supabase SQL Editor. Hapus job lama dulu:
+--   select cron.unschedule('payroll-workflow-daily');
+-- Lalu jalankan 2 blok schedule baru di bawah.
 
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
 --
+-- -- Cron 1: Jam 12:00 WIB — client tutup H-1
 -- select cron.schedule(
---   'payroll-workflow-daily',
---   '0 10,18 * * *', -- tiap hari jam 10:00 & 18:00 UTC (17:00 & 01:00 WIB)
+--   'payroll-workflow-h1',
+--   '0 5 * * *', -- tiap hari jam 05:00 UTC (12:00 WIB)
 --   $$
 --   select net.http_post(
 --     url := '<PRODUCTION_URL>/api/payroll-workflow',
@@ -41,11 +45,27 @@
 --       'Content-Type', 'application/json',
 --       'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'
 --     ),
---     body := '{"trigger": "scheduler"}'::jsonb
+--     body := '{"trigger": "scheduler", "closeSameDayFilter": "h-1"}'::jsonb
+--   );
+--   $$
+-- );
+--
+-- -- Cron 2: Jam 17:00 WIB — client tutup hari sama
+-- select cron.schedule(
+--   'payroll-workflow-same-day',
+--   '0 10 * * *', -- tiap hari jam 10:00 UTC (17:00 WIB)
+--   $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/payroll-workflow',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'
+--     ),
+--     body := '{"trigger": "scheduler", "closeSameDayFilter": "same-day"}'::jsonb
 --   );
 --   $$
 -- );
 
 -- Untuk ganti jadwal atau matikan cron:
---   select cron.unschedule('payroll-workflow-daily');
---   -- lalu jalankan ulang cron.schedule(...) di atas dengan jadwal baru.
+--   select cron.unschedule('payroll-workflow-h1');
+--   select cron.unschedule('payroll-workflow-same-day');

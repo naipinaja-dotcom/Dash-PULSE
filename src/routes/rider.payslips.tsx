@@ -5,7 +5,8 @@ import { RiderLayout } from "@/components/rider-layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useRiderSelf } from "@/lib/use-rider-self";
 import { formatRupiah, formatTanggal } from "@/lib/format";
-import { Loader2, X, ChevronRight, ChevronDown } from "lucide-react";
+import { Loader2, X, ChevronRight, ChevronDown, Download } from "lucide-react";
+import { PayslipPrint } from "@/components/payslip-print";
 
 export const Route = createFileRoute("/rider/payslips")({ component: PayslipsPage });
 
@@ -136,6 +137,7 @@ function PayslipDetailModal({
   const [loadingDed, setLoadingDed] = useState(true);
   const [loadingInc, setLoadingInc] = useState(true);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [showPrint, setShowPrint] = useState(false);
 
   useEffect(() => {
     sb.from("payroll_deductions")
@@ -189,9 +191,19 @@ function PayslipDetailModal({
             <div className="text-sm font-semibold truncate">{period?.name ?? "Payroll"}</div>
             <div className="text-[11px] text-muted-foreground truncate">{riderName} · {employeeId}</div>
           </div>
-          <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground flex-shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => setShowPrint(true)}
+              disabled={loadingClients || loadingDed || loadingInc}
+              className="p-1.5 text-muted-foreground hover:text-primary disabled:opacity-40"
+              title="Unduh PDF"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="p-4 space-y-4 text-sm">
@@ -274,6 +286,18 @@ function PayslipDetailModal({
           </div>
         </div>
       </div>
+
+      {showPrint && (
+        <PayslipPrint
+          slip={slip}
+          riderName={riderName}
+          employeeId={employeeId}
+          clients={clients}
+          incentives={inc}
+          deductions={ded}
+          onClose={() => setShowPrint(false)}
+        />
+      )}
     </div>
   );
 }

@@ -74,7 +74,7 @@ function DataCheckPage() {
         baseFilter(
           sb.from("delivery_records")
             .select("driver_code, delivery_date, status, delivery_type, client_id, dash_delivery_id, provider_order_id, distance_km, weight_kg, riders(full_name)", { count: "exact" })
-            .order("delivery_date", { ascending: true }),
+            .order("delivery_date", { ascending: false }),
         ).range(start, start + pageSize - 1),
         baseFilter(sb.from("delivery_records").select("id", { count: "exact", head: true })).eq("status", "completed"),
       ]);

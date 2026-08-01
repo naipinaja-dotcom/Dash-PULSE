@@ -114,6 +114,56 @@ export async function generatePayrollDetails(
     (new Date(`${run.period_end}T00:00:00Z`).getTime() - new Date(`${run.period_start}T00:00:00Z`).getTime()) / 86_400_000,
   ) + 1;
 
+  // Cross-client dedup sewa harian: cari hari yang UDAH dipotong di run lain
+  // yang periode-nya overlap — biar rider multi-client gak kena dobel.
+  const dailyChargedDates = new Map<string, Set<string>>();
+  const dailyInstIds = new Set(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((installments ?? []) as any[]).filter((i: any) => i.mode === "daily").map((i: any) => i.id),
+  );
+  if (dailyChargeRiderIds.size > 0 && dailyInstIds.size > 0) {
+    const { data: overlapRuns } = await (client as any).from("payroll_runs")
+      .select("id, period_start, period_end")
+      .lte("period_start", run.period_end)
+      .gte("period_end", run.period_start)
+      .neq("id", run.id);
+    if (overlapRuns?.length) {
+      const runPeriod = new Map<string, { s: string; e: string }>();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of overlapRuns as any[]) runPeriod.set(r.id, { s: r.period_start, e: r.period_end });
+      const { data: oDetails } = await (client as any).from("payroll_details")
+        .select("id, run_id, rider_id")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .in("run_id", (overlapRuns as any[]).map((r) => r.id))
+        .in("rider_id", [...dailyChargeRiderIds]);
+      if (oDetails?.length) {
+        const dMap = new Map<string, { runId: string; riderId: string }>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const d of oDetails as any[]) dMap.set(d.id, { runId: d.run_id, riderId: d.rider_id });
+        const { data: oDeds } = await (client as any).from("payroll_deductions")
+          .select("detail_id, installment_id")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .in("detail_id", (oDetails as any[]).map((d) => d.id))
+          .not("installment_id", "is", null);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const ded of (oDeds ?? []) as any[]) {
+          if (!dailyInstIds.has(ded.installment_id)) continue;
+          const info = dMap.get(ded.detail_id);
+          if (!info) continue;
+          const p = runPeriod.get(info.runId);
+          if (!p) continue;
+          const key = `${info.riderId}|${ded.installment_id}`;
+          if (!dailyChargedDates.has(key)) dailyChargedDates.set(key, new Set());
+          const dates = dailyChargedDates.get(key)!;
+          const end = new Date(`${p.e}T00:00:00Z`);
+          for (const dt = new Date(`${p.s}T00:00:00Z`); dt <= end; dt.setUTCDate(dt.getUTCDate() + 1)) {
+            dates.add(dt.toISOString().slice(0, 10));
+          }
+        }
+      }
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const detailsToInsert: any[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,10 +192,23 @@ export async function generatePayrollDetails(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rInstall = (installments ?? []).filter((i: any) => i.rider_id === rider.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const installAmounts = rInstall.map((i: any) =>
-      i.mode === "daily" ? Number(i.daily_rate || 0) * spanDays : Number(i.per_period_amount || 0),
-    );
-    const installTotal = installAmounts.reduce((s: number, a: number) => s + a, 0);
+    const dedItems = rInstall.map((i: any) => {
+      if (i.mode === "daily") {
+        const rate = Number(i.daily_rate || 0);
+        const charged = dailyChargedDates.get(`${rider.id}|${i.id}`);
+        let days = spanDays;
+        if (charged?.size) {
+          days = 0;
+          const end = new Date(`${run.period_end}T00:00:00Z`);
+          for (const d = new Date(`${run.period_start}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+            if (!charged.has(d.toISOString().slice(0, 10))) days++;
+          }
+        }
+        return { amount: rate * days, days };
+      }
+      return { amount: Number(i.per_period_amount || 0), days: 0 };
+    });
+    const installTotal = dedItems.reduce((s, d) => s + d.amount, 0);
 
     const autoApplicable = gross > 0
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -168,14 +231,15 @@ export async function generatePayrollDetails(
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rInstall.forEach((ins: any, idx: number) => {
-      const amount = installAmounts[idx];
+      const item = dedItems[idx];
+      if (item.amount <= 0) return;
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,
         description: ins.mode === "daily"
-          ? `Sewa ${spanDays} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}`
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}`
           : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`,
-        amount,
+        amount: item.amount,
       });
     });
     for (const t of autoApplicable) {

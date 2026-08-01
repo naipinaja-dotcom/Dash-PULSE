@@ -13,6 +13,7 @@ import { PostHogProvider } from "@posthog/react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "@/lib/auth";
+import { I18nProvider } from "@/lib/i18n";
 import { Toaster } from "@/components/ui/sonner";
 import { ConfirmHost } from "@/components/confirm-dialog";
 
@@ -134,9 +135,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Outlet />
-        <Toaster position="top-right" richColors />
-        <ConfirmHost />
+        <I18nProvider>
+          <Outlet />
+          <Toaster position="top-right" richColors />
+          <ConfirmHost />
+        </I18nProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

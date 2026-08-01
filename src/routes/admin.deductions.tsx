@@ -5,25 +5,27 @@ import { DTypesTab } from "@/components/deductions/d-types-tab";
 import { AddTab } from "@/components/deductions/add-tab";
 import { ActiveTab } from "@/components/deductions/active-tab";
 import { RecapTab } from "@/components/deductions/recap-tab";
+import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/admin/deductions")({ component: DeductionsPage });
 
 function DeductionsPage() {
+  const { t } = useT();
   const [tab, setTab] = useState<"types" | "add" | "active" | "recap">("types");
   return (
-    <AdminLayout title="Deductions" subtitle="Kelola potongan, tunggakan, dan cicilan rider">
+    <AdminLayout title={t("ded.title")} subtitle={t("ded.subtitle")}>
       <div className="flex gap-1 p-1 bg-muted rounded-md w-fit mb-5">
         {(
           [
-            ["types", "Jenis Potongan"],
-            ["add", "Tambah Potongan"],
-            ["active", "Cicilan Aktif"],
-            ["recap", "Rekap"],
-          ] as const
+            ["types", t("ded.tabTypes")],
+            ["add", t("ded.tabAdd")],
+            ["active", t("ded.tabActive")],
+            ["recap", t("ded.tabRecap")],
+          ] as [string, string][]
         ).map(([k, l]) => (
           <button
             key={k}
-            onClick={() => setTab(k)}
+            onClick={() => setTab(k as any)}
             className={`px-4 py-1.5 text-sm rounded ${tab === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
           >
             {l}

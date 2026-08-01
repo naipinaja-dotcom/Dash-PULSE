@@ -32,6 +32,7 @@ import {
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { usePayrollOverdue } from "@/lib/use-payroll-overdue";
+import { useT, LangToggle } from "@/lib/i18n";
 
 type NavMode = "payroll" | "intelligence";
 const NAV_MODE_KEY = "dash-admin-nav-mode";
@@ -39,49 +40,29 @@ const COLLAPSED_KEY = "dash-admin-sidebar-collapsed";
 const THEME_KEY = "dash-theme";
 
 const NAV_PAYROLL = [
-  {
-    to: "/admin/dashboard",
-    label: "Payroll Dashboard",
-    icon: LayoutDashboard,
-    section: "OPERATIONS",
-  },
-  { to: "/admin/riders", label: "Riders", icon: UserCircle2, section: "OPERATIONS" },
-  { to: "/admin/clients", label: "Clients", icon: Users, section: "OPERATIONS" },
-  { to: "/admin/pricing", label: "Pricing Schemes", icon: Tag, section: "PRICING" },
-  { to: "/admin/upload", label: "Upload Data", icon: Upload, section: "PAYROLL" },
-  { to: "/admin/payroll", label: "Payroll Run", icon: Calculator, section: "PAYROLL" },
-  { to: "/admin/data-check", label: "Cek Data", icon: Search, section: "PAYROLL" },
-  { to: "/admin/calculate", label: "Hitung Fee", icon: Coins, section: "PAYROLL" },
-  { to: "/admin/deductions", label: "Deductions", icon: Wallet, section: "PAYROLL" },
-  { to: "/admin/reports", label: "Reports", icon: FileBarChart2, section: "SYSTEM" },
-  { to: "/admin/reminders", label: "Reminders", icon: BellRing, section: "SYSTEM" },
-  { to: "/admin/users", label: "User Management", icon: ShieldCheck, section: "SYSTEM" },
+  { to: "/admin/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, sectionKey: "section.operations" },
+  { to: "/admin/riders", labelKey: "nav.riders", icon: UserCircle2, sectionKey: "section.operations" },
+  { to: "/admin/clients", labelKey: "nav.clients", icon: Users, sectionKey: "section.operations" },
+  { to: "/admin/pricing", labelKey: "nav.pricing", icon: Tag, sectionKey: "section.pricing" },
+  { to: "/admin/upload", labelKey: "nav.upload", icon: Upload, sectionKey: "section.payroll" },
+  { to: "/admin/payroll", labelKey: "nav.payrollRun", icon: Calculator, sectionKey: "section.payroll" },
+  { to: "/admin/data-check", labelKey: "nav.dataCheck", icon: Search, sectionKey: "section.payroll" },
+  { to: "/admin/calculate", labelKey: "nav.calculate", icon: Coins, sectionKey: "section.payroll" },
+  { to: "/admin/deductions", labelKey: "nav.deductions", icon: Wallet, sectionKey: "section.payroll" },
+  { to: "/admin/reports", labelKey: "nav.reports", icon: FileBarChart2, sectionKey: "section.system" },
+  { to: "/admin/reminders", labelKey: "nav.reminders", icon: BellRing, sectionKey: "section.system" },
+  { to: "/admin/users", labelKey: "nav.userMgmt", icon: ShieldCheck, sectionKey: "section.system" },
 ] as const;
 
 const NAV_INTELLIGENCE = [
-  {
-    to: "/admin/pnl-dashboard",
-    label: "Executive Dashboard",
-    icon: LayoutPanelTop,
-    section: "OVERVIEW",
-  },
-  { to: "/admin/coo-insights", label: "Ops Insight", icon: Sparkles, section: "OVERVIEW" },
-  { to: "/admin/pnl", label: "Margin Analytics", icon: TrendingUp, section: "ANALYTICS" },
-  {
-    to: "/admin/revenue-analytics",
-    label: "Revenue Analytics",
-    icon: Banknote,
-    section: "ANALYTICS",
-  },
-  { to: "/admin/bcr-analytics", label: "BCR Analytics", icon: Percent, section: "ANALYTICS" },
-  {
-    to: "/admin/shipment-analytics",
-    label: "Shipment Analytics",
-    icon: Package,
-    section: "ANALYTICS",
-  },
-  { to: "/admin/driver-analytics", label: "Driver Analytics", icon: Bike, section: "ANALYTICS" },
-  { to: "/admin/invoices", label: "Invoices", icon: Receipt, section: "FINANCE" },
+  { to: "/admin/pnl-dashboard", labelKey: "nav.execDashboard", icon: LayoutPanelTop, sectionKey: "section.overview" },
+  { to: "/admin/coo-insights", labelKey: "nav.opsInsight", icon: Sparkles, sectionKey: "section.overview" },
+  { to: "/admin/pnl", labelKey: "nav.marginAnalytics", icon: TrendingUp, sectionKey: "section.analytics" },
+  { to: "/admin/revenue-analytics", labelKey: "nav.revenueAnalytics", icon: Banknote, sectionKey: "section.analytics" },
+  { to: "/admin/bcr-analytics", labelKey: "nav.bcrAnalytics", icon: Percent, sectionKey: "section.analytics" },
+  { to: "/admin/shipment-analytics", labelKey: "nav.shipmentAnalytics", icon: Package, sectionKey: "section.analytics" },
+  { to: "/admin/driver-analytics", labelKey: "nav.driverAnalytics", icon: Bike, sectionKey: "section.analytics" },
+  { to: "/admin/invoices", labelKey: "nav.invoices", icon: Receipt, sectionKey: "section.finance" },
 ] as const;
 
 type NavItem = (typeof NAV_PAYROLL)[number] | (typeof NAV_INTELLIGENCE)[number];
@@ -93,11 +74,11 @@ function modeForPath(pathname: string): NavMode {
 }
 
 function groupNavItems(items: readonly NavItem[]) {
-  const groups: { section: string; items: NavItem[] }[] = [];
+  const groups: { sectionKey: string; items: NavItem[] }[] = [];
   for (const item of items) {
     const last = groups[groups.length - 1];
-    if (last?.section === item.section) last.items.push(item);
-    else groups.push({ section: item.section, items: [item] });
+    if (last?.sectionKey === item.sectionKey) last.items.push(item);
+    else groups.push({ sectionKey: item.sectionKey, items: [item] });
   }
   return groups;
 }
@@ -181,6 +162,7 @@ export function AdminLayout({
     navigate({ to: "/login" });
   };
 
+  const { t } = useT();
   const navItems: readonly NavItem[] = mode === "payroll" ? NAV_PAYROLL : NAV_INTELLIGENCE;
   const navGroups = groupNavItems(navItems);
 
@@ -261,11 +243,11 @@ export function AdminLayout({
 
       {/* Nav */}
       <nav className="flex-1 px-2.5 py-3 overflow-y-auto space-y-3">
-        {navGroups.map(({ section, items }) => (
-          <div key={section}>
+        {navGroups.map(({ sectionKey, items }) => (
+          <div key={sectionKey}>
             {(!collapsed || mobile) && (
               <div className="px-3 pb-1 pt-0.5 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
-                {section}
+                {t(sectionKey as any)}
               </div>
             )}
             <div className="space-y-0.5">
@@ -277,7 +259,7 @@ export function AdminLayout({
                     key={it.to}
                     to={it.to}
                     onClick={() => setMobileOpen(false)}
-                    title={collapsed && !mobile ? it.label : undefined}
+                    title={collapsed && !mobile ? t(it.labelKey as any) : undefined}
                     className={
                       "flex items-center rounded-md text-[13px] transition-all duration-150 " +
                       (collapsed && !mobile
@@ -292,7 +274,7 @@ export function AdminLayout({
                     <Icon
                       className={`flex-shrink-0 ${collapsed && !mobile ? "w-[18px] h-[18px]" : "w-4 h-4"} ${active ? "text-primary" : ""}`}
                     />
-                    {(!collapsed || mobile) && <span>{it.label}</span>}
+                    {(!collapsed || mobile) && <span>{t(it.labelKey as any)}</span>}
                   </Link>
                 );
               })}
@@ -353,7 +335,7 @@ export function AdminLayout({
           <aside className="absolute left-0 top-0 bottom-0 w-64 bg-sidebar border-r border-border flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <span className="text-sm font-semibold">Dash PULSE</span>
-              <button onClick={() => setMobileOpen(false)} className="p-1" aria-label="Tutup menu">
+              <button onClick={() => setMobileOpen(false)} className="p-1" aria-label={t("btn.closeMenu")}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -369,7 +351,7 @@ export function AdminLayout({
           <button
             className="lg:hidden p-1.5 -ml-1 rounded-md hover:bg-muted"
             onClick={() => setMobileOpen(true)}
-            aria-label="Buka menu"
+            aria-label={t("btn.openMenu")}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -408,12 +390,14 @@ export function AdminLayout({
             </Link>
           )}
 
+          <LangToggle />
+
           {/* Dark mode toggle */}
           <button
             onClick={() => setDark((d) => !d)}
             className="flex items-center justify-center w-8 h-8 rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-            title={dark ? "Light mode" : "Dark mode"}
+            aria-label={dark ? t("theme.light") : t("theme.dark")}
+            title={dark ? t("theme.light") : t("theme.dark")}
           >
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>

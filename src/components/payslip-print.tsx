@@ -1,6 +1,6 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { formatRupiah, formatTanggal } from "@/lib/format";
-import { Download } from "lucide-react";
+import { Download, Printer, FileDown, ChevronDown } from "lucide-react";
 
 const exact: CSSProperties = { WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" as any };
 
@@ -23,6 +23,19 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
   const d = slip.data;
   const totalIncentive = incentives.reduce((s, x) => s + x.amount, 0);
   const totalDeduction = deductions.reduce((s, x) => s + x.amount, 0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function savePdf() {
+    setSaving(true);
+    setMenuOpen(false);
+    const el = document.getElementById("payslip-print-root");
+    if (!el) { setSaving(false); return; }
+    const html2pdf = (await import("html2pdf.js")).default;
+    const name = `slip-gaji-${riderName.replace(/\s+/g, "-").toLowerCase()}-${period?.period_start ?? "payroll"}.pdf`;
+    await html2pdf().set({ margin: [10, 8], filename: name, html2canvas: { scale: 2 }, jsPDF: { format: "a4" } }).from(el).save();
+    setSaving(false);
+  }
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 overflow-auto flex justify-center p-4 sm:p-8 print:p-0 print:bg-white" onClick={onClose}>
@@ -35,13 +48,28 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
       }`}</style>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[210mm] h-fit">
         <div className="no-print flex justify-end gap-2 mb-3">
-          <button
-            onClick={() => window.print()}
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-          >
-            <Download className="w-4 h-4 inline mr-1.5" />
-            Cetak / Simpan PDF
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+            >
+              <Download className="w-4 h-4" />
+              {saving ? "Menyimpan..." : "Unduh / Cetak"}
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 mt-1 w-48 rounded-lg border border-border bg-card shadow-lg py-1 z-10">
+                <button onClick={savePdf}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted flex items-center gap-2">
+                  <FileDown className="w-4 h-4" /> Simpan PDF
+                </button>
+                <button onClick={() => { setMenuOpen(false); window.print(); }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted flex items-center gap-2">
+                  <Printer className="w-4 h-4" /> Cetak
+                </button>
+              </div>
+            )}
+          </div>
           <button onClick={onClose} className="px-4 py-2 rounded-lg bg-muted text-sm font-medium hover:opacity-80">
             Tutup
           </button>
@@ -55,7 +83,6 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <img src="/dash-logo.png" alt="DASH" style={{ height: 32 }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                  <span style={{ fontSize: 18, fontWeight: 700, color: "#7c5cff" }}>SLIP GAJI</span>
                 </div>
                 <div style={{ fontSize: 11, color: "#666" }}>PT. Dash Elektrik Indonesia</div>
               </div>
@@ -170,8 +197,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
             </div>
 
             {/* footer */}
-            <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid #e0e0e0", display: "flex", justifyContent: "space-between", fontSize: 10, color: "#999" }}>
-              <span>Dokumen ini digenerate otomatis oleh Dash PULSE.</span>
+            <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid #e0e0e0", display: "flex", justifyContent: "flex-end", fontSize: 10, color: "#999" }}>
               <span>Halaman 1 dari 1</span>
             </div>
           </div>

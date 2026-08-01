@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
+import { formatRupiah } from "@/lib/format";
 import {
   Users,
   DollarSign,
@@ -155,10 +156,44 @@ function DashboardPage() {
     },
   ];
 
-  /* ── chart data (static demo) ─────────────── */
-  const chartWeeks = ["W1", "W2", "W3", "W4", "W5", "W6"];
-  const chartA = [50, 62, 70, 88, 78, 95]; // deliveries
-  const chartB = [38, 48, 54, 68, 60, 74]; // fee
+  /* ── chart data (real weekly from delivery_records) ── */
+  type WeekBucket = { label: string; deliveries: number; fee: number };
+  const [weeklyData, setWeeklyData] = useState<WeekBucket[]>([]);
+  const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConnected) return;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const pad = (d: Date) => d.toISOString().slice(0, 10);
+    supabase
+      .from("delivery_records")
+      .select("delivery_date, fee")
+      .gte("delivery_date", pad(start))
+      .lte("delivery_date", pad(end))
+      .then(({ data }) => {
+        const weeks = new Map<number, { deliveries: number; fee: number }>();
+        for (const r of data ?? []) {
+          const day = new Date(r.delivery_date).getDate();
+          const w = Math.ceil(day / 7);
+          const cur = weeks.get(w) ?? { deliveries: 0, fee: 0 };
+          cur.deliveries++;
+          cur.fee += Number(r.fee ?? 0);
+          weeks.set(w, cur);
+        }
+        const totalWeeks = Math.ceil(end.getDate() / 7);
+        const result: WeekBucket[] = [];
+        for (let i = 1; i <= totalWeeks; i++) {
+          const d = weeks.get(i) ?? { deliveries: 0, fee: 0 };
+          result.push({ label: `W${i}`, ...d });
+        }
+        setWeeklyData(result);
+      });
+  }, []);
+
+  const maxDel = useMemo(() => Math.max(...weeklyData.map((w) => w.deliveries), 1), [weeklyData]);
+  const maxFee = useMemo(() => Math.max(...weeklyData.map((w) => w.fee), 1), [weeklyData]);
 
   /* ── alerts ────────────────────────────────── */
   const alerts = [
@@ -243,40 +278,47 @@ function DashboardPage() {
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[13px] font-semibold">Delivery & fee mingguan</h3>
-            <span className="text-[10px] text-primary font-medium cursor-pointer hover:underline">
+            <Link to="/admin/shipment-analytics" className="text-[10px] text-primary font-medium hover:underline">
               Lihat detail
-            </span>
+            </Link>
           </div>
-          <div className="flex items-end gap-2 h-[140px] px-1">
-            {chartWeeks.map((w, i) => (
-              <div key={w} className="flex-1 flex flex-col items-center gap-1">
-                <div className="flex gap-0.5 items-end h-[110px] w-full justify-center">
-                  <div
-                    className="w-4 rounded-t bg-primary transition-all"
-                    style={{ height: `${chartA[i]}%` }}
-                  />
-                  <div
-                    className="w-4 rounded-t bg-primary/30 transition-all"
-                    style={{ height: `${chartB[i]}%` }}
-                  />
-                </div>
-                <span
-                  className="text-[9px] text-muted-foreground"
-                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                >
-                  {w}
-                </span>
-              </div>
-            ))}
-          </div>
+          {weeklyData.length === 0 ? (
+            <div className="h-[170px] flex items-center justify-center text-xs text-muted-foreground">Memuat data...</div>
+          ) : (
+            <div className="flex items-end gap-3 h-[170px] px-1">
+              {weeklyData.map((w, i) => {
+                const hDel = (w.deliveries / maxDel) * 130;
+                const hFee = (w.fee / maxFee) * 130;
+                const active = hoveredWeek === i;
+                return (
+                  <div key={w.label} className="flex-1 flex flex-col items-center gap-1 relative"
+                    onMouseEnter={() => setHoveredWeek(i)} onMouseLeave={() => setHoveredWeek(null)}>
+                    {active && (
+                      <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-foreground text-background rounded-lg px-2.5 py-1.5 text-[10px] whitespace-nowrap z-10 shadow-lg">
+                        <div className="font-semibold">{w.deliveries} order</div>
+                        <div>{formatRupiah(w.fee)}</div>
+                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-foreground rotate-45" />
+                      </div>
+                    )}
+                    <div className="flex gap-1 items-end w-full justify-center">
+                      <div className="flex-1 max-w-5 rounded-t-md transition-all duration-300"
+                        style={{ height: Math.max(hDel, 4), background: active ? "var(--primary)" : "linear-gradient(to top, hsl(var(--primary)), hsl(var(--primary) / 0.7))", opacity: active ? 1 : 0.85 }} />
+                      <div className="flex-1 max-w-5 rounded-t-md transition-all duration-300"
+                        style={{ height: Math.max(hFee, 4), background: active ? "hsl(var(--primary) / 0.45)" : "linear-gradient(to top, hsl(var(--primary) / 0.35), hsl(var(--primary) / 0.15))", opacity: active ? 1 : 0.85 }} />
+                    </div>
+                    <span className={`text-[9px] font-medium transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}>{w.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="flex gap-4 mt-3">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <div className="w-2 h-2 rounded-sm bg-primary" />
-              Deliveries
+              <div className="w-2.5 h-2.5 rounded-sm bg-primary" /> Deliveries
             </div>
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <div className="w-2 h-2 rounded-sm bg-primary/30" />
-              Total fee
+              <div className="w-2.5 h-2.5 rounded-sm bg-primary/30" /> Total fee
             </div>
           </div>
         </div>

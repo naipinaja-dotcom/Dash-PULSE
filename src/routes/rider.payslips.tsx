@@ -7,6 +7,7 @@ import { useRiderSelf } from "@/lib/use-rider-self";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { Loader2, X, ChevronRight, ChevronDown, Download } from "lucide-react";
 import { PayslipPrint } from "@/components/payslip-print";
+import { EarningsChecker } from "@/components/earnings-checker";
 
 export const Route = createFileRoute("/rider/payslips")({ component: PayslipsPage });
 
@@ -68,6 +69,7 @@ function PayslipsPage() {
 
   return (
     <RiderLayout title="Slip Gaji">
+      <EarningsChecker riderId={rider?.id ?? ""} riderReady={!riderLoading && !!rider} />
       {busy ? (
         <div className="flex justify-center py-10">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />

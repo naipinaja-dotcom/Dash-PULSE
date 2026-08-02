@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
@@ -10,7 +10,7 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { activateRiderLogin, activateRiderLoginsBulk, resetRiderLogin, unlinkRiderLogin } from "@/lib/api/rider-auth.functions";
-import { Plus, Pencil, Trash2, Loader2, AlertCircle, Upload, Download, X, Search, KeyRound } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, AlertCircle, Upload, Download, X, Search, KeyRound, ChevronDown } from "lucide-react";
 
 export const Route = createFileRoute("/admin/riders")({ component: RidersPage });
 
@@ -20,6 +20,10 @@ const STATUS_LABEL: Record<RiderStatus, string> = {
   blacklisted: "Blacklisted", withdrawn: "Withdrawn", suspended: "Suspend",
 };
 const STATUS_ORDER: RiderStatus[] = ["ready_to_work", "active", "resign", "blacklisted", "withdrawn", "suspended"];
+const STATUS_DOT: Record<"all" | RiderStatus, string> = {
+  all: "bg-primary", ready_to_work: "bg-blue-500", active: "bg-emerald-500",
+  resign: "bg-gray-400", blacklisted: "bg-red-500", withdrawn: "bg-amber-500", suspended: "bg-rose-500",
+};
 type Rider = {
   id: string; employee_id: string; full_name: string; phone: string | null; email: string | null;
   client_id: string | null; status: string; join_date: string | null;
@@ -40,6 +44,13 @@ function RidersPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const statusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -115,17 +126,24 @@ function RidersPage() {
             className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-[12px] outline-none focus:border-primary transition-colors"
           />
         </div>
-        <div className="flex gap-1 flex-wrap">
-          {(["all", ...STATUS_ORDER] as const).map((s) => {
-            const count = s === "all" ? rows.length : rows.filter((r) => r.status === s).length;
-            return (
-              <button key={s} onClick={() => setFilter(s)}
-                className={`px-3 py-1.5 text-[11px] rounded-full border transition-colors ${filter === s ? "bg-primary text-primary-foreground border-primary font-medium" : "border-border text-muted-foreground hover:border-primary-border hover:text-foreground"}`}>
-                {s === "all" ? t("btn.all") : STATUS_LABEL[s]}
-                <span className="ml-1 opacity-70" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "10px" }}>{count}</span>
-              </button>
-            );
-          })}
+        <div ref={statusRef} className="relative">
+          <button onClick={() => setStatusOpen((p) => !p)}
+            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[12px] hover:border-primary/50 transition-colors min-w-[160px]">
+            <span className={`w-2 h-2 rounded-full ${STATUS_DOT[filter]}`} />
+            <span className="font-medium">{filter === "all" ? t("btn.all") : STATUS_LABEL[filter]}</span>
+            <ChevronDown className={`w-3.5 h-3.5 ml-auto text-muted-foreground transition-transform ${statusOpen ? "rotate-180" : ""}`} />
+          </button>
+          {statusOpen && (
+            <div className="absolute top-full left-0 mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-20 py-1">
+              {(["all", ...STATUS_ORDER] as const).map((s) => (
+                <button key={s} onClick={() => { setFilter(s); setStatusOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left transition-colors ${filter === s ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted"}`}>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[s]}`} />
+                  {s === "all" ? t("btn.all") : STATUS_LABEL[s]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex gap-2 items-center ml-auto">
           <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />

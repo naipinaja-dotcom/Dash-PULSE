@@ -18,5 +18,5 @@ begin
   end if;
 
   delete from user_roles where user_id = target_uid;
-  insert into user_roles (user_id, role) values (target_uid, new_role);
+  insert into user_roles (user_id, role) values (target_uid, new_role::public.app_role);
 end $$;

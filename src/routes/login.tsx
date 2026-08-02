@@ -36,6 +36,7 @@ function LoginPage() {
   const [forgotPhone, setForgotPhone] = useState("");
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotNewPw, setForgotNewPw] = useState("");
+  const [forgotNewPwConfirm, setForgotNewPwConfirm] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [employeeId, setEmployeeId] = useState("");
@@ -57,6 +58,7 @@ function LoginPage() {
       if (mode === "admin") {
         if (!forgotEmail || !forgotNewPw) throw new Error(t("forgot.fieldsRequired"));
         if (forgotNewPw.length < 6) throw new Error(t("forgot.pwMinLength"));
+        if (forgotNewPw !== forgotNewPwConfirm) throw new Error(t("forgot.pwMismatch"));
         await adminResetPassword({ data: { email: forgotEmail, newPassword: forgotNewPw } });
         toast.success(t("forgot.pwReset"));
         setForgotMode(false);
@@ -177,6 +179,12 @@ function LoginPage() {
                 <div>
                   <label className="text-sm font-medium">{t("forgot.newPassword")}</label>
                   <input type="password" value={forgotNewPw} onChange={(e) => setForgotNewPw(e.target.value)}
+                    placeholder="Min. 6 karakter"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("forgot.confirmPassword")}</label>
+                  <input type="password" value={forgotNewPwConfirm} onChange={(e) => setForgotNewPwConfirm(e.target.value)}
                     placeholder="••••••••"
                     className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
                 </div>

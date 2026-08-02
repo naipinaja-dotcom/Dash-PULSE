@@ -261,6 +261,8 @@ const T = {
   "forgot.pinReset": { id: "PIN berhasil direset — silakan buat PIN baru", en: "PIN reset successful — please create a new PIN" },
   "forgot.fieldsRequired": { id: "Semua kolom wajib diisi", en: "All fields are required" },
   "forgot.pwMinLength": { id: "Password minimal 6 karakter", en: "Password must be at least 6 characters" },
+  "forgot.pwMismatch": { id: "Password baru tidak sama", en: "New passwords don't match" },
+  "forgot.confirmPassword": { id: "Ulangi Password Baru", en: "Confirm New Password" },
 
   // ── 404 / Error ────────────────────────────────────────────────────────
   "error.notFound": { id: "Halaman tidak ditemukan", en: "Page not found" },

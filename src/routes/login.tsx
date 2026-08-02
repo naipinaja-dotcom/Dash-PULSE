@@ -1,9 +1,8 @@
 import { createFileRoute, useNavigate, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { usePostHog } from "@posthog/react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { setFirstTimeRiderPin, riderForgotPin } from "@/lib/api/rider-auth.functions";
+import { setFirstTimeRiderPin, riderForgotPin, adminResetPassword } from "@/lib/api/rider-auth.functions";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
@@ -36,6 +35,7 @@ function LoginPage() {
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotPhone, setForgotPhone] = useState("");
   const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotNewPw, setForgotNewPw] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [employeeId, setEmployeeId] = useState("");
@@ -55,12 +55,10 @@ function LoginPage() {
     setSubmitting(true);
     try {
       if (mode === "admin") {
-        if (!forgotEmail) throw new Error(t("forgot.emailRequired"));
-        const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-          redirectTo: `${window.location.origin}/admin/dashboard`,
-        });
-        if (error) throw new Error(error.message);
-        toast.success(t("forgot.emailSent"));
+        if (!forgotEmail || !forgotNewPw) throw new Error(t("forgot.fieldsRequired"));
+        if (forgotNewPw.length < 6) throw new Error(t("forgot.pwMinLength"));
+        await adminResetPassword({ data: { email: forgotEmail, newPassword: forgotNewPw } });
+        toast.success(t("forgot.pwReset"));
         setForgotMode(false);
       } else {
         if (!employeeId || !forgotPhone) throw new Error(t("forgot.fieldsRequired"));
@@ -176,6 +174,12 @@ function LoginPage() {
                     placeholder="admin@dash.id"
                     className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
                 </div>
+                <div>
+                  <label className="text-sm font-medium">{t("forgot.newPassword")}</label>
+                  <input type="password" value={forgotNewPw} onChange={(e) => setForgotNewPw(e.target.value)}
+                    placeholder="••••••••"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -195,7 +199,7 @@ function LoginPage() {
             <button type="submit" disabled={submitting}
               className="mt-5 w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === "admin" ? t("forgot.sendLink") : t("forgot.resetPin")}
+              {mode === "admin" ? t("forgot.resetPassword") : t("forgot.resetPin")}
             </button>
             <button type="button" onClick={() => setForgotMode(false)} className="mt-3 w-full text-xs text-primary hover:underline">
               {t("forgot.backToLogin")}

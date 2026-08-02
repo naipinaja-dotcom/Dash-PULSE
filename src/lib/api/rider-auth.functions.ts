@@ -21,6 +21,29 @@ function randomPlaceholder() {
   return `x${Math.random().toString(36).slice(2)}${Date.now().toString(36)}!Aa1`;
 }
 
+// Admin self-service password reset — no email step, just verify the
+// email exists and set the new password directly.
+export const adminResetPassword = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    email: z.string().email(),
+    newPassword: z.string().min(6),
+  }))
+  .handler(async ({ data }) => {
+    const rateLimitKey = `admin-reset:${data.email.trim().toLowerCase()}`;
+    const rate = checkRateLimit(rateLimitKey, PIN_ATTEMPT_LIMIT);
+    if (!rate.allowed) throw new Error("Terlalu banyak percobaan — coba lagi dalam beberapa menit");
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: users, error } = await supabaseAdmin.auth.admin.listUsers();
+    if (error) throw new Error(error.message);
+    const match = users.users.find((u) => u.email?.toLowerCase() === data.email.trim().toLowerCase());
+    if (!match) throw new Error("Email tidak ditemukan");
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(match.id, { password: data.newPassword });
+    if (updateErr) throw new Error(updateErr.message);
+    resetRateLimit(rateLimitKey);
+    return { ok: true };
+  });
+
 async function requireAdmin(adminToken: string) {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(adminToken);

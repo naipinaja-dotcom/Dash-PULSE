@@ -251,15 +251,16 @@ const T = {
 
   // ── Forgot password ────────────────────────────────────────────────────
   "forgot.title": { id: "Lupa Kata Sandi", en: "Forgot Password" },
-  "forgot.adminDesc": { id: "Masukkan email admin Anda. Kami akan kirim link untuk reset password.", en: "Enter your admin email. We'll send a password reset link." },
+  "forgot.adminDesc": { id: "Masukkan email dan password baru Anda.", en: "Enter your email and new password." },
   "forgot.riderDesc": { id: "Masukkan Kode Mitra & Nomor WhatsApp untuk reset PIN Anda.", en: "Enter your Employee ID & WhatsApp number to reset your PIN." },
-  "forgot.sendLink": { id: "Kirim Link Reset", en: "Send Reset Link" },
+  "forgot.newPassword": { id: "Password Baru", en: "New Password" },
+  "forgot.resetPassword": { id: "Reset Password", en: "Reset Password" },
   "forgot.resetPin": { id: "Reset PIN", en: "Reset PIN" },
   "forgot.backToLogin": { id: "Kembali ke login", en: "Back to login" },
-  "forgot.emailSent": { id: "Link reset sudah dikirim ke email Anda", en: "Reset link sent to your email" },
+  "forgot.pwReset": { id: "Password berhasil direset — silakan login", en: "Password reset successful — please sign in" },
   "forgot.pinReset": { id: "PIN berhasil direset — silakan buat PIN baru", en: "PIN reset successful — please create a new PIN" },
-  "forgot.emailRequired": { id: "Email wajib diisi", en: "Email is required" },
-  "forgot.fieldsRequired": { id: "Kode Mitra & Nomor WhatsApp wajib diisi", en: "Employee ID & WhatsApp number are required" },
+  "forgot.fieldsRequired": { id: "Semua kolom wajib diisi", en: "All fields are required" },
+  "forgot.pwMinLength": { id: "Password minimal 6 karakter", en: "Password must be at least 6 characters" },
 
   // ── 404 / Error ────────────────────────────────────────────────────────
   "error.notFound": { id: "Halaman tidak ditemukan", en: "Page not found" },

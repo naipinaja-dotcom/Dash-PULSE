@@ -235,26 +235,23 @@ function DashboardPage() {
       </div>
 
       {/* ── Stat cards ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 rounded-xl border border-border bg-card shadow-sm divide-y divide-border sm:divide-y-0 sm:divide-x mb-5 overflow-hidden">
         {stats.map((s) => {
           const Icon = s.icon;
           return (
             <div
               key={s.label}
-              className="group rounded-xl border border-border bg-card p-4 shadow-sm hover:border-primary-border hover:-translate-y-0.5 transition-all cursor-pointer"
+              className="group p-4 hover:bg-muted/40 transition-colors cursor-pointer"
             >
               <div className="flex items-start justify-between mb-2">
-                <span className="text-[11px] font-medium text-muted-foreground">{s.label}</span>
+                <span data-eyebrow>{s.label}</span>
                 <div
                   className={`w-7 h-7 rounded-lg ${s.iconBg} grid place-items-center flex-shrink-0`}
                 >
                   <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
                 </div>
               </div>
-              <div
-                className="text-2xl font-bold tracking-tight tabular-nums"
-                style={{ fontFamily: "'JetBrains Mono', 'Plus Jakarta Sans', monospace" }}
-              >
+              <div className="text-2xl font-bold tracking-tight tabular-nums font-mono">
                 {s.value}
               </div>
               <div className="flex items-center justify-between mt-1.5">
@@ -308,8 +305,7 @@ function DashboardPage() {
                       <div className="flex-1 max-w-5 rounded-t-md transition-all duration-300"
                         style={{ height: Math.max(hFee, 4), background: active ? "hsl(var(--primary) / 0.45)" : "linear-gradient(to top, hsl(var(--primary) / 0.35), hsl(var(--primary) / 0.15))", opacity: active ? 1 : 0.85 }} />
                     </div>
-                    <span className={`text-[9px] font-medium transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}>{w.label}</span>
+                    <span className={`text-[9px] font-medium font-mono transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}>{w.label}</span>
                   </div>
                 );
               })}
@@ -373,16 +369,10 @@ function DashboardPage() {
                       <span className="font-semibold">{r.name}</span>
                     </div>
                   </td>
-                  <td
-                    className="text-right text-muted-foreground tabular-nums"
-                    style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "11px" }}
-                  >
+                  <td className="text-right text-muted-foreground tabular-nums font-mono text-[11px]">
                     {r.trips}
                   </td>
-                  <td
-                    className="text-right font-semibold text-primary tabular-nums"
-                    style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "11px" }}
-                  >
+                  <td className="text-right font-semibold text-primary tabular-nums font-mono text-[11px]">
                     {(r.fee / 1_000_000).toFixed(1)}jt
                   </td>
                 </tr>
@@ -471,10 +461,7 @@ function DashboardPage() {
                     />
                   </div>
                 </div>
-                <span
-                  className="text-[12px] font-bold text-destructive tabular-nums ml-3 flex-shrink-0"
-                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                >
+                <span className="text-[12px] font-bold text-destructive tabular-nums ml-3 flex-shrink-0 font-mono">
                   {item.amount}
                 </span>
               </div>

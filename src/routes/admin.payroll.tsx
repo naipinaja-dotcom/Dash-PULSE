@@ -17,6 +17,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Trash2,
   Pencil,
   AlertTriangle,
@@ -139,6 +140,16 @@ function PayrollPage() {
     to: detailTo,
     total: detailTotal,
   } = usePagination(details, 20);
+
+  const filteredRuns = runs.filter((r) =>
+    showHistory ? r.status === "published" : r.status !== "published",
+  );
+  const {
+    page: runPage,
+    setPage: setRunPage,
+    totalPages: runTotalPages,
+    paged: pagedRuns,
+  } = usePagination(filteredRuns, 5);
 
   const loadRuns = async () => {
     setLoading(true);
@@ -859,9 +870,7 @@ function PayrollPage() {
             {loading && !runs.length ? (
               <Loader2 className="w-4 h-4 animate-spin mx-auto" />
             ) : (
-              runs
-                .filter((r) => (showHistory ? r.status === "published" : r.status !== "published"))
-                .map((r) => {
+              pagedRuns.map((r) => {
                   const statusColor =
                     r.status === "published"
                       ? "text-success"
@@ -888,17 +897,36 @@ function PayrollPage() {
                   );
                 })
             )}
-            {!loading &&
-              runs.filter((r) =>
-                showHistory ? r.status === "published" : r.status !== "published",
-              ).length === 0 && (
-                <p className="text-xs text-muted-foreground px-3 py-2">
-                  {showHistory
-                    ? "Belum ada run yang di-publish."
-                    : "Belum ada run aktif — hitung fee dulu di halaman Hitung Fee, run-nya otomatis muncul di sini."}
-                </p>
-              )}
+            {!loading && filteredRuns.length === 0 && (
+              <p className="text-xs text-muted-foreground px-3 py-2">
+                {showHistory
+                  ? "Belum ada run yang di-publish."
+                  : "Belum ada run aktif — hitung fee dulu di halaman Hitung Fee, run-nya otomatis muncul di sini."}
+              </p>
+            )}
           </div>
+
+          {runTotalPages > 1 && (
+            <div className="flex items-center justify-between mt-2 px-1">
+              <button
+                onClick={() => setRunPage((p) => Math.max(1, p - 1))}
+                disabled={runPage <= 1}
+                className="p-1 rounded-md border border-border disabled:opacity-40 hover:bg-muted"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[11px] text-muted-foreground">
+                {runPage} / {runTotalPages}
+              </span>
+              <button
+                onClick={() => setRunPage((p) => Math.min(runTotalPages, p + 1))}
+                disabled={runPage >= runTotalPages}
+                className="p-1 rounded-md border border-border disabled:opacity-40 hover:bg-muted"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </aside>
 
         {/* Main area */}

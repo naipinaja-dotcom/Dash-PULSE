@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { usePostHog } from "@posthog/react";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { setFirstTimeRiderPin } from "@/lib/api/rider-auth.functions";
+import { setFirstTimeRiderPin, riderForgotPin } from "@/lib/api/rider-auth.functions";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
@@ -32,6 +33,9 @@ function LoginPage() {
   const posthog = usePostHog();
   const [mode, setMode] = useState<"admin" | "rider">("admin");
   const [riderSubMode, setRiderSubMode] = useState<"login" | "firstTime">("login");
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotPhone, setForgotPhone] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [employeeId, setEmployeeId] = useState("");
@@ -45,6 +49,32 @@ function LoginPage() {
   if (authLoading) return null;
   if (user)
     return <Navigate to={user.role === "admin" ? "/admin/dashboard" : "/rider/dashboard"} />;
+
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      if (mode === "admin") {
+        if (!forgotEmail) throw new Error(t("forgot.emailRequired"));
+        const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+          redirectTo: `${window.location.origin}/admin/dashboard`,
+        });
+        if (error) throw new Error(error.message);
+        toast.success(t("forgot.emailSent"));
+        setForgotMode(false);
+      } else {
+        if (!employeeId || !forgotPhone) throw new Error(t("forgot.fieldsRequired"));
+        await riderForgotPin({ data: { employeeId, phone: forgotPhone } });
+        toast.success(t("forgot.pinReset"));
+        setForgotMode(false);
+        setRiderSubMode("firstTime");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("login.failed"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,151 +152,147 @@ function LoginPage() {
       </div>
 
       <div className="flex items-center justify-center p-6">
-        <form onSubmit={submit} className="w-full max-w-sm">
-          <h1 className="text-xl font-semibold mb-1">{t("login.title")}</h1>
-          <p className="text-sm text-muted-foreground mb-4">
-            {mode === "admin"
-              ? t("login.adminDesc")
-              : riderSubMode === "login"
-                ? t("login.riderDesc")
-                : t("login.firstTimeDesc")}
-          </p>
+        {forgotMode ? (
+          <form onSubmit={submitForgot} className="w-full max-w-sm">
+            <h1 className="text-xl font-semibold mb-1">{t("forgot.title")}</h1>
+            <p className="text-sm text-muted-foreground mb-4">
+              {mode === "admin" ? t("forgot.adminDesc") : t("forgot.riderDesc")}
+            </p>
 
-          <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 max-w-[220px]">
-            {(
-              [
-                ["admin", "Admin"],
-                ["rider", "Rider"],
-              ] as const
-            ).map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  setMode(k);
-                  setRiderSubMode("login");
-                }}
-                className={`flex-1 px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
+            <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 max-w-[220px]">
+              {([ ["admin", "Admin"], ["rider", "Rider"] ] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setMode(k)}
+                  className={`flex-1 px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
 
-          {mode === "admin" ? (
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium">{t("login.email")}</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@dash.id"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
+            {mode === "admin" ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">{t("login.email")}</label>
+                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="admin@dash.id"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
               </div>
-              <div>
-                <label className="text-sm font-medium">{t("login.password")}</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">{t("login.riderCode")}</label>
+                  <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="MTR0001"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("login.whatsapp")}</label>
+                  <input value={forgotPhone} onChange={(e) => setForgotPhone(e.target.value)} placeholder="0812..."
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
               </div>
-            </div>
-          ) : riderSubMode === "login" ? (
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium">{t("login.riderCode")}</label>
-                <input
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  placeholder="MTR0001"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">{t("login.pin")}</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="••••"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setRiderSubMode("firstTime")}
-                className="text-xs text-primary hover:underline"
-              >
-                {t("login.firstTimeLink")}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium">{t("login.riderCode")}</label>
-                <input
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  placeholder="MTR0001"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">{t("login.whatsapp")}</label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0812..."
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">{t("login.newPin")}</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value)}
-                  placeholder="4-8 digit"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">{t("login.confirmPin")}</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={newPinConfirm}
-                  onChange={(e) => setNewPinConfirm(e.target.value)}
-                  placeholder="4-8 digit"
-                  className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setRiderSubMode("login")}
-                className="text-xs text-primary hover:underline"
-              >
-                {t("login.alreadyHavePin")}
-              </button>
-            </div>
-          )}
+            )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-5 w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            {mode === "rider" && riderSubMode === "firstTime" ? t("login.createPinSubmit") : t("login.submit")}
-          </button>
-        </form>
+            <button type="submit" disabled={submitting}
+              className="mt-5 w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {mode === "admin" ? t("forgot.sendLink") : t("forgot.resetPin")}
+            </button>
+            <button type="button" onClick={() => setForgotMode(false)} className="mt-3 w-full text-xs text-primary hover:underline">
+              {t("forgot.backToLogin")}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={submit} className="w-full max-w-sm">
+            <h1 className="text-xl font-semibold mb-1">{t("login.title")}</h1>
+            <p className="text-sm text-muted-foreground mb-4">
+              {mode === "admin"
+                ? t("login.adminDesc")
+                : riderSubMode === "login"
+                  ? t("login.riderDesc")
+                  : t("login.firstTimeDesc")}
+            </p>
+
+            <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 max-w-[220px]">
+              {([ ["admin", "Admin"], ["rider", "Rider"] ] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => { setMode(k); setRiderSubMode("login"); }}
+                  className={`flex-1 px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {mode === "admin" ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">{t("login.email")}</label>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@dash.id"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("login.password")}</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <button type="button" onClick={() => setForgotMode(true)} className="text-xs text-primary hover:underline">
+                  {t("forgot.title")}?
+                </button>
+              </div>
+            ) : riderSubMode === "login" ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">{t("login.riderCode")}</label>
+                  <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="MTR0001"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("login.pin")}</label>
+                  <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setRiderSubMode("firstTime")} className="text-xs text-primary hover:underline">
+                    {t("login.firstTimeLink")}
+                  </button>
+                  <button type="button" onClick={() => setForgotMode(true)} className="text-xs text-primary hover:underline">
+                    {t("forgot.title")}?
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium">{t("login.riderCode")}</label>
+                  <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="MTR0001"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("login.whatsapp")}</label>
+                  <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0812..."
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("login.newPin")}</label>
+                  <input type="password" inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 digit"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">{t("login.confirmPin")}</label>
+                  <input type="password" inputMode="numeric" value={newPinConfirm} onChange={(e) => setNewPinConfirm(e.target.value)} placeholder="4-8 digit"
+                    className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <button type="button" onClick={() => setRiderSubMode("login")} className="text-xs text-primary hover:underline">
+                  {t("login.alreadyHavePin")}
+                </button>
+              </div>
+            )}
+
+            <button type="submit" disabled={submitting}
+              className="mt-5 w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {mode === "rider" && riderSubMode === "firstTime" ? t("login.createPinSubmit") : t("login.submit")}
+            </button>
+          </form>
+        )}
       </div>
     </main>
   );

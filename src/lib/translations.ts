@@ -249,6 +249,18 @@ const T = {
   "login.pinMismatch": { id: "PIN baru tidak sama", en: "New PINs don't match" },
   "login.pinFormat": { id: "PIN 4-8 digit angka", en: "PIN must be 4-8 digits" },
 
+  // ── Forgot password ────────────────────────────────────────────────────
+  "forgot.title": { id: "Lupa Kata Sandi", en: "Forgot Password" },
+  "forgot.adminDesc": { id: "Masukkan email admin Anda. Kami akan kirim link untuk reset password.", en: "Enter your admin email. We'll send a password reset link." },
+  "forgot.riderDesc": { id: "Masukkan Kode Mitra & Nomor WhatsApp untuk reset PIN Anda.", en: "Enter your Employee ID & WhatsApp number to reset your PIN." },
+  "forgot.sendLink": { id: "Kirim Link Reset", en: "Send Reset Link" },
+  "forgot.resetPin": { id: "Reset PIN", en: "Reset PIN" },
+  "forgot.backToLogin": { id: "Kembali ke login", en: "Back to login" },
+  "forgot.emailSent": { id: "Link reset sudah dikirim ke email Anda", en: "Reset link sent to your email" },
+  "forgot.pinReset": { id: "PIN berhasil direset — silakan buat PIN baru", en: "PIN reset successful — please create a new PIN" },
+  "forgot.emailRequired": { id: "Email wajib diisi", en: "Email is required" },
+  "forgot.fieldsRequired": { id: "Kode Mitra & Nomor WhatsApp wajib diisi", en: "Employee ID & WhatsApp number are required" },
+
   // ── 404 / Error ────────────────────────────────────────────────────────
   "error.notFound": { id: "Halaman tidak ditemukan", en: "Page not found" },
   "error.notFoundDesc": { id: "Halaman yang Anda cari tidak ada atau sudah dipindahkan.", en: "The page you are looking for does not exist or has been moved." },

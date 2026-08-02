@@ -132,6 +132,36 @@ export const activateRiderLoginsBulk = createServerFn({ method: "POST" })
     return { activated, failed };
   });
 
+// Rider self-service: forgot PIN. Verify Kode Mitra + WhatsApp, then
+// scramble the password and flag must_change_pin so rider can redo
+// first-time PIN setup.
+export const riderForgotPin = createServerFn({ method: "POST" })
+  .inputValidator(z.object({
+    employeeId: z.string().min(1),
+    phone: z.string().min(6),
+  }))
+  .handler(async ({ data }) => {
+    const rateLimitKey = `rider-forgot-pin:${data.employeeId.trim().toLowerCase()}`;
+    const rate = checkRateLimit(rateLimitKey, PIN_ATTEMPT_LIMIT);
+    if (!rate.allowed) throw new Error("Terlalu banyak percobaan — coba lagi dalam beberapa menit");
+
+    const supabaseAdmin = getSupabaseAdmin();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rider, error } = await (supabaseAdmin as any).from("riders")
+      .select("id, user_id, phone").eq("employee_id", data.employeeId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!rider || !rider.user_id) throw new Error("Kode Mitra belum aktif — hubungi admin");
+    if (!rider.phone || normalizePhone(rider.phone) !== normalizePhone(data.phone)) {
+      throw new Error("Nomor WhatsApp tidak cocok dengan data kami");
+    }
+    const { error: pwErr } = await supabaseAdmin.auth.admin.updateUserById(rider.user_id, { password: randomPlaceholder() });
+    if (pwErr) throw new Error(pwErr.message);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabaseAdmin as any).from("riders").update({ must_change_pin: true }).eq("id", rider.id);
+    resetRateLimit(rateLimitKey);
+    return { ok: true };
+  });
+
 // Rider self-service: verify Kode Mitra + WhatsApp number (both already on
 // file), then set their own PIN for the first time. No admin token needed —
 // the phone match IS the verification. Returns the synthetic email so the

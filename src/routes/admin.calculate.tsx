@@ -38,6 +38,7 @@ import {
 } from "@/lib/api/live-fee-attendance.functions";
 import { loadApiProviders, type ApiProvider } from "@/lib/api/providers.functions";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { Loader2, Play, AlertTriangle, Info, Save, ChevronRight, Radio, Database } from "lucide-react";
 
 export const Route = createFileRoute("/admin/calculate")({ component: CalculatePage });
@@ -67,6 +68,7 @@ function isCompletedRow(status: unknown): boolean {
 
 function CalculatePage() {
   const { user } = useAuth();
+  const { t } = useT();
   const posthog = usePostHog();
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [schemes, setSchemes] = useState<PricingScheme[]>([]);
@@ -693,7 +695,7 @@ function CalculatePage() {
 
   return (
     <AdminLayout
-      title="Hitung Fee"
+      title={t("calc.title")}
       subtitle="Hitung fee dari data pengiriman pakai skema pricing (preview sebelum simpan)"
     >
       {/* Kontrol */}

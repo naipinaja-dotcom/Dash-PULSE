@@ -4,6 +4,7 @@ import { AdminLayout } from "@/components/admin-layout";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { formatRupiah } from "@/lib/format";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Bike } from "lucide-react";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
@@ -32,6 +33,7 @@ type DriverLine = {
 const isCompleted = (s: string | null) => String(s ?? "").trim().toLowerCase() === "completed";
 
 function DriverAnalyticsPage() {
+  const { t } = useT();
   const { from, to } = useIntelligenceDate();
   const [running, setRunning] = useState(false);
   const [rows, setRows] = useState<DriverLine[] | null>(null);
@@ -115,19 +117,19 @@ function DriverAnalyticsPage() {
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from: pFrom, to: pTo, total: pTotal } = usePagination(sorted, 20);
 
   return (
-    <AdminLayout title="Driver Analytics" subtitle={`Performa rider: volume kiriman, on-time rate, dan earning. Periode ${from} → ${to} (atur di Executive Dashboard).`}>
+    <AdminLayout title={t("driver.title")} subtitle={`${t("driver.subtitlePre")} ${from} → ${to} (${t("analytics.setPeriod")})`}>
       {rows && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Kpi label="Rider Aktif" value={String(rows.length)} />
-            <Kpi label="Total Kiriman" value={totalDeliveries.toLocaleString("id-ID")} />
-            <Kpi label="Total Earning" value={formatRupiah(totalEarning)} accent="success" />
-            <Kpi label="Rata-rata On-Time" value={avgOnTime.toFixed(1) + "%"} accent={avgOnTime >= 85 ? "success" : "warning"} />
+            <Kpi label={t("driver.activeRiders")} value={String(rows.length)} />
+            <Kpi label={t("driver.totalDeliveries")} value={totalDeliveries.toLocaleString("id-ID")} />
+            <Kpi label={t("driver.totalEarning")} value={formatRupiah(totalEarning)} accent="success" />
+            <Kpi label={t("driver.avgOnTime")} value={avgOnTime.toFixed(1) + "%"} accent={avgOnTime >= 85 ? "success" : "warning"} />
           </div>
 
           <div className="flex items-center justify-between mb-3">
             <div className="flex gap-1 p-1 bg-muted rounded-md">
-              {([["earning", "Earning"], ["deliveries", "Kiriman"], ["onTime", "On-Time %"]] as const).map(([k, l]) => (
+              {([["earning", t("driver.earning")], ["deliveries", t("driver.deliveries")], ["onTime", "On-Time %"]] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setSortBy(k)}
                   className={`px-3 py-1.5 text-xs rounded ${sortBy === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>{l}</button>
               ))}
@@ -141,17 +143,17 @@ function DriverAnalyticsPage() {
                 <thead className="bg-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="p-3">Rider</th>
-                    <th className="p-3 text-right">Kiriman</th>
-                    <th className="p-3 text-right">Hari Masuk</th>
+                    <th className="p-3 text-right">{t("driver.deliveries")}</th>
+                    <th className="p-3 text-right">{t("driver.daysWorked")}</th>
                     <th className="p-3 text-right">Late</th>
-                    <th className="p-3 text-right">Absen</th>
+                    <th className="p-3 text-right">{t("driver.absent")}</th>
                     <th className="p-3 w-[140px]">On-Time %</th>
                     <th className="p-3 text-right">Total Earning</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paged.length === 0 ? (
-                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
+                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{t("analytics.noData")}</td></tr>
                   ) : paged.map((r) => (
                     <tr key={r.riderId} className="border-t border-border">
                       <td className="p-3">
@@ -185,7 +187,7 @@ function DriverAnalyticsPage() {
       {!rows && (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
           <Bike className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {running ? "Menghitung performa rider…" : "Memuat…"}
+          {running ? t("driver.computing") : t("analytics.loading")}
         </div>
       )}
     </AdminLayout>

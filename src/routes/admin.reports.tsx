@@ -5,6 +5,7 @@ import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toCSV, downloadCSV } from "@/lib/csv";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Download, Loader2 } from "lucide-react";
 import { FinanceWorksheet } from "@/components/finance-worksheet";
@@ -22,6 +23,7 @@ type Run = {
 };
 
 function ReportsPage() {
+  const { t } = useT();
   const [runs, setRuns] = useState<Run[]>([]);
   const [runId, setRunId] = useState("");
   const [mode, setMode] = useState<"client" | "rider" | "deduction">("rider");
@@ -44,7 +46,7 @@ function ReportsPage() {
   const run = runs.find((r) => r.id === runId);
 
   return (
-    <AdminLayout title="Reports" subtitle="Laporan mingguan, PnL, dan Ops Insight">
+    <AdminLayout title={t("reports.title")} subtitle={t("reports.subtitle")}>
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="text-sm font-medium">Payroll Run</label>

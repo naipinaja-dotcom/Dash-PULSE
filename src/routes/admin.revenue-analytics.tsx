@@ -9,6 +9,7 @@ import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, buildTrend, type ClientPnl, type ClientLite } from "@/lib/pnl-engine";
 import { formatRupiah } from "@/lib/format";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Banknote } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/admin/revenue-analytics")({ component: Re
 const jt = (n: number) => "Rp " + (n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " jt";
 
 function RevenueAnalyticsPage() {
+  const { t } = useT();
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [schemes, setSchemes] = useState<PricingScheme[]>([]);
   const { from, to } = useIntelligenceDate();
@@ -79,20 +81,20 @@ function RevenueAnalyticsPage() {
   const maxRevenue = Math.max(1, ...ranked.map((r) => r.revenue ?? 0));
 
   return (
-    <AdminLayout title="Revenue Analytics" subtitle={`Tagihan ke client (sisi revenue), dihitung dari data pengiriman. Periode ${from} → ${to} (atur di Executive Dashboard).`}>
+    <AdminLayout title={t("revenue.title")} subtitle={`${t("revenue.subtitlePre")} ${from} → ${to} (${t("analytics.setPeriod")})`}>
       {perClient && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Kpi label="Total Revenue" value={jt(totRevenue)} accent="success" />
-            <Kpi label="Rata-rata / Client" value={jt(avgRevenue)} />
-            <Kpi label="Top Client" value={topClient ? topClient.client : "—"} />
-            <Kpi label="Client Tanpa Skema Revenue" value={String(withoutRevenue.length)} />
+            <Kpi label={t("revenue.totalRevenue")} value={jt(totRevenue)} accent="success" />
+            <Kpi label={t("revenue.avgPerClient")} value={jt(avgRevenue)} />
+            <Kpi label={t("revenue.topClient")} value={topClient ? topClient.client : "—"} />
+            <Kpi label={t("revenue.noSchemeClient")} value={String(withoutRevenue.length)} />
           </div>
 
           <div className="rounded-lg border border-border bg-card p-5 mb-4">
-            <h3 className="text-sm font-semibold mb-3">Tren Revenue</h3>
+            <h3 className="text-sm font-semibold mb-3">{t("revenue.trendTitle")}</h3>
             {trend.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Tidak ada data untuk digambar trennya.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">{t("analytics.noTrendData")}</p>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -117,7 +119,7 @@ function RevenueAnalyticsPage() {
                 </thead>
                 <tbody>
                   {ranked.length === 0 ? (
-                    <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">Belum ada client dengan skema revenue.</td></tr>
+                    <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">{t("analytics.noRevenueScheme")}</td></tr>
                   ) : ranked.map((r) => (
                     <tr key={r.clientId} className="border-t border-border">
                       <td className="p-3 font-medium">{r.client}</td>
@@ -139,7 +141,7 @@ function RevenueAnalyticsPage() {
       {!perClient && (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
           <Banknote className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {running ? "Menghitung analitik revenue…" : "Memuat…"}
+          {running ? t("revenue.computing") : t("analytics.loading")}
         </div>
       )}
     </AdminLayout>

@@ -14,6 +14,7 @@ import {
   Building2,
   Download,
 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 const isSupabaseConnected = Boolean(import.meta.env.VITE_SUPABASE_URL);
 
@@ -41,6 +42,7 @@ interface TunggakanItem {
 }
 
 function DashboardPage() {
+  const { t } = useT();
   const [ridersAktif, setRidersAktif] = useState<number | null>(null);
   const [totalFee, setTotalFee] = useState<number | null>(null);
   const [tunggakanCount, setTunggakanAktif] = useState<number | null>(null);
@@ -104,12 +106,12 @@ function DashboardPage() {
       .then(({ data }) => {
         if (data) {
           setTunggakan(
-            data.map((t: any) => ({
-              name: t.riders?.full_name ?? "Rider",
-              remaining: t.remaining_installments ?? 0,
-              total: t.total_installments ?? 1,
-              amount: fmtMoney(t.remaining_amount, "rb"),
-              installments: `${t.remaining_installments ?? 0} cicilan`,
+            data.map((row: any) => ({
+              name: row.riders?.full_name ?? "Rider",
+              remaining: row.remaining_installments ?? 0,
+              total: row.total_installments ?? 1,
+              amount: fmtMoney(row.remaining_amount, "rb"),
+              installments: `${row.remaining_installments ?? 0} ${t("dash.installmentsLeft")}`,
             })),
           );
         }
@@ -119,7 +121,7 @@ function DashboardPage() {
   /* ── stat cards config ────────────────────── */
   const stats = [
     {
-      label: "Riders aktif",
+      label: t("dash.ridersActive"),
       value: fmtNum(ridersAktif),
       icon: Users,
       iconBg: "bg-primary-soft",
@@ -128,7 +130,7 @@ function DashboardPage() {
       changeUp: true,
     },
     {
-      label: "Total fee bulan ini",
+      label: t("dash.totalFee"),
       value: totalFee !== null ? fmtMoney(totalFee) : "—",
       icon: DollarSign,
       iconBg: "bg-success/10",
@@ -137,7 +139,7 @@ function DashboardPage() {
       changeUp: true,
     },
     {
-      label: "Tunggakan aktif",
+      label: t("dash.tunggakanActive"),
       value: fmtNum(tunggakanCount),
       icon: AlertTriangle,
       iconBg: "bg-destructive/10",
@@ -146,7 +148,7 @@ function DashboardPage() {
       changeUp: false,
     },
     {
-      label: "Deliveries minggu ini",
+      label: t("dash.deliveriesWeek"),
       value: deliveries !== null ? fmtNum(deliveries) : "—",
       icon: Truck,
       iconBg: "bg-warning/10",
@@ -213,21 +215,21 @@ function DashboardPage() {
   };
 
   return (
-    <AdminLayout title="Dashboard" subtitle="Ringkasan operasional — Juli 2026">
+    <AdminLayout title={t("dash.title")} subtitle={`${t("dash.subtitle")} — ${new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" })}`}>
       {/* ── Header actions ─── */}
       <div className="flex items-center justify-between mb-5">
         <div />
         <div className="flex items-center gap-2">
           <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
-            <Calendar className="w-3 h-3" />7 hari terakhir
+            <Calendar className="w-3 h-3" />{t("dash.last7days")}
           </button>
           <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
             <Building2 className="w-3 h-3" />
-            Semua client
+            {t("dash.allClients")}
           </button>
           <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
             <Download className="w-3 h-3" />
-            Export
+            {t("btn.exportBtn")}
           </button>
         </div>
       </div>
@@ -277,13 +279,13 @@ function DashboardPage() {
         {/* Chart */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[13px] font-semibold">Delivery & fee mingguan</h3>
+            <h3 className="text-[13px] font-semibold">{t("dash.weeklyChart")}</h3>
             <Link to="/admin/shipment-analytics" className="text-[10px] text-primary font-medium hover:underline">
-              Lihat detail
+              {t("btn.viewDetail")}
             </Link>
           </div>
           {weeklyData.length === 0 ? (
-            <div className="h-[170px] flex items-center justify-center text-xs text-muted-foreground">Memuat data...</div>
+            <div className="h-[170px] flex items-center justify-center text-xs text-muted-foreground">{t("btn.loading")}</div>
           ) : (
             <div className="flex items-end gap-3 h-[170px] px-1">
               {weeklyData.map((w, i) => {
@@ -326,12 +328,12 @@ function DashboardPage() {
         {/* Top riders */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[13px] font-semibold">Top 5 rider</h3>
+            <h3 className="text-[13px] font-semibold">{t("dash.top5")}</h3>
             <Link
               to="/admin/riders"
               className="text-[10px] text-primary font-medium hover:underline"
             >
-              Lihat semua
+              {t("btn.viewAll")}
             </Link>
           </div>
           <table className="w-full text-[12px]">
@@ -394,7 +396,7 @@ function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Alerts */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <h3 className="text-[13px] font-semibold mb-3">Perlu perhatian</h3>
+          <h3 className="text-[13px] font-semibold mb-3">{t("dash.needsAttention")}</h3>
           <div className="space-y-1.5">
             {alerts.map((a, i) => (
               <div
@@ -411,12 +413,12 @@ function DashboardPage() {
         {/* Tunggakan */}
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold">Tunggakan terbesar</h3>
+            <h3 className="text-[13px] font-semibold">{t("dash.biggestArrears")}</h3>
             <Link
               to="/admin/deductions"
               className="text-[10px] text-primary font-medium hover:underline"
             >
-              Lihat semua
+              {t("btn.viewAll")}
             </Link>
           </div>
           <div className="space-y-0">
@@ -428,43 +430,43 @@ function DashboardPage() {
                     remaining: 3,
                     total: 5,
                     amount: "850rb",
-                    installments: "3 cicilan tersisa",
+                    installments: `3 ${t("dash.installmentsLeft")}`,
                   },
                   {
                     name: "Gilang A.",
                     remaining: 5,
                     total: 8,
                     amount: "720rb",
-                    installments: "5 cicilan tersisa",
+                    installments: `5 ${t("dash.installmentsLeft")}`,
                   },
                   {
                     name: "Hadi S.",
                     remaining: 2,
                     total: 4,
                     amount: "650rb",
-                    installments: "2 cicilan tersisa",
+                    installments: `2 ${t("dash.installmentsLeft")}`,
                   },
                   {
                     name: "Irwan T.",
                     remaining: 4,
                     total: 6,
                     amount: "580rb",
-                    installments: "4 cicilan tersisa",
+                    installments: `4 ${t("dash.installmentsLeft")}`,
                   },
                 ]
-            ).map((t) => (
+            ).map((item) => (
               <div
-                key={t.name}
+                key={item.name}
                 className="flex items-center justify-between py-2.5 border-b border-border last:border-b-0"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold">{t.name}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{t.installments}</div>
+                  <div className="text-[12px] font-semibold">{item.name}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{item.installments}</div>
                   <div className="h-[3px] bg-border rounded-full mt-1 w-full">
                     <div
                       className="h-full bg-destructive rounded-full"
                       style={{
-                        width: `${(t.remaining / t.total) * 100}%`,
+                        width: `${(item.remaining / item.total) * 100}%`,
                       }}
                     />
                   </div>
@@ -473,7 +475,7 @@ function DashboardPage() {
                   className="text-[12px] font-bold text-destructive tabular-nums ml-3 flex-shrink-0"
                   style={{ fontFamily: "'JetBrains Mono', monospace" }}
                 >
-                  {t.amount}
+                  {item.amount}
                 </span>
               </div>
             ))}

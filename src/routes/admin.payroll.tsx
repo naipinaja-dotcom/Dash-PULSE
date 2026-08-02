@@ -30,6 +30,7 @@ import {
   type BulkPaymentRow,
 } from "@/lib/bulk-payment-export";
 import { parseRupiah } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -103,6 +104,7 @@ type NettingCandidate = {
 };
 
 function PayrollPage() {
+  const { t } = useT();
   const posthog = usePostHog();
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<Run | null>(null);
@@ -783,7 +785,7 @@ function PayrollPage() {
   ];
 
   return (
-    <AdminLayout title="Payroll Run" subtitle="Proses payroll rider step by step">
+    <AdminLayout title={t("payroll.title")} subtitle={t("payroll.subtitle")}>
       <div className="flex gap-6">
         {/* Run list sidebar */}
         <aside className="w-56 shrink-0">
@@ -1301,9 +1303,9 @@ function PayrollPage() {
                                               className="rounded-md border border-border bg-background px-2 py-1 text-[12px]"
                                             >
                                               <option value="">(tanpa jenis)</option>
-                                              {dTypes.map((t) => (
-                                                <option key={t.id} value={t.id}>
-                                                  {t.name}
+                                              {dTypes.map((dt) => (
+                                                <option key={dt.id} value={dt.id}>
+                                                  {dt.name}
                                                 </option>
                                               ))}
                                             </select>

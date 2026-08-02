@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck, Search } from "lucide-react";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
@@ -27,6 +28,7 @@ function initialsOf(row: Row) {
 }
 
 function UsersPage() {
+  const { t } = useT();
   const { user } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,8 +98,8 @@ function UsersPage() {
 
   return (
     <AdminLayout
-      title="User Management"
-      subtitle="Atur role tiap user — admin (akses penuh) atau rider (terbatas)"
+      title={t("users.title")}
+      subtitle={t("users.subtitle")}
     >
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px] max-w-md">

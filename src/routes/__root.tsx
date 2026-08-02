@@ -13,25 +13,26 @@ import { PostHogProvider } from "@posthog/react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "@/lib/auth";
-import { I18nProvider } from "@/lib/i18n";
+import { I18nProvider, useT } from "@/lib/i18n";
 import { Toaster } from "@/components/ui/sonner";
 import { ConfirmHost } from "@/components/confirm-dialog";
 
 function NotFoundComponent() {
+  const { t } = useT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold">Halaman tidak ditemukan</h2>
+        <h2 className="mt-4 text-xl font-semibold">{t("error.notFound")}</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Halaman yang Anda cari tidak ada atau sudah dipindahkan.
+          {t("error.notFoundDesc")}
         </p>
         <div className="mt-6">
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
-            Kembali ke beranda
+            {t("error.backHome")}
           </Link>
         </div>
       </div>
@@ -46,11 +47,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
+  const { t } = useT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold">Terjadi kesalahan</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Coba muat ulang halaman.</p>
+        <h1 className="text-xl font-semibold">{t("error.generic")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t("error.tryReload")}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -59,7 +61,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
-            Coba lagi
+            {t("error.retry")}
           </button>
         </div>
       </div>

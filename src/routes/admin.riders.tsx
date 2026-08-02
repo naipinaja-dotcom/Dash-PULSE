@@ -8,6 +8,7 @@ import { parseCSV, toCSV, downloadCSV } from "@/lib/csv";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { activateRiderLogin, activateRiderLoginsBulk, resetRiderLogin, unlinkRiderLogin } from "@/lib/api/rider-auth.functions";
 import { Plus, Pencil, Trash2, Loader2, AlertCircle, Upload, Download, X, Search, KeyRound } from "lucide-react";
 
@@ -29,6 +30,7 @@ type Rider = {
 type Client = { id: string; name: string };
 
 function RidersPage() {
+  const { t } = useT();
   const [rows, setRows] = useState<Rider[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [filter, setFilter] = useState<"all" | RiderStatus>("all");
@@ -101,7 +103,7 @@ function RidersPage() {
     name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <AdminLayout title="Riders" subtitle="Kelola data rider dan status operasional">
+    <AdminLayout title={t("riders.title")} subtitle={t("riders.subtitle")}>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px] max-w-md">
@@ -109,7 +111,7 @@ function RidersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari nama, kode, atau nomor HP..."
+            placeholder={t("riders.searchPlaceholder")}
             className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-[12px] outline-none focus:border-primary transition-colors"
           />
         </div>
@@ -119,7 +121,7 @@ function RidersPage() {
             return (
               <button key={s} onClick={() => setFilter(s)}
                 className={`px-3 py-1.5 text-[11px] rounded-full border transition-colors ${filter === s ? "bg-primary text-primary-foreground border-primary font-medium" : "border-border text-muted-foreground hover:border-primary-border hover:text-foreground"}`}>
-                {s === "all" ? "Semua" : STATUS_LABEL[s]}
+                {s === "all" ? t("btn.all") : STATUS_LABEL[s]}
                 <span className="ml-1 opacity-70" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "10px" }}>{count}</span>
               </button>
             );
@@ -129,11 +131,11 @@ function RidersPage() {
           <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />
           <button onClick={() => setImportOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
-            <Upload className="w-3.5 h-3.5" /> Import CSV
+            <Upload className="w-3.5 h-3.5" /> {t("btn.importCsv")}
           </button>
           <button onClick={() => { setEdit(null); setOpen(true); }}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-medium hover:opacity-90 transition-opacity">
-            <Plus className="w-3.5 h-3.5" /> Tambah rider
+            <Plus className="w-3.5 h-3.5" /> {t("btn.addRider")}
           </button>
         </div>
       </div>

@@ -9,6 +9,7 @@ import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, buildTrend, type ClientPnl, type TrendGranularity } from "@/lib/pnl-engine";
 import { formatRupiah } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
 import { triggerWeeklyPnlPushManual } from "@/lib/api/pnl-push.functions";
 import { toast } from "sonner";
@@ -44,6 +45,7 @@ type PnlSnapshot = {
 
 function ExecutiveDashboard() {
   const { session } = useAuth();
+  const { t } = useT();
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [schemes, setSchemes] = useState<PricingScheme[]>([]);
   const { from, setFrom, to, setTo, resetToDefault } = useIntelligenceDate();
@@ -189,7 +191,7 @@ function ExecutiveDashboard() {
   const maxTopMargin = Math.max(1, ...topByMargin.map((r) => Math.abs(r.margin ?? 0)));
 
   return (
-    <AdminLayout title="Executive Dashboard" subtitle="Ringkasan bisnis: Revenue, Cost, Margin, dan tren BCR lintas periode.">
+    <AdminLayout title={t("exec.title")} subtitle={t("exec.subtitle")}>
 
       {/* ── Date range control ── */}
       <div className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4 mb-5 flex flex-wrap items-end gap-3 text-sm shadow-sm">

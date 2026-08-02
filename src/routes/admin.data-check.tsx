@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import { ClientCombobox } from "@/components/client-combobox";
@@ -34,6 +35,7 @@ type Row = {
 };
 
 function DataCheckPage() {
+  const { t } = useT();
   const search = Route.useSearch();
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState("");
@@ -112,7 +114,7 @@ function DataCheckPage() {
   const rangeTo = Math.min(page * pageSize, total);
 
   return (
-    <AdminLayout title="Cek Data" subtitle="Lihat data pengiriman yang BENERAN tersimpan di database (mentah, apa adanya).">
+    <AdminLayout title={t("dataCheck.title")} subtitle={t("dataCheck.subtitle")}>
       <div className="rounded-lg border border-border bg-card p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Client <span className="font-normal">(opsional)</span></label>

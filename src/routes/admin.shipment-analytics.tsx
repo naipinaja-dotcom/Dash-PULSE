@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Package } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
@@ -18,6 +19,7 @@ type ShipmentRow = {
 };
 
 function ShipmentAnalyticsPage() {
+  const { t } = useT();
   const { from, to } = useIntelligenceDate();
   const [running, setRunning] = useState(false);
   const [rows, setRows] = useState<ShipmentRow[] | null>(null);
@@ -75,23 +77,23 @@ function ShipmentAnalyticsPage() {
 
   return (
     <AdminLayout
-      title="Shipment Analytics"
-      subtitle={`Volume & status pengiriman. Periode ${from} → ${to} (atur di Executive Dashboard).`}
+      title={t("shipment.title")}
+      subtitle={`${t("shipment.subtitlePre")} ${from} → ${to} (${t("analytics.setPeriod")})`}
     >
       {rows && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Kpi label="Total Shipment" value={total.toLocaleString("id-ID")} />
-            <Kpi label="Completed" value={completed.toLocaleString("id-ID")} accent="success" />
-            <Kpi label="Completion Rate" value={completionRate.toFixed(1) + "%"} accent="success" />
-            <Kpi label="Return" value={(byType.get("RETURN") ?? 0).toLocaleString("id-ID")} />
+            <Kpi label={t("shipment.totalShipment")} value={total.toLocaleString("id-ID")} />
+            <Kpi label={t("shipment.completed")} value={completed.toLocaleString("id-ID")} accent="success" />
+            <Kpi label={t("shipment.completionRate")} value={completionRate.toFixed(1) + "%"} accent="success" />
+            <Kpi label={t("shipment.return")} value={(byType.get("RETURN") ?? 0).toLocaleString("id-ID")} />
           </div>
 
           <div className="rounded-lg border border-border bg-card p-5 mb-4">
-            <h3 className="text-sm font-semibold mb-3">Tren Volume Harian</h3>
+            <h3 className="text-sm font-semibold mb-3">{t("shipment.dailyTrend")}</h3>
             {trend.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                Tidak ada data untuk digambar.
+                {t("analytics.noTrendData")}
               </p>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
@@ -128,7 +130,7 @@ function ShipmentAnalyticsPage() {
       {!rows && (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
           <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {running ? "Menghitung analitik shipment…" : "Memuat…"}
+          {running ? t("shipment.computing") : t("analytics.loading")}
         </div>
       )}
     </AdminLayout>
@@ -149,7 +151,7 @@ function BreakdownCard({
     <div className="rounded-lg border border-border bg-card p-5">
       <h3 className="text-sm font-semibold mb-3">{title}</h3>
       {entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Tidak ada data.</p>
+        <p className="text-sm text-muted-foreground">{t("analytics.noData")}</p>
       ) : (
         <div className="space-y-2.5">
           {entries.map(([key, count]) => (

@@ -12,6 +12,7 @@ import type { PricingScheme } from "@/lib/pricing-types";
 import { pricingLabel } from "@/lib/pricing-types";
 import { describeScheme } from "@/lib/rate-card";
 import { formatTanggal } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { ClientCombobox } from "@/components/client-combobox";
@@ -35,6 +36,7 @@ export const Route = createFileRoute("/admin/pricing/")({
 });
 
 function PricingListPage() {
+  const { t } = useT();
   const navigate = useNavigate();
   const [schemes, setSchemes] = useState<PricingScheme[]>([]);
   const [clients, setClients] = useState<MockClient[]>([]);
@@ -204,7 +206,7 @@ function PricingListPage() {
   );
 
   return (
-    <AdminLayout title="Pricing Schemes" subtitle="Skema kalkulasi pendapatan rider per client">
+    <AdminLayout title={t("pricing.title")} subtitle={t("pricing.subtitle")}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-muted-foreground">Filter Client</label>

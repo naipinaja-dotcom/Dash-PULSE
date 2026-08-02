@@ -8,6 +8,7 @@ import type { PricingScheme } from "@/lib/pricing-types";
 import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, buildTrend, type ClientPnl, type ClientLite } from "@/lib/pnl-engine";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Percent, AlertTriangle } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
@@ -24,6 +25,7 @@ function bucketOf(marginPct: number | null): "rugi" | "tipis" | "sehat" | "no_re
 }
 
 function BcrAnalyticsPage() {
+  const { t } = useT();
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [schemes, setSchemes] = useState<PricingScheme[]>([]);
   const { from, to } = useIntelligenceDate();
@@ -85,20 +87,20 @@ function BcrAnalyticsPage() {
   const ranked = withRevenue.slice().sort((a, b) => (a.marginPct ?? 0) - (b.marginPct ?? 0));
 
   return (
-    <AdminLayout title="BCR Analytics" subtitle={`Bill-Cost-Ratio (margin %) per client. Periode ${from} → ${to} (atur di Executive Dashboard).`}>
+    <AdminLayout title={t("bcr.title")} subtitle={`${t("bcr.subtitlePre")} ${from} → ${to} (${t("analytics.setPeriod")})`}>
       {perClient && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Kpi label="Rata-rata BCR" value={avgBcr.toFixed(1) + "%"} accent={avgBcr < 0 ? "destructive" : avgBcr < 15 ? "warning" : "success"} />
-            <Kpi label="Client Rugi" value={String(rugi.length)} accent="destructive" />
-            <Kpi label="Client Margin Tipis" value={String(tipis.length)} accent="warning" />
-            <Kpi label="Client Sehat" value={String(sehat.length)} accent="success" />
+            <Kpi label={t("bcr.avgBcr")} value={avgBcr.toFixed(1) + "%"} accent={avgBcr < 0 ? "destructive" : avgBcr < 15 ? "warning" : "success"} />
+            <Kpi label={t("bcr.clientLoss")} value={String(rugi.length)} accent="destructive" />
+            <Kpi label={t("bcr.clientThin")} value={String(tipis.length)} accent="warning" />
+            <Kpi label={t("bcr.clientHealthy")} value={String(sehat.length)} accent="success" />
           </div>
 
           <div className="rounded-lg border border-border bg-card p-5 mb-4">
-            <h3 className="text-sm font-semibold mb-3">Tren BCR (Margin %)</h3>
+            <h3 className="text-sm font-semibold mb-3">{t("bcr.trendTitle")}</h3>
             {trend.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Tidak ada data untuk digambar trennya.</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">{t("analytics.noTrendData")}</p>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
@@ -115,7 +117,7 @@ function BcrAnalyticsPage() {
                 </LineChart>
               </ResponsiveContainer>
             )}
-            <p className="text-[11px] text-muted-foreground mt-2">Garis putus-putus merah = 0% (batas rugi), kuning = 15% (batas margin tipis).</p>
+            <p className="text-[11px] text-muted-foreground mt-2">{t("bcr.legendNote")}</p>
           </div>
 
           <div className="rounded-lg border border-border overflow-hidden">
@@ -126,7 +128,7 @@ function BcrAnalyticsPage() {
                 </thead>
                 <tbody>
                   {ranked.length === 0 ? (
-                    <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">Belum ada client dengan skema revenue.</td></tr>
+                    <tr><td colSpan={3} className="p-6 text-center text-muted-foreground">{t("analytics.noRevenueScheme")}</td></tr>
                   ) : ranked.map((r) => {
                     const b = bucketOf(r.marginPct);
                     const color = b === "rugi" ? "text-destructive" : b === "tipis" ? "text-warning" : "text-success";
@@ -152,7 +154,7 @@ function BcrAnalyticsPage() {
           </div>
           <div className="flex items-start gap-2 mt-3 text-xs text-muted-foreground">
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-warning" />
-            <span>Diurutkan dari BCR paling rendah — client yang perlu perhatian ada di atas.</span>
+            <span>{t("bcr.sortNote")}</span>
           </div>
         </>
       )}
@@ -160,7 +162,7 @@ function BcrAnalyticsPage() {
       {!perClient && (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
           <Percent className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {running ? "Menghitung analitik BCR…" : "Memuat…"}
+          {running ? t("bcr.computing") : t("analytics.loading")}
         </div>
       )}
     </AdminLayout>

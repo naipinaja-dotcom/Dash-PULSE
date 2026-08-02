@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import {
   triggerCooInsightManual,
@@ -69,6 +70,7 @@ const SEVERITY_STYLE: Record<Severity, string> = {
 type InsightReport = any;
 
 function CooInsightsPage() {
+  const { t } = useT();
   const { session } = useAuth();
   const [week, setWeek] = useState(currentWeek);
   const [reports, setReports] = useState<InsightReport[]>([]);
@@ -132,8 +134,8 @@ function CooInsightsPage() {
 
   return (
     <AdminLayout
-      title="Ops Insight"
-      subtitle="Analisis P&L mingguan otomatis (Worker → Lead → Manager → COO)"
+      title={t("coo.title")}
+      subtitle={t("coo.subtitle")}
     >
       {/* Week selector */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -157,7 +159,7 @@ function CooInsightsPage() {
           onClick={() => setIncidentOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
         >
-          <Plus className="w-3.5 h-3.5" /> Catat Insiden
+          <Plus className="w-3.5 h-3.5" /> {t("coo.logIncident")}
         </button>
         <button
           onClick={generate}
@@ -169,22 +171,22 @@ function CooInsightsPage() {
           ) : (
             <Sparkles className="w-3.5 h-3.5" />
           )}
-          {report ? "Generate Ulang" : "Generate Sekarang"}
+          {report ? t("coo.regenerate") : t("coo.generateNow")}
         </button>
       </div>
 
       {loading ? (
         <div className="p-10 text-center text-muted-foreground">
           <Loader2 className="w-5 h-5 inline animate-spin mr-2" />
-          Memuat…
+          {t("analytics.loading")}
         </div>
       ) : (
         <div className="space-y-4">
           {/* Incident log minggu ini */}
           <div className="rounded-xl border border-border p-4">
-            <h3 className="text-sm font-semibold mb-3">Insiden Minggu Ini ({incidents.length})</h3>
+            <h3 className="text-sm font-semibold mb-3">{t("coo.incidentsThisWeek")} ({incidents.length})</h3>
             {incidents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada insiden dicatat.</p>
+              <p className="text-sm text-muted-foreground">{t("coo.noIncidents")}</p>
             ) : (
               <ul className="space-y-2">
                 {incidents.map((i) => (
@@ -220,8 +222,7 @@ function CooInsightsPage() {
 
           {!report ? (
             <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
-              Belum ada laporan Ops Insight untuk minggu ini. Pastikan Weekly PNL Push sudah jalan
-              buat minggu ini, lalu klik "Generate Sekarang".
+              {t("coo.noReport")}
             </div>
           ) : (
             <>
@@ -291,7 +292,7 @@ function CooInsightsPage() {
 
               {/* Manager actions */}
               <div className="rounded-xl border border-border p-4">
-                <h3 className="text-sm font-semibold mb-3">Rekomendasi Aksi (Manager Agent)</h3>
+                <h3 className="text-sm font-semibold mb-3">{t("coo.managerActions")}</h3>
                 <p className="text-sm text-muted-foreground mb-3">
                   {report.manager_analysis.manager_summary}
                 </p>
@@ -338,7 +339,7 @@ function CooInsightsPage() {
 
               {/* Lead RCA */}
               <div className="rounded-xl border border-border p-4">
-                <h3 className="text-sm font-semibold mb-3">Root Cause Analysis (Lead Agent)</h3>
+                <h3 className="text-sm font-semibold mb-3">{t("coo.leadRca")}</h3>
                 <p className="text-sm text-muted-foreground mb-3">
                   {report.lead_analysis.lead_summary}
                 </p>
@@ -347,8 +348,8 @@ function CooInsightsPage() {
                     <div key={key}>
                       <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-1.5">
                         {key === "revenue_causes"
-                          ? "Penyebab Revenue Berubah"
-                          : "Penyebab Cost Berubah"}
+                          ? t("coo.revenueCauses")
+                          : t("coo.costCauses")}
                       </h4>
                       <ul className="space-y-1">
                         {report.lead_analysis[key]?.map(
@@ -379,7 +380,7 @@ function CooInsightsPage() {
 
               {/* Worker metrics */}
               <div className="rounded-xl border border-border p-4">
-                <h3 className="text-sm font-semibold mb-3">Metrik Mingguan (Worker Agent)</h3>
+                <h3 className="text-sm font-semibold mb-3">{t("coo.weeklyMetrics")}</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                   {(
                     [
@@ -448,6 +449,7 @@ function IncidentModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useT();
   const { session } = useAuth();
   const [type, setType] = useState<IncidentType>("operational");
   const [description, setDescription] = useState("");
@@ -484,11 +486,11 @@ function IncidentModal({
     <div className="fixed inset-0 bg-black/50 grid place-items-center z-50 p-4" onClick={onClose}>
       <div className="bg-card rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-semibold mb-4">
-          Catat Insiden — {week.weekStart} → {week.weekEnd}
+          {t("coo.logIncident")} — {week.weekStart} → {week.weekEnd}
         </h2>
         <div className="space-y-3 text-sm">
           <div>
-            <label className="text-xs text-muted-foreground font-medium">Tipe</label>
+            <label className="text-xs text-muted-foreground font-medium">{t("coo.type")}</label>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as IncidentType)}
@@ -501,7 +503,7 @@ function IncidentModal({
             </select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground font-medium">Deskripsi</label>
+            <label className="text-xs text-muted-foreground font-medium">{t("coo.description")}</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -523,7 +525,7 @@ function IncidentModal({
           </div>
           <div>
             <label className="text-xs text-muted-foreground font-medium">
-              Estimasi Dampak (IDR, opsional)
+              {t("coo.estimatedImpact")}
             </label>
             <input
               value={impact}
@@ -539,14 +541,14 @@ function IncidentModal({
             onClick={onClose}
             className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
           >
-            Batal
+            {t("coo.cancel")}
           </button>
           <button
             onClick={save}
             disabled={saving}
             className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
-            {saving ? "Menyimpan…" : "Simpan"}
+            {saving ? t("coo.saving") : t("coo.save")}
           </button>
         </div>
       </div>

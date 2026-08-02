@@ -9,6 +9,7 @@ import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, type ClientPnl } from "@/lib/pnl-engine";
 import { formatRupiah } from "@/lib/format";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { TrendingUp, AlertTriangle, LayoutDashboard } from "lucide-react";
 
@@ -20,6 +21,7 @@ type PnlRow = ClientPnl;
 const jt = (n: number) => "Rp " + (n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " jt";
 
 function PnlPage() {
+  const { t } = useT();
   const [clients, setClients] = useState<ClientLite[]>([]);
   const [schemes, setSchemes] = useState<PricingScheme[]>([]);
   const { from, to } = useIntelligenceDate();
@@ -77,7 +79,7 @@ function PnlPage() {
   const maxMargin = Math.max(1, ...(rows ?? []).map((r) => Math.abs(r.margin ?? 0)));
 
   return (
-    <AdminLayout title="Margin Analytics" subtitle={`Revenue (tagihan client) − Cost (bayar rider) = Margin, per client. Periode ${from} → ${to} (atur di Executive Dashboard).`}>
+    <AdminLayout title={t("margin.title")} subtitle={`${t("margin.subtitlePre")} ${from} → ${to} (${t("analytics.setPeriod")})`}>
       <Link to="/admin/pnl-dashboard" className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline mb-4">
         <LayoutDashboard className="w-4 h-4" /> Ubah tanggal di Executive Dashboard
       </Link>

@@ -128,7 +128,7 @@ function DashboardPage() {
                       {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                       <span className="text-[13px] font-medium">{d.typeName}</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                        {d.mode === "daily" ? "Harian" : d.mode === "fixed" ? "Cicilan" : "Auto"}
+                        {d.mode === "daily" ? t("rider.daily") : d.mode === "fixed" ? t("rider.installment") : t("rider.auto")}
                       </span>
                     </div>
                     <div className="text-[13px] font-semibold tabular-nums">{formatRupiah(d.totalAmount)}</div>
@@ -140,7 +140,7 @@ function DashboardPage() {
                           <div className="flex justify-between text-[12px]">
                             <span className="font-medium">{c.clientName}</span>
                             <span className="tabular-nums">
-                              {d.mode === "daily" && <span className="text-muted-foreground mr-2">{c.days} hari</span>}
+                              {d.mode === "daily" && <span className="text-muted-foreground mr-2">{c.days} {t("rider.dayUnit")}</span>}
                               {formatRupiah(c.amount)}
                             </span>
                           </div>
@@ -148,7 +148,7 @@ function DashboardPage() {
                             <div key={i} className="flex justify-between text-[11px] text-muted-foreground pl-3 mt-0.5">
                               <span>{formatTanggal(p.start)} — {formatTanggal(p.end)}</span>
                               <span className="tabular-nums">
-                                {d.mode === "daily" && <span className="mr-2">{p.days} hari</span>}
+                                {d.mode === "daily" && <span className="mr-2">{p.days} {t("rider.dayUnit")}</span>}
                                 {formatRupiah(p.amount)}
                               </span>
                             </div>
@@ -158,7 +158,7 @@ function DashboardPage() {
                       {d.mode === "daily" && d.clients.length > 1 && (
                         <div className="flex justify-between text-[12px] font-medium mt-2 pt-1.5 border-t border-border/30">
                           <span>Total</span>
-                          <span className="tabular-nums">{d.totalDays} hari · {formatRupiah(d.totalAmount)}</span>
+                          <span className="tabular-nums">{d.totalDays} {t("rider.dayUnit")} · {formatRupiah(d.totalAmount)}</span>
                         </div>
                       )}
                     </div>

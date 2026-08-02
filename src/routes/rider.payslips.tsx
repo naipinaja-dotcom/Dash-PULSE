@@ -4,6 +4,7 @@ import { usePostHog } from "@posthog/react";
 import { RiderLayout } from "@/components/rider-layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useRiderSelf } from "@/lib/use-rider-self";
+import { useT } from "@/lib/i18n";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { Loader2, X, ChevronRight, ChevronDown, Download } from "lucide-react";
 import { PayslipPrint } from "@/components/payslip-print";
@@ -47,6 +48,7 @@ type DeliveryRow = {
 };
 
 function PayslipsPage() {
+  const { t } = useT();
   const posthog = usePostHog();
   const { rider, loading: riderLoading } = useRiderSelf();
   const [slips, setSlips] = useState<PayslipRow[]>([]);
@@ -68,7 +70,7 @@ function PayslipsPage() {
   const busy = riderLoading || loading;
 
   return (
-    <RiderLayout title="Slip Gaji">
+    <RiderLayout title={t("slip.title")}>
       <EarningsChecker riderId={rider?.id ?? ""} riderReady={!riderLoading && !!rider} />
       {busy ? (
         <div className="flex justify-center py-10">
@@ -76,9 +78,9 @@ function PayslipsPage() {
         </div>
       ) : slips.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
-          <div className="text-sm font-medium">Belum ada slip gaji</div>
+          <div className="text-sm font-medium">{t("slip.empty")}</div>
           <p className="text-xs text-muted-foreground mt-1">
-            Slip gaji akan muncul di sini setelah admin publish payroll.
+            {t("slip.emptyDesc")}
           </p>
         </div>
       ) : (
@@ -133,6 +135,7 @@ function PayslipDetailModal({
   employeeId: string;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [ded, setDed] = useState<{ name: string; amount: number }[]>([]);
   const [inc, setInc] = useState<{ name: string; amount: number }[]>([]);
   const [clients, setClients] = useState<ClientSummary[]>([]);
@@ -198,7 +201,7 @@ function PayslipDetailModal({
               onClick={() => setShowPrint(true)}
               disabled={loadingClients || loadingDed || loadingInc}
               className="p-1.5 text-muted-foreground hover:text-primary disabled:opacity-40"
-              title="Unduh PDF"
+              title={t("btn.downloadPdf")}
             >
               <Download className="w-4 h-4" />
             </button>
@@ -211,21 +214,21 @@ function PayslipDetailModal({
         <div className="p-4 space-y-4 text-sm">
           {/* summary */}
           <div>
-            <Row label="Order selesai" value={String(slip.data?.delivery_count ?? 0)} />
-            <Row label="Fee kotor" value={formatRupiah(slip.data?.gross_earning)} />
+            <Row label={t("slip.ordersCompleted")} value={String(slip.data?.delivery_count ?? 0)} />
+            <Row label={t("slip.grossFee")} value={formatRupiah(slip.data?.gross_earning)} />
           </div>
 
           {/* per-client detail */}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-              Detail per Client
+              {t("slip.perClient")}
             </p>
             {loadingClients ? (
               <div className="flex justify-center py-3">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
             ) : clients.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Tidak ada data client.</p>
+              <p className="text-xs text-muted-foreground">{t("slip.noClientData")}</p>
             ) : (
               <div className="space-y-2">
                 {clients.map((c) => (
@@ -244,7 +247,7 @@ function PayslipDetailModal({
           {/* incentives */}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-              Insentif Tambahan
+              {t("slip.incentives")}
             </p>
             <div className="border-t border-border pt-2">
               {loadingInc ? (
@@ -252,7 +255,7 @@ function PayslipDetailModal({
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 </div>
               ) : inc.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-1">Tidak ada insentif tambahan periode ini.</p>
+                <p className="text-xs text-muted-foreground py-1">{t("slip.noIncentives")}</p>
               ) : (
                 inc.map((d, i) => (
                   <Row key={i} label={d.name} value={`+${formatRupiah(d.amount)}`} positive />
@@ -264,7 +267,7 @@ function PayslipDetailModal({
           {/* deductions */}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-              Potongan
+              {t("slip.deductions")}
             </p>
             <div className="border-t border-border pt-2">
               {loadingDed ? (
@@ -272,7 +275,7 @@ function PayslipDetailModal({
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 </div>
               ) : ded.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-1">Tidak ada potongan periode ini.</p>
+                <p className="text-xs text-muted-foreground py-1">{t("slip.noDeductions")}</p>
               ) : (
                 ded.map((d, i) => (
                   <Row key={i} label={d.name} value={`−${formatRupiah(d.amount)}`} muted />
@@ -283,7 +286,7 @@ function PayslipDetailModal({
 
           {/* take-home */}
           <div className="border-t border-border pt-1 flex items-baseline justify-between gap-3">
-            <span className="text-xs text-muted-foreground flex-shrink-0">Take-home</span>
+            <span className="text-xs text-muted-foreground flex-shrink-0">{t("slip.takeHome")}</span>
             <span className="text-xl font-semibold text-primary whitespace-nowrap">{formatRupiah(slip.data?.net_pay)}</span>
           </div>
         </div>
@@ -312,6 +315,7 @@ function ClientCard({
   periodStart: string;
   periodEnd: string;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -368,7 +372,7 @@ function ClientCard({
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
             </div>
           ) : deliveries.length === 0 ? (
-            <p className="text-xs text-muted-foreground px-3 py-2">Tidak ada data order.</p>
+            <p className="text-xs text-muted-foreground px-3 py-2">{t("slip.noOrderData")}</p>
           ) : (
             <>
               {deliveries.map((d) => {

@@ -9,6 +9,7 @@ import { classifyAllClients } from "@/lib/delivery-classification";
 import { cleanDuplicateDeliveries } from "@/lib/delivery-dedup";
 import { reverseGeocodeDistricts } from "@/lib/api/geocoding.functions";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { Upload, FileText, Loader2, AlertTriangle, X, RefreshCw, Trash2 } from "lucide-react";
@@ -38,17 +39,18 @@ async function inChunks<T>(
 }
 
 function UploadPage() {
+  const { t } = useT();
   const [tab, setTab] = useState<"delivery" | "attendance">("delivery");
   return (
-    <AdminLayout title="Upload Data" subtitle="Import CSV delivery dan attendance">
+    <AdminLayout title={t("upload.title")} subtitle={t("upload.subtitle")}>
       <div className="flex gap-1 p-1 bg-muted rounded-md w-fit mb-5">
-        {(["delivery", "attendance"] as const).map((t) => (
+        {(["delivery", "attendance"] as const).map((k) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 text-sm rounded ${tab === t ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-4 py-1.5 text-sm rounded ${tab === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
           >
-            {t === "delivery" ? "Upload Delivery" : "Upload Attendance"}
+            {k === "delivery" ? "Upload Delivery" : "Upload Attendance"}
           </button>
         ))}
       </div>

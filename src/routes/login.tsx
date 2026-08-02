@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { setFirstTimeRiderPin } from "@/lib/api/rider-auth.functions";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -39,6 +40,7 @@ function LoginPage() {
   const [newPin, setNewPin] = useState("");
   const [newPinConfirm, setNewPinConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useT();
 
   if (authLoading) return null;
   if (user)
@@ -49,29 +51,29 @@ function LoginPage() {
     setSubmitting(true);
     try {
       if (mode === "admin") {
-        if (!email || !password) throw new Error("Email & password wajib diisi");
+        if (!email || !password) throw new Error(t("login.emailRequired"));
         await loginAdmin(email, password);
         posthog.capture("user_logged_in", { role: "admin" });
-        toast.success("Berhasil masuk");
+        toast.success(t("login.success"));
         navigate({ to: "/admin/dashboard" });
       } else if (riderSubMode === "login") {
-        if (!employeeId || !pin) throw new Error("Kode Mitra & PIN wajib diisi");
+        if (!employeeId || !pin) throw new Error(t("login.riderRequired"));
         await loginRider(employeeId, pin);
         posthog.capture("user_logged_in", { role: "rider" });
-        toast.success("Berhasil masuk");
+        toast.success(t("login.success"));
         navigate({ to: "/rider/dashboard" });
       } else {
-        if (!employeeId || !phone || !newPin) throw new Error("Semua kolom wajib diisi");
-        if (newPin !== newPinConfirm) throw new Error("PIN baru tidak sama");
-        if (!/^\d{4,8}$/.test(newPin)) throw new Error("PIN 4-8 digit angka");
+        if (!employeeId || !phone || !newPin) throw new Error(t("login.allFieldsRequired"));
+        if (newPin !== newPinConfirm) throw new Error(t("login.pinMismatch"));
+        if (!/^\d{4,8}$/.test(newPin)) throw new Error(t("login.pinFormat"));
         await setFirstTimeRiderPin({ data: { employeeId, phone, newPin } });
         await loginRider(employeeId, newPin);
         posthog.capture("user_logged_in", { role: "rider", first_time_pin: true });
-        toast.success("PIN berhasil dibuat, berhasil masuk");
+        toast.success(t("login.pinCreated"));
         navigate({ to: "/rider/dashboard" });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Login gagal");
+      toast.error(err instanceof Error ? err.message : t("login.failed"));
     } finally {
       setSubmitting(false);
     }
@@ -90,7 +92,7 @@ function LoginPage() {
           OES Platform · Rider
         </p>
         <p className="text-sm opacity-85 max-w-xs">
-          Pantau pendapatanmu, kapan saja dan di mana saja.
+          {t("login.tagline")}
         </p>
       </div>
 
@@ -106,12 +108,12 @@ function LoginPage() {
         </div>
         <div>
           <h2 className="text-3xl font-semibold leading-tight mb-3">
-            Sistem payroll terpadu
+            {t("login.heroTitle1")}
             <br />
-            untuk operasional rider.
+            {t("login.heroTitle2")}
           </h2>
           <p className="text-sm opacity-80 max-w-sm">
-            Kelola skema pricing, attendance, potongan, dan slip gaji dari satu tempat.
+            {t("login.heroDesc")}
           </p>
         </div>
         <div className="text-xs opacity-70">
@@ -121,13 +123,13 @@ function LoginPage() {
 
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm">
-          <h1 className="text-xl font-semibold mb-1">Masuk ke Dash PULSE</h1>
+          <h1 className="text-xl font-semibold mb-1">{t("login.title")}</h1>
           <p className="text-sm text-muted-foreground mb-4">
             {mode === "admin"
-              ? "Masuk dengan email & password admin Anda. Akun baru hanya dapat dibuat oleh administrator."
+              ? t("login.adminDesc")
               : riderSubMode === "login"
-                ? "Masuk pakai Kode Mitra & PIN yang sudah kamu buat sendiri."
-                : "Verifikasi pakai Kode Mitra & Nomor WhatsApp yang terdaftar, lalu buat PIN sendiri."}
+                ? t("login.riderDesc")
+                : t("login.firstTimeDesc")}
           </p>
 
           <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 max-w-[220px]">
@@ -154,7 +156,7 @@ function LoginPage() {
           {mode === "admin" ? (
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium">Email</label>
+                <label className="text-sm font-medium">{t("login.email")}</label>
                 <input
                   type="email"
                   value={email}
@@ -164,7 +166,7 @@ function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Password</label>
+                <label className="text-sm font-medium">{t("login.password")}</label>
                 <input
                   type="password"
                   value={password}
@@ -177,7 +179,7 @@ function LoginPage() {
           ) : riderSubMode === "login" ? (
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium">Kode Mitra</label>
+                <label className="text-sm font-medium">{t("login.riderCode")}</label>
                 <input
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
@@ -186,7 +188,7 @@ function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">PIN</label>
+                <label className="text-sm font-medium">{t("login.pin")}</label>
                 <input
                   type="password"
                   inputMode="numeric"
@@ -201,13 +203,13 @@ function LoginPage() {
                 onClick={() => setRiderSubMode("firstTime")}
                 className="text-xs text-primary hover:underline"
               >
-                Belum pernah login? Buat PIN pertama kali
+                {t("login.firstTimeLink")}
               </button>
             </div>
           ) : (
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium">Kode Mitra</label>
+                <label className="text-sm font-medium">{t("login.riderCode")}</label>
                 <input
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
@@ -216,7 +218,7 @@ function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Nomor WhatsApp terdaftar</label>
+                <label className="text-sm font-medium">{t("login.whatsapp")}</label>
                 <input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -225,7 +227,7 @@ function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">PIN baru</label>
+                <label className="text-sm font-medium">{t("login.newPin")}</label>
                 <input
                   type="password"
                   inputMode="numeric"
@@ -236,7 +238,7 @@ function LoginPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Ulangi PIN baru</label>
+                <label className="text-sm font-medium">{t("login.confirmPin")}</label>
                 <input
                   type="password"
                   inputMode="numeric"
@@ -251,7 +253,7 @@ function LoginPage() {
                 onClick={() => setRiderSubMode("login")}
                 className="text-xs text-primary hover:underline"
               >
-                Sudah pernah buat PIN? Masuk di sini
+                {t("login.alreadyHavePin")}
               </button>
             </div>
           )}
@@ -262,7 +264,7 @@ function LoginPage() {
             className="mt-5 w-full rounded-md bg-primary text-primary-foreground py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            {mode === "rider" && riderSubMode === "firstTime" ? "Buat PIN & Masuk" : "Masuk"}
+            {mode === "rider" && riderSubMode === "firstTime" ? t("login.createPinSubmit") : t("login.submit")}
           </button>
         </form>
       </div>

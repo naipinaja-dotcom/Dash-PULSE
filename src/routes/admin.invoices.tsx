@@ -8,6 +8,7 @@ import { toCSV, downloadCSV } from "@/lib/csv";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { toast } from "sonner";
 import { Download, Loader2, Trash2, CheckCircle2, Printer, X } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import { ClientCombobox } from "@/components/client-combobox";
 
 export const Route = createFileRoute("/admin/invoices")({ component: InvoicesPage });
@@ -25,6 +26,7 @@ type Invoice = {
 type Client = { id: string; name: string; address: string | null; contact_person: string | null; phone: string | null };
 
 function InvoicesPage() {
+  const { t } = useT();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientFilter, setClientFilter] = useState("");
@@ -81,7 +83,7 @@ function InvoicesPage() {
   const grandTotal = filtered.reduce((s, i) => s + Number(i.total_amount), 0);
 
   return (
-    <AdminLayout title="Invoices" subtitle="Invoice client yang sudah di-commit dari Hitung Fee (sisi revenue)">
+    <AdminLayout title={t("invoices.title")} subtitle={t("invoices.subtitle")}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <ClientCombobox
           value={clientFilter}

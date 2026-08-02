@@ -8,6 +8,7 @@ import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { Pencil, Trash2, Loader2, Search, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import {
   EXPORT_COLUMNS,
   ALL_EXPORT_COLUMN_KEYS,
@@ -55,6 +56,7 @@ function clientInitials(name: string) {
 }
 
 function ClientsPage() {
+  const { t } = useT();
   const [rows, setRows] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -202,7 +204,7 @@ function ClientsPage() {
     usePagination(filtered, 10);
 
   return (
-    <AdminLayout title="Clients" subtitle={`${rows.length} client terdaftar`}>
+    <AdminLayout title={t("clients.title")} subtitle={`${rows.length} ${t("clients.subtitle")}`}>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px] max-w-md">

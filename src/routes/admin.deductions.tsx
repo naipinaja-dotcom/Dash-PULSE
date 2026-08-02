@@ -5,19 +5,21 @@ import { DTypesTab } from "@/components/deductions/d-types-tab";
 import { AddTab } from "@/components/deductions/add-tab";
 import { ActiveTab } from "@/components/deductions/active-tab";
 import { RecapTab } from "@/components/deductions/recap-tab";
+import { MolisTypesTab } from "@/components/deductions/molis-types-tab";
 import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/admin/deductions")({ component: DeductionsPage });
 
 function DeductionsPage() {
   const { t } = useT();
-  const [tab, setTab] = useState<"types" | "add" | "active" | "recap">("types");
+  const [tab, setTab] = useState<"types" | "molis" | "add" | "active" | "recap">("types");
   return (
     <AdminLayout title={t("ded.title")} subtitle={t("ded.subtitle")}>
       <div className="flex gap-1 p-1 bg-muted rounded-md w-fit mb-5">
         {(
           [
             ["types", t("ded.tabTypes")],
+            ["molis", "Jenis Molis"],
             ["add", t("ded.tabAdd")],
             ["active", t("ded.tabActive")],
             ["recap", t("ded.tabRecap")],
@@ -33,6 +35,7 @@ function DeductionsPage() {
         ))}
       </div>
       {tab === "types" && <DTypesTab />}
+      {tab === "molis" && <MolisTypesTab />}
       {tab === "add" && <AddTab />}
       {tab === "active" && <ActiveTab />}
       {tab === "recap" && <RecapTab />}

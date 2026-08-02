@@ -208,7 +208,14 @@ export async function generatePayrollDetails(
       }
       return { amount: Number(i.per_period_amount || 0), days: 0 };
     });
-    const installTotal = dedItems.reduce((s, d) => s + d.amount, 0);
+    // charge_target='client_revenue' (mis. molis gratis buat rider, kita yang
+    // nanggung sewanya) TIDAK ngurangin net_pay rider — biayanya kena di sisi
+    // P&L client lewat molis-cost.ts, bukan di sini. Baris deduction tetap
+    // dicatat di bawah (audit trail), cuma gak masuk ke installTotal.
+    const installTotal = dedItems.reduce(
+      (s, d, idx) => s + ((rInstall[idx] as any).charge_target === "client_revenue" ? 0 : d.amount),
+      0,
+    );
 
     const autoApplicable = gross > 0
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -233,13 +240,15 @@ export async function generatePayrollDetails(
     rInstall.forEach((ins: any, idx: number) => {
       const item = dedItems[idx];
       if (item.amount <= 0) return;
+      const isClientRevenue = ins.mode === "daily" && ins.charge_target === "client_revenue";
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,
         description: ins.mode === "daily"
-          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}`
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` +
+            (isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "")
           : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`,
-        amount: item.amount,
+        amount: isClientRevenue ? 0 : item.amount,
       });
     });
     for (const t of autoApplicable) {

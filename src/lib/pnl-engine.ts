@@ -91,6 +91,9 @@ export function computePnl(
   schemes: PricingScheme[],
   clients: ClientLite[],
   attendanceRows: AttendanceLogWithClientName[] = [],
+  // Biaya molis yang charge_target='client_revenue' (lihat molis-cost.ts) —
+  // rider gratis, tapi ini tetap ngurangin margin client-nya di sini.
+  molisCostByClient: Map<string, number> = new Map(),
 ): PnlResult {
   const byClient = new Map<string, DeliveryRow[]>();
   for (const r of rows) {
@@ -108,7 +111,7 @@ export function computePnl(
   // Union client dari 2 sumber — client yang MURNI attendance (nol
   // delivery_records, mis. Alfagift) sebelumnya gak pernah masuk sini sama
   // sekali karena cuma delivery_records yang di-grouping.
-  const allClientIds = new Set([...byClient.keys(), ...attByClient.keys()]);
+  const allClientIds = new Set([...byClient.keys(), ...attByClient.keys(), ...molisCostByClient.keys()]);
 
   const nameOf = new Map(clients.map((c) => [c.id, c.name]));
   const perClient: ClientPnl[] = [];
@@ -119,7 +122,7 @@ export function computePnl(
     const clientS = pickPricingScheme(schemes, cid, "client");
     const costResult = calcForScheme(riderS, crows, cattendance);
     const revResult = calcForScheme(clientS, crows, cattendance);
-    const cost = costResult?.grandTotal ?? 0;
+    const cost = (costResult?.grandTotal ?? 0) + (molisCostByClient.get(cid) ?? 0);
     const revenue = revResult ? revResult.grandTotal : null;
     const margin = revenue === null ? null : revenue - cost;
     const marginPct = revenue && revenue > 0 && margin !== null ? (margin / revenue) * 100 : null;

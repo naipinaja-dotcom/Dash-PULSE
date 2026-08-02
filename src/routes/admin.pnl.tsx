@@ -7,6 +7,7 @@ import { listPricingSchemes } from "@/lib/pricing-store";
 import type { PricingScheme } from "@/lib/pricing-types";
 import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, type ClientPnl } from "@/lib/pnl-engine";
+import { fetchMolisRevenueCost } from "@/lib/molis-cost";
 import { formatRupiah } from "@/lib/format";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
 import { useT } from "@/lib/i18n";
@@ -52,7 +53,7 @@ function PnlPage() {
     setRunning(true);
     setRows(null);
     try {
-      const [all, attAll] = await Promise.all([
+      const [all, attAll, molisCost] = await Promise.all([
         fetchAllRows<DeliveryRow & { client_id: string | null }>((c, f, t) =>
           c.from("delivery_records")
             .select("client_id, rider_id, driver_code, delivery_date, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
@@ -61,8 +62,9 @@ function PnlPage() {
           (c as any).from("attendance_logs")
             .select("rider_id, driver_code, client_name, log_date, clock_in, duration_minutes, is_late, is_absent")
             .gte("log_date", from).lte("log_date", to).range(f, t)),
+        fetchMolisRevenueCost(from, to),
       ]);
-      const { perClient } = computePnl(all, schemes, clients, attAll);
+      const { perClient } = computePnl(all, schemes, clients, attAll, molisCost);
       setRows(perClient);
       if (perClient.length === 0) toast.message("Tidak ada data pengiriman di rentang ini.");
     } catch (e) {

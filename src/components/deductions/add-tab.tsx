@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
 import { toast } from "sonner";
-import type { DType, Rider } from "./types";
+import type { DType, MolisType, Rider } from "./types";
 
 export function AddTab() {
   const [riders, setRiders] = useState<Rider[]>([]);
   const [types, setTypes] = useState<DType[]>([]);
+  const [molisTypes, setMolisTypes] = useState<MolisType[]>([]);
   const [f, setF] = useState({
     rider_ids: [] as string[],
     deduction_type_id: "",
     mode: "fixed" as "fixed" | "daily",
     total_amount: 0,
     daily_rate: 0,
+    molis_type_id: "",
+    charge_target: "rider" as "rider" | "client_revenue",
     start_date: new Date().toISOString().slice(0, 10),
     installment: false,
     installment_count: 1,
@@ -46,6 +49,12 @@ export function AddTab() {
       .eq("active", true)
       .eq("auto_recurring", false)
       .then(({ data }: any) => setTypes(data ?? []));
+    (supabase as any)
+      .from("molis_types")
+      .select("*")
+      .eq("active", true)
+      .order("name")
+      .then(({ data }: any) => setMolisTypes(data ?? []));
   }, []);
 
   const save = async () => {
@@ -64,6 +73,8 @@ export function AddTab() {
       installment_count: f.mode === "fixed" ? count : null,
       per_period_amount: f.mode === "fixed" ? per : null,
       daily_rate: f.mode === "daily" ? f.daily_rate : null,
+      molis_type_id: f.mode === "daily" ? f.molis_type_id || null : null,
+      charge_target: f.mode === "daily" ? f.charge_target : "rider",
       start_date: f.start_date,
       next_deduction_date: f.start_date,
       notes: f.notes || null,
@@ -72,7 +83,7 @@ export function AddTab() {
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success(`Potongan ditambahkan ke ${f.rider_ids.length} rider`);
-    setF({ ...f, rider_ids: [], total_amount: 0, daily_rate: 0, notes: "" });
+    setF({ ...f, rider_ids: [], total_amount: 0, daily_rate: 0, molis_type_id: "", charge_target: "rider", notes: "" });
     setSearch("");
   };
 
@@ -191,19 +202,70 @@ export function AddTab() {
           />
         </div>
       ) : (
-        <div>
-          <label className="font-medium">Tarif per Hari (Rp)</label>
-          <input
-            inputMode="numeric"
-            placeholder="mis. 38.000"
-            value={f.daily_rate ? f.daily_rate.toLocaleString("id-ID") : ""}
-            onChange={(e) => setF({ ...f, daily_rate: parseRupiah(e.target.value) })}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Tiap payroll digenerate, dikali jumlah hari kalender di periode itu (bukan cuma hari
-            rider jalan).
-          </p>
+        <div className="space-y-3">
+          {molisTypes.length > 0 && (
+            <div>
+              <label className="font-medium">Jenis Molis</label>
+              <select
+                value={f.molis_type_id}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const mt = molisTypes.find((m) => m.id === id);
+                  setF({
+                    ...f,
+                    molis_type_id: id,
+                    daily_rate: mt ? mt.default_daily_rate : f.daily_rate,
+                  });
+                }}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+              >
+                <option value="">— bukan molis / manual —</option>
+                {molisTypes.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} (Rp{Number(m.default_daily_rate).toLocaleString("id-ID")}/hari)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="font-medium">Tarif per Hari (Rp)</label>
+            <input
+              inputMode="numeric"
+              placeholder="mis. 38.000"
+              value={f.daily_rate ? f.daily_rate.toLocaleString("id-ID") : ""}
+              onChange={(e) => setF({ ...f, daily_rate: parseRupiah(e.target.value) })}
+              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Tiap payroll digenerate, dikali jumlah hari kalender di periode itu (bukan cuma hari
+              rider jalan). Tarif dari jenis molis di atas cuma autofill — tetap bisa diedit manual
+              kalau beda untuk client ini.
+            </p>
+          </div>
+          <div>
+            <label className="font-medium">Siapa yang Menanggung</label>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setF({ ...f, charge_target: "rider" })}
+                className={`text-left rounded-md px-3 py-2 border text-xs ${f.charge_target === "rider" ? "border-primary bg-primary-soft" : "border-border"}`}
+              >
+                <span className="font-medium block">Rider</span>
+                <span className="text-muted-foreground">Potong dari net pay rider (default)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setF({ ...f, charge_target: "client_revenue" })}
+                className={`text-left rounded-md px-3 py-2 border text-xs ${f.charge_target === "client_revenue" ? "border-primary bg-primary-soft" : "border-border"}`}
+              >
+                <span className="font-medium block">Revenue Client</span>
+                <span className="text-muted-foreground">
+                  Rider tetap terima fee penuh — biaya masuk cost P&amp;L client ini
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
       <div>

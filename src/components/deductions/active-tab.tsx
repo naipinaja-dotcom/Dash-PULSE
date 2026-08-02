@@ -22,6 +22,7 @@ export function ActiveTab() {
     total_amount: 0,
     installment_count: 1,
     daily_rate: 0,
+    charge_target: "rider" as "rider" | "client_revenue",
     next_deduction_date: "",
     notes: "",
   });
@@ -63,6 +64,7 @@ export function ActiveTab() {
       total_amount: r.total_amount ?? 0,
       installment_count: r.installment_count ?? 1,
       daily_rate: r.daily_rate ?? 0,
+      charge_target: r.charge_target ?? "rider",
       next_deduction_date: r.next_deduction_date ?? "",
       notes: r.notes ?? "",
     });
@@ -93,6 +95,7 @@ export function ActiveTab() {
     };
     if (ef.mode === "daily") {
       update.daily_rate = ef.daily_rate;
+      update.charge_target = ef.charge_target;
       update.total_amount = null;
       update.installment_count = null;
       update.per_period_amount = null;
@@ -250,7 +253,14 @@ export function ActiveTab() {
                     <td className="p-3 text-muted-foreground">{r.type?.name}</td>
                     <td className="p-3 text-muted-foreground">
                       {r.mode === "daily" ? (
-                        <span>Rp{Number(r.daily_rate ?? 0).toLocaleString("id-ID")}/hari</span>
+                        <div className="space-y-0.5">
+                          <span>Rp{Number(r.daily_rate ?? 0).toLocaleString("id-ID")}/hari</span>
+                          {r.charge_target === "client_revenue" && (
+                            <span className="block text-[10px] font-medium text-primary">
+                              Ditanggung Revenue Client
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span>Rp{Number(r.per_period_amount ?? 0).toLocaleString("id-ID")}/periode</span>
                       )}
@@ -330,17 +340,34 @@ export function ActiveTab() {
                             </select>
                           </div>
                           {ef.mode === "daily" ? (
-                            <div>
-                              <label className="text-xs font-medium text-muted-foreground">
-                                Tarif per Hari (Rp)
-                              </label>
-                              <input
-                                inputMode="numeric"
-                                value={ef.daily_rate ? ef.daily_rate.toLocaleString("id-ID") : ""}
-                                onChange={(e) => setEf({ ...ef, daily_rate: parseRupiah(e.target.value) })}
-                                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-                              />
-                            </div>
+                            <>
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground">
+                                  Tarif per Hari (Rp)
+                                </label>
+                                <input
+                                  inputMode="numeric"
+                                  value={ef.daily_rate ? ef.daily_rate.toLocaleString("id-ID") : ""}
+                                  onChange={(e) => setEf({ ...ef, daily_rate: parseRupiah(e.target.value) })}
+                                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground">
+                                  Ditanggung
+                                </label>
+                                <select
+                                  value={ef.charge_target}
+                                  onChange={(e) =>
+                                    setEf({ ...ef, charge_target: e.target.value as "rider" | "client_revenue" })
+                                  }
+                                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                >
+                                  <option value="rider">Rider (net pay)</option>
+                                  <option value="client_revenue">Revenue Client</option>
+                                </select>
+                              </div>
+                            </>
                           ) : (
                             <>
                               <div>

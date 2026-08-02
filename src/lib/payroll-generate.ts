@@ -15,6 +15,50 @@ export interface PayrollRunLite {
   status?: string;
 }
 
+const DAY_MS = 86_400_000;
+
+// Siklus tagihan custom mode='monthly' (mis. 25 - 24 bulan depannya, bukan
+// kalender 1-31) — csd = "cycle start day". Semua tanggal UTC-midnight biar
+// gak kena geser timezone.
+function cycleStartOf(cycleEnd: Date, csd: number): Date {
+  return new Date(Date.UTC(cycleEnd.getUTCFullYear(), cycleEnd.getUTCMonth() - 1, csd));
+}
+function cycleEndAfter(cycleEnd: Date, csd: number): Date {
+  return new Date(Date.UTC(cycleEnd.getUTCFullYear(), cycleEnd.getUTCMonth() + 1, csd - 1));
+}
+function cycleEndContaining(date: Date, csd: number): Date {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const d = date.getUTCDate();
+  return d >= csd ? new Date(Date.UTC(y, m + 1, csd - 1)) : new Date(Date.UTC(y, m, csd - 1));
+}
+// Jumlah hari yang masih "kepending" (belum ke-charge di run lain) buat 1
+// installment mode='monthly', dari siklus yang ngandung start_date sampai
+// siklus yang cycle_end-nya <= period_end run ini. Dipanggil idempotent —
+// murni dari riwayat payroll_deductions (closedCycles), bukan state yang
+// di-mutate — jadi generate ulang run yang sama selalu ngasih hasil sama.
+function monthlyDueDays(
+  inst: { id: string; start_date: string; cycle_start_day: number | null },
+  periodEndStr: string,
+  closedCyclesByInst: Map<string, Set<string>>,
+): number {
+  const csd = inst.cycle_start_day || 25;
+  const startDate = new Date(`${inst.start_date}T00:00:00Z`);
+  const periodEnd = new Date(`${periodEndStr}T00:00:00Z`);
+  const closed = closedCyclesByInst.get(inst.id) ?? new Set<string>();
+  let cycleEnd = cycleEndContaining(startDate, csd);
+  let totalDays = 0;
+  while (cycleEnd <= periodEnd) {
+    if (!closed.has(cycleEnd.toISOString().slice(0, 10))) {
+      const cycleStart = cycleStartOf(cycleEnd, csd);
+      const effectiveStart = cycleStart > startDate ? cycleStart : startDate;
+      totalDays += Math.round((cycleEnd.getTime() - effectiveStart.getTime()) / DAY_MS) + 1;
+    }
+    cycleEnd = cycleEndAfter(cycleEnd, csd);
+  }
+  return totalDays;
+}
+
 // `client` opsional: default-nya client browser (anon) yang dipakai selama ini
 // dari Hitung Fee/Payroll Run. Cron/workflow server-only (gak ada session admin)
 // wajib kirim getSupabaseAdmin() di sini — lihat payroll-workflow.server.ts.
@@ -121,32 +165,42 @@ export async function generatePayrollDetails(
     }
   }
 
-  // Cicilan mode='monthly' (sewa molis potong sekali per bulan) — sama pola
-  // dedup-nya kayak chargedThisMonth di atas, cuma sumbernya installment
-  // manual (per rider), jadi di-kunci per installment_id, bukan deduction_type_id.
+  // Cicilan mode='monthly' (sewa molis, ditagih sekaligus per siklus custom,
+  // mis. 25 - 24 bulan depannya — bisa beda csd per assignment). Dedup-nya
+  // BUKAN dari state yang di-mutate (biar "Generate Ulang" run yang sama
+  // tetap idempotent), tapi dari riwayat payroll_deductions run LAIN: tiap
+  // baris deduction lama nunjuk ke sebuah run, period_end run itu dipetain
+  // balik ke siklus mana yang udah "ketutup"-nya lewat cycleEndContaining.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const monthlyInstIds = new Set(
-    ((installments ?? []) as any[]).filter((i: any) => i.mode === "monthly").map((i: any) => i.id),
-  );
-  const chargedThisMonthInstallments = new Set<string>();
-  if (monthlyInstIds.size > 0 && riderIds.length > 0) {
-    const runMonth = run.period_end.slice(0, 7);
-    const monthStart = `${runMonth}-01`;
-    const monthEnd = new Date(Number(runMonth.slice(0, 4)), Number(runMonth.slice(5, 7)), 0)
-      .toISOString().slice(0, 10);
-    const { data: runsThisMonth } = await (client as any).from("payroll_runs")
-      .select("id").gte("period_end", monthStart).lte("period_end", monthEnd);
-    const runIdsThisMonth = (runsThisMonth ?? []).map((r: { id: string }) => r.id);
-    if (runIdsThisMonth.length > 0) {
-      const { data: detailsThisMonth } = await (client as any).from("payroll_details")
-        .select("id").in("run_id", runIdsThisMonth);
-      const detailIds = (detailsThisMonth ?? []).map((d: { id: string }) => d.id);
-      if (detailIds.length > 0) {
-        const { data: dedsThisMonth } = await (client as any).from("payroll_deductions")
-          .select("installment_id").in("detail_id", detailIds).in("installment_id", [...monthlyInstIds]);
-        for (const d of (dedsThisMonth ?? []) as { installment_id: string | null }[]) {
-          if (d.installment_id) chargedThisMonthInstallments.add(d.installment_id);
-        }
+  const monthlyInsts = ((installments ?? []) as any[]).filter((i: any) => i.mode === "monthly");
+  const closedCyclesByInst = new Map<string, Set<string>>();
+  if (monthlyInsts.length > 0) {
+    const monthlyInstIds = monthlyInsts.map((i) => i.id);
+    const { data: priorDeds } = await (client as any).from("payroll_deductions")
+      .select("installment_id, detail_id").in("installment_id", monthlyInstIds);
+    if (priorDeds?.length) {
+      const detailIds = [...new Set((priorDeds as any[]).map((d) => d.detail_id))];
+      const { data: detailRuns } = await (client as any).from("payroll_details")
+        .select("id, run_id").in("id", detailIds);
+      const runIdOfDetail = new Map(
+        (detailRuns ?? []).map((d: { id: string; run_id: string }) => [d.id, d.run_id]),
+      );
+      const runIds = [...new Set([...runIdOfDetail.values()])];
+      const { data: runsData } = await (client as any).from("payroll_runs")
+        .select("id, period_end").in("id", runIds);
+      const periodEndOfRun = new Map(
+        (runsData ?? []).map((r: { id: string; period_end: string }) => [r.id, r.period_end]),
+      );
+      for (const d of priorDeds as { installment_id: string; detail_id: string }[]) {
+        const runId = runIdOfDetail.get(d.detail_id);
+        const periodEnd = runId ? periodEndOfRun.get(runId) : null;
+        if (!periodEnd) continue;
+        const inst = monthlyInsts.find((i) => i.id === d.installment_id);
+        if (!inst) continue;
+        const closedEnd = cycleEndContaining(new Date(`${periodEnd}T00:00:00Z`), inst.cycle_start_day || 25);
+        const set = closedCyclesByInst.get(d.installment_id) ?? new Set<string>();
+        set.add(closedEnd.toISOString().slice(0, 10));
+        closedCyclesByInst.set(d.installment_id, set);
       }
     }
   }
@@ -224,15 +278,14 @@ export async function generatePayrollDetails(
     // (atau run "Semua Client"), biar gak dobel-tagih di run client lain.
     const hasDailyCharge =
       dailyChargeRiderIds.has(rider.id) && (run.client_id === null || run.client_id === rider.client_id);
-    // mode='monthly' cuma butuh baris kalau BENERAN ada tagihan bulan ini
-    // (belum charged) — beda dari 'daily' yang selalu >0, run lain di bulan
-    // yang sama harusnya gak bikin baris kosong percuma.
+    // mode='monthly' cuma butuh baris kalau siklusnya BENERAN nutup di run
+    // ini (monthlyDueDays > 0) — beda dari 'daily' yang selalu >0, run lain
+    // dalam siklus yang sama harusnya gak bikin baris kosong percuma.
     const homeMatch = run.client_id === null || run.client_id === rider.client_id;
     const hasMonthlyChargeDue =
       homeMatch &&
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((installments ?? []) as any[]).some(
-        (i: any) => i.rider_id === rider.id && i.mode === "monthly" && !chargedThisMonthInstallments.has(i.id),
+      monthlyInsts.some(
+        (i) => i.rider_id === rider.id && monthlyDueDays(i, run.period_end, closedCyclesByInst) > 0,
       );
     if (deliveryCount === 0 && attendanceFee === 0 && !hasDailyCharge && !hasMonthlyChargeDue) continue;
 
@@ -258,8 +311,8 @@ export async function generatePayrollDetails(
         return { amount: rate * days, days };
       }
       if (i.mode === "monthly") {
-        const alreadyCharged = chargedThisMonthInstallments.has(i.id);
-        return { amount: alreadyCharged ? 0 : Number(i.per_period_amount || 0), days: 0 };
+        const days = monthlyDueDays(i, run.period_end, closedCyclesByInst);
+        return { amount: Number(i.daily_rate || 0) * days, days };
       }
       return { amount: Number(i.per_period_amount || 0), days: 0 };
     });
@@ -298,12 +351,11 @@ export async function generatePayrollDetails(
       const isClientRevenue =
         (ins.mode === "daily" || ins.mode === "monthly") && ins.charge_target === "client_revenue";
       const revenueNote = isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "";
+      const cycleNote = ins.mode === "monthly" ? ` (potong per siklus tgl ${ins.cycle_start_day || 25})` : "";
       const description =
-        ins.mode === "daily"
-          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + revenueNote
-          : ins.mode === "monthly"
-            ? `Sewa Molis potong bulanan — Rp${Number(ins.per_period_amount || 0).toLocaleString("id-ID")}/bulan` + revenueNote
-            : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`;
+        ins.mode === "daily" || ins.mode === "monthly"
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + cycleNote + revenueNote
+          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`;
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,

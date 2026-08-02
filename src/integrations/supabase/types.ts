@@ -1236,6 +1236,7 @@ export type Database = {
           active: boolean
           charge_target: string
           created_at: string
+          cycle_start_day: number | null
           daily_rate: number | null
           deduction_type_id: string | null
           id: string
@@ -1254,6 +1255,7 @@ export type Database = {
           active?: boolean
           charge_target?: string
           created_at?: string
+          cycle_start_day?: number | null
           daily_rate?: number | null
           deduction_type_id?: string | null
           id?: string
@@ -1272,6 +1274,7 @@ export type Database = {
           active?: boolean
           charge_target?: string
           created_at?: string
+          cycle_start_day?: number | null
           daily_rate?: number | null
           deduction_type_id?: string | null
           id?: string

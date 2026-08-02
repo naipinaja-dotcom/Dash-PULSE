@@ -22,7 +22,7 @@ export function ActiveTab() {
     total_amount: 0,
     installment_count: 1,
     daily_rate: 0,
-    monthly_amount: 0,
+    cycle_start_day: 25,
     charge_target: "rider" as "rider" | "client_revenue",
     next_deduction_date: "",
     notes: "",
@@ -65,7 +65,7 @@ export function ActiveTab() {
       total_amount: r.total_amount ?? 0,
       installment_count: r.installment_count ?? 1,
       daily_rate: r.daily_rate ?? 0,
-      monthly_amount: r.mode === "monthly" ? (r.per_period_amount ?? 0) : 0,
+      cycle_start_day: r.cycle_start_day ?? 25,
       charge_target: r.charge_target ?? "rider",
       next_deduction_date: r.next_deduction_date ?? "",
       notes: r.notes ?? "",
@@ -98,15 +98,17 @@ export function ActiveTab() {
     if (ef.mode === "daily") {
       update.daily_rate = ef.daily_rate;
       update.charge_target = ef.charge_target;
+      update.cycle_start_day = null;
       update.total_amount = null;
       update.installment_count = null;
       update.per_period_amount = null;
     } else if (ef.mode === "monthly") {
-      update.per_period_amount = ef.monthly_amount;
+      update.daily_rate = ef.daily_rate;
+      update.cycle_start_day = ef.cycle_start_day;
       update.charge_target = ef.charge_target;
-      update.daily_rate = null;
       update.total_amount = null;
       update.installment_count = null;
+      update.per_period_amount = null;
     } else {
       if (ef.installment_count < r.installments_paid) {
         setSaving(false);
@@ -118,6 +120,7 @@ export function ActiveTab() {
       update.installment_count = ef.installment_count;
       update.per_period_amount = +(ef.total_amount / ef.installment_count).toFixed(2);
       update.daily_rate = null;
+      update.cycle_start_day = null;
       update.charge_target = "rider";
     }
     const { error } = await supabase.from("rider_installments").update(update).eq("id", r.id);
@@ -263,14 +266,10 @@ export function ActiveTab() {
                     <td className="p-3 text-muted-foreground">
                       {r.mode === "daily" || r.mode === "monthly" ? (
                         <div className="space-y-0.5">
-                          <span>
-                            {r.mode === "daily"
-                              ? `Rp${Number(r.daily_rate ?? 0).toLocaleString("id-ID")}/hari`
-                              : `Rp${Number(r.per_period_amount ?? 0).toLocaleString("id-ID")}/bulan`}
-                          </span>
+                          <span>Rp{Number(r.daily_rate ?? 0).toLocaleString("id-ID")}/hari</span>
                           {r.mode === "monthly" && (
                             <span className="block text-[10px] font-medium text-muted-foreground">
-                              Potong sekali per bulan
+                              Potong per siklus tgl {r.cycle_start_day ?? 25}
                             </span>
                           )}
                           {r.charge_target === "client_revenue" && (
@@ -362,23 +361,32 @@ export function ActiveTab() {
                             <>
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">
-                                  {ef.mode === "daily" ? "Tarif per Hari (Rp)" : "Nominal per Bulan (Rp)"}
+                                  Tarif per Hari (Rp)
                                 </label>
                                 <input
                                   inputMode="numeric"
-                                  value={
-                                    ef.mode === "daily"
-                                      ? ef.daily_rate ? ef.daily_rate.toLocaleString("id-ID") : ""
-                                      : ef.monthly_amount ? ef.monthly_amount.toLocaleString("id-ID") : ""
-                                  }
-                                  onChange={(e) =>
-                                    ef.mode === "daily"
-                                      ? setEf({ ...ef, daily_rate: parseRupiah(e.target.value) })
-                                      : setEf({ ...ef, monthly_amount: parseRupiah(e.target.value) })
-                                  }
+                                  value={ef.daily_rate ? ef.daily_rate.toLocaleString("id-ID") : ""}
+                                  onChange={(e) => setEf({ ...ef, daily_rate: parseRupiah(e.target.value) })}
                                   className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
                                 />
                               </div>
+                              {ef.mode === "monthly" && (
+                                <div>
+                                  <label className="text-xs font-medium text-muted-foreground">
+                                    Tgl Mulai Siklus
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={31}
+                                    value={ef.cycle_start_day}
+                                    onChange={(e) =>
+                                      setEf({ ...ef, cycle_start_day: Math.min(31, Math.max(1, +e.target.value || 1)) })
+                                    }
+                                    className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                  />
+                                </div>
+                              )}
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">
                                   Ditanggung

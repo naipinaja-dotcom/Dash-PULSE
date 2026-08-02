@@ -26,6 +26,7 @@ export type Inst = {
   installments_paid: number;
   per_period_amount: number | null;
   daily_rate: number | null;
+  cycle_start_day: number | null;
   molis_type_id: string | null;
   charge_target: "rider" | "client_revenue";
   start_date: string;

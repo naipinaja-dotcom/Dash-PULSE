@@ -11,9 +11,10 @@ export function AddTab() {
   const [f, setF] = useState({
     rider_ids: [] as string[],
     deduction_type_id: "",
-    mode: "fixed" as "fixed" | "daily",
+    mode: "fixed" as "fixed" | "daily" | "monthly",
     total_amount: 0,
     daily_rate: 0,
+    monthly_amount: 0,
     molis_type_id: "",
     charge_target: "rider" as "rider" | "client_revenue",
     start_date: new Date().toISOString().slice(0, 10),
@@ -61,20 +62,22 @@ export function AddTab() {
     if (f.rider_ids.length === 0) return toast.error("Pilih minimal 1 rider");
     if (!f.deduction_type_id) return toast.error("Lengkapi jenis potongan");
     if (f.mode === "daily" && !f.daily_rate) return toast.error("Isi tarif per hari");
+    if (f.mode === "monthly" && !f.monthly_amount) return toast.error("Isi nominal per bulan");
     if (f.mode === "fixed" && !f.total_amount) return toast.error("Isi nominal total");
     setSaving(true);
     const count = f.installment ? Math.max(1, f.installment_count) : 1;
     const per = +(f.total_amount / count).toFixed(2);
+    const isMolisMode = f.mode === "daily" || f.mode === "monthly";
     const rows = f.rider_ids.map((rid) => ({
       rider_id: rid,
       deduction_type_id: f.deduction_type_id,
       mode: f.mode,
       total_amount: f.mode === "fixed" ? f.total_amount : null,
       installment_count: f.mode === "fixed" ? count : null,
-      per_period_amount: f.mode === "fixed" ? per : null,
+      per_period_amount: f.mode === "fixed" ? per : f.mode === "monthly" ? f.monthly_amount : null,
       daily_rate: f.mode === "daily" ? f.daily_rate : null,
-      molis_type_id: f.mode === "daily" ? f.molis_type_id || null : null,
-      charge_target: f.mode === "daily" ? f.charge_target : "rider",
+      molis_type_id: isMolisMode ? f.molis_type_id || null : null,
+      charge_target: isMolisMode ? f.charge_target : "rider",
       start_date: f.start_date,
       next_deduction_date: f.start_date,
       notes: f.notes || null,
@@ -83,7 +86,16 @@ export function AddTab() {
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success(`Potongan ditambahkan ke ${f.rider_ids.length} rider`);
-    setF({ ...f, rider_ids: [], total_amount: 0, daily_rate: 0, molis_type_id: "", charge_target: "rider", notes: "" });
+    setF({
+      ...f,
+      rider_ids: [],
+      total_amount: 0,
+      daily_rate: 0,
+      monthly_amount: 0,
+      molis_type_id: "",
+      charge_target: "rider",
+      notes: "",
+    });
     setSearch("");
   };
 
@@ -168,7 +180,7 @@ export function AddTab() {
       </div>
       <div className="rounded-md border border-border p-3">
         <label className="font-medium text-xs">Mode Potongan</label>
-        <div className="mt-1.5 grid grid-cols-2 gap-2">
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "fixed" })}
@@ -186,6 +198,17 @@ export function AddTab() {
             <span className="text-muted-foreground">
               Tarif × jumlah hari periode, mis. sewa motor — tetap kepotong walau rider libur, jalan
               terus sampai dinonaktifkan manual
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setF({ ...f, mode: "monthly" })}
+            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "monthly" ? "border-primary bg-primary-soft" : "border-border"}`}
+          >
+            <span className="font-medium block">Per bulan</span>
+            <span className="text-muted-foreground">
+              Nominal flat, potong sekali per bulan kalender — buat rider yang disepakati sewa
+              molis-nya ditagih bulanan, bukan harian
             </span>
           </button>
         </div>
@@ -214,7 +237,7 @@ export function AddTab() {
                   setF({
                     ...f,
                     molis_type_id: id,
-                    daily_rate: mt ? mt.default_daily_rate : f.daily_rate,
+                    daily_rate: f.mode === "daily" && mt ? mt.default_daily_rate : f.daily_rate,
                   });
                 }}
                 className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
@@ -228,21 +251,39 @@ export function AddTab() {
               </select>
             </div>
           )}
-          <div>
-            <label className="font-medium">Tarif per Hari (Rp)</label>
-            <input
-              inputMode="numeric"
-              placeholder="mis. 38.000"
-              value={f.daily_rate ? f.daily_rate.toLocaleString("id-ID") : ""}
-              onChange={(e) => setF({ ...f, daily_rate: parseRupiah(e.target.value) })}
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Tiap payroll digenerate, dikali jumlah hari kalender di periode itu (bukan cuma hari
-              rider jalan). Tarif dari jenis molis di atas cuma autofill — tetap bisa diedit manual
-              kalau beda untuk client ini.
-            </p>
-          </div>
+          {f.mode === "daily" ? (
+            <div>
+              <label className="font-medium">Tarif per Hari (Rp)</label>
+              <input
+                inputMode="numeric"
+                placeholder="mis. 38.000"
+                value={f.daily_rate ? f.daily_rate.toLocaleString("id-ID") : ""}
+                onChange={(e) => setF({ ...f, daily_rate: parseRupiah(e.target.value) })}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Tiap payroll digenerate, dikali jumlah hari kalender di periode itu (bukan cuma hari
+                rider jalan). Tarif dari jenis molis di atas cuma autofill — tetap bisa diedit manual
+                kalau beda untuk client ini.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="font-medium">Nominal per Bulan (Rp)</label>
+              <input
+                inputMode="numeric"
+                placeholder="mis. 300.000"
+                value={f.monthly_amount ? f.monthly_amount.toLocaleString("id-ID") : ""}
+                onChange={(e) => setF({ ...f, monthly_amount: parseRupiah(e.target.value) })}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Dipotong SEKALI per bulan kalender, gak peduli berapa kali payroll run di bulan itu
+                (mis. run mingguan). Rekap potongan tetap kasih catatan "potong bulanan" di baris yang
+                kena.
+              </p>
+            </div>
+          )}
           <div>
             <label className="font-medium">Siapa yang Menanggung</label>
             <div className="mt-1.5 grid grid-cols-2 gap-2">

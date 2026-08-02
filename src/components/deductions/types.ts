@@ -20,7 +20,7 @@ export type Inst = {
   id: string;
   rider_id: string;
   deduction_type_id: string;
-  mode: string;
+  mode: "fixed" | "daily" | "monthly";
   total_amount: number | null;
   installment_count: number | null;
   installments_paid: number;

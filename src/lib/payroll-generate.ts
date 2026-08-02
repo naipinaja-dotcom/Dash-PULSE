@@ -52,10 +52,21 @@ export async function generatePayrollDetails(
     .eq("mode", "daily");
   const dailyChargeRiderIds = new Set((dailyInstallmentsRaw ?? []).map((r) => r.rider_id));
 
+  // Cicilan mode='monthly' (mis. sewa molis yang disepakati potong SEKALI per
+  // bulan, bukan harian x hari) — sama alasannya kayak dailyChargeRiderIds di
+  // atas: rider gak akan ke-discover dari delivery/attendance doang.
+  const { data: monthlyInstallmentsRaw } = await client
+    .from("rider_installments")
+    .select("rider_id")
+    .eq("active", true)
+    .eq("mode", "monthly");
+  const monthlyChargeRiderIds = new Set((monthlyInstallmentsRaw ?? []).map((r) => r.rider_id));
+
   const riderIds = [...new Set([
     ...deliveries.map(resolvedIdOf),
     ...attendance.map(resolvedIdOf),
     ...dailyChargeRiderIds,
+    ...monthlyChargeRiderIds,
   ])].filter((id): id is string => !!id);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,6 +116,36 @@ export async function generatePayrollDetails(
         for (const d of (dedsThisMonth ?? []) as { detail_id: string; deduction_type_id: string }[]) {
           const rId = detailIdToRider.get(d.detail_id);
           if (rId) chargedThisMonth.add(`${rId}|${d.deduction_type_id}`);
+        }
+      }
+    }
+  }
+
+  // Cicilan mode='monthly' (sewa molis potong sekali per bulan) — sama pola
+  // dedup-nya kayak chargedThisMonth di atas, cuma sumbernya installment
+  // manual (per rider), jadi di-kunci per installment_id, bukan deduction_type_id.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const monthlyInstIds = new Set(
+    ((installments ?? []) as any[]).filter((i: any) => i.mode === "monthly").map((i: any) => i.id),
+  );
+  const chargedThisMonthInstallments = new Set<string>();
+  if (monthlyInstIds.size > 0 && riderIds.length > 0) {
+    const runMonth = run.period_end.slice(0, 7);
+    const monthStart = `${runMonth}-01`;
+    const monthEnd = new Date(Number(runMonth.slice(0, 4)), Number(runMonth.slice(5, 7)), 0)
+      .toISOString().slice(0, 10);
+    const { data: runsThisMonth } = await (client as any).from("payroll_runs")
+      .select("id").gte("period_end", monthStart).lte("period_end", monthEnd);
+    const runIdsThisMonth = (runsThisMonth ?? []).map((r: { id: string }) => r.id);
+    if (runIdsThisMonth.length > 0) {
+      const { data: detailsThisMonth } = await (client as any).from("payroll_details")
+        .select("id").in("run_id", runIdsThisMonth);
+      const detailIds = (detailsThisMonth ?? []).map((d: { id: string }) => d.id);
+      if (detailIds.length > 0) {
+        const { data: dedsThisMonth } = await (client as any).from("payroll_deductions")
+          .select("installment_id").in("detail_id", detailIds).in("installment_id", [...monthlyInstIds]);
+        for (const d of (dedsThisMonth ?? []) as { installment_id: string | null }[]) {
+          if (d.installment_id) chargedThisMonthInstallments.add(d.installment_id);
         }
       }
     }
@@ -183,7 +224,17 @@ export async function generatePayrollDetails(
     // (atau run "Semua Client"), biar gak dobel-tagih di run client lain.
     const hasDailyCharge =
       dailyChargeRiderIds.has(rider.id) && (run.client_id === null || run.client_id === rider.client_id);
-    if (deliveryCount === 0 && attendanceFee === 0 && !hasDailyCharge) continue;
+    // mode='monthly' cuma butuh baris kalau BENERAN ada tagihan bulan ini
+    // (belum charged) — beda dari 'daily' yang selalu >0, run lain di bulan
+    // yang sama harusnya gak bikin baris kosong percuma.
+    const homeMatch = run.client_id === null || run.client_id === rider.client_id;
+    const hasMonthlyChargeDue =
+      homeMatch &&
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((installments ?? []) as any[]).some(
+        (i: any) => i.rider_id === rider.id && i.mode === "monthly" && !chargedThisMonthInstallments.has(i.id),
+      );
+    if (deliveryCount === 0 && attendanceFee === 0 && !hasDailyCharge && !hasMonthlyChargeDue) continue;
 
     const incentiveTotal = 0;
     const penalty = 0;
@@ -205,6 +256,10 @@ export async function generatePayrollDetails(
           }
         }
         return { amount: rate * days, days };
+      }
+      if (i.mode === "monthly") {
+        const alreadyCharged = chargedThisMonthInstallments.has(i.id);
+        return { amount: alreadyCharged ? 0 : Number(i.per_period_amount || 0), days: 0 };
       }
       return { amount: Number(i.per_period_amount || 0), days: 0 };
     });
@@ -240,14 +295,19 @@ export async function generatePayrollDetails(
     rInstall.forEach((ins: any, idx: number) => {
       const item = dedItems[idx];
       if (item.amount <= 0) return;
-      const isClientRevenue = ins.mode === "daily" && ins.charge_target === "client_revenue";
+      const isClientRevenue =
+        (ins.mode === "daily" || ins.mode === "monthly") && ins.charge_target === "client_revenue";
+      const revenueNote = isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "";
+      const description =
+        ins.mode === "daily"
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + revenueNote
+          : ins.mode === "monthly"
+            ? `Sewa Molis potong bulanan — Rp${Number(ins.per_period_amount || 0).toLocaleString("id-ID")}/bulan` + revenueNote
+            : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`;
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,
-        description: ins.mode === "daily"
-          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` +
-            (isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "")
-          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`,
+        description,
         amount: isClientRevenue ? 0 : item.amount,
       });
     });

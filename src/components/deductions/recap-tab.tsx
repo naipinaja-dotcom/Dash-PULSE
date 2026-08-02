@@ -355,7 +355,7 @@ export function RecapTab() {
                               <div className="flex items-center gap-2 mb-1.5">
                                 <span className="font-medium text-[13px]">{d.typeName}</span>
                                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                  {d.mode === "daily" ? "Harian" : d.mode === "fixed" ? "Cicilan" : "Auto"}
+                                  {d.mode === "daily" ? "Harian" : d.mode === "monthly" ? "Bulanan" : d.mode === "fixed" ? "Cicilan" : "Auto"}
                                 </span>
                               </div>
                               <table className="w-full text-[12.5px]">

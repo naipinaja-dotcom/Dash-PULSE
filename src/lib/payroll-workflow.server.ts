@@ -1,11 +1,12 @@
 // Payroll Workflow (OES AI Workforce — payroll pertama) — cron HARIAN yang
-// otomatis: per client aktif, cek apakah periode gajiannya jatuh tempo HARI
-// INI (siklus per-client, bisa custom lewat Reminder Calendar — lihat
-// payroll_reminder_schedules.period_start_weekday/period_end_weekday, default
-// mingguan Senin-Minggu kalau client belum di-custom) -> bikin/reuse
-// payroll_runs -> panggil generatePayrollDetails() (Business Engine, TIDAK
-// diduplikat) -> validasi anomali -> AI audit (Hermes, non-critical) -> notif
-// Slack/Email -> log 1 row ke payroll_workflow_runs.
+// otomatis: per client aktif YANG UDAH DI-SETUP (punya jadwal periode di
+// Reminder Calendar — payroll_reminder_schedules.period_start_weekday/
+// period_end_weekday — DAN punya skema harga rider aktif), cek apakah
+// periode gajiannya jatuh tempo HARI INI -> bikin/reuse payroll_runs ->
+// panggil generatePayrollDetails() (Business Engine, TIDAK diduplikat) ->
+// validasi anomali -> AI audit (Hermes, non-critical) -> notif Slack/Email
+// -> log 1 row ke payroll_workflow_runs. Client yang belum di-setup jadwal
+// atau skema harga DILEWATI SELURUHNYA — gak bikin draft run kosong.
 //
 // Sengaja SATU file lurus (bukan abstract Worker classes/generic runner) —
 // pola yang sama persis dipakai payroll-reminder.server.ts & coo-insight-
@@ -91,10 +92,6 @@ export interface PayrollWorkflowResult {
   skippedClients: string[]; // "Client (periode)" yang run-nya udah finalized/published, gak disentuh
   runLogId?: string; // id row payroll_workflow_runs (log), diisi setelah insert
 }
-
-// Default kalau client belum di-custom di Reminder Calendar: Senin(1)-Minggu(0),
-// sama ritme dengan Weekly PNL Push.
-const DEFAULT_PERIOD_WEEKDAYS = { start: 1, end: 0, closeSameDay: false };
 
 // 0=Minggu..6=Sabtu (sama seperti kolom weekdays yang udah ada). Default:
 // periode dianggap JATUH TEMPO hari ini kalau KEMARIN persis hari
@@ -490,7 +487,14 @@ export async function runPayrollWorkflow(opts: {
 
   try {
     for (const c of clients ?? []) {
-      const clientPeriods = periodsByClient.get(c.id) ?? [DEFAULT_PERIOD_WEEKDAYS];
+      // Client belum di-setup jadwal (Reminder Calendar) ATAU belum ada skema
+      // harga (rider) — jangan auto-bikin payroll run buat client itu sama
+      // sekali. findOrCreatePayrollRun INSERT row draft duluan sebelum tau ada
+      // aktivitas/skema atau tidak; tanpa guard ini, tiap client aktif (bahkan
+      // yang belum pernah disentuh admin) kebagian draft run kosong tiap minggu.
+      const clientPeriods = periodsByClient.get(c.id);
+      if (!clientPeriods) continue;
+      if (!pickPricingScheme(schemes, c.id, "rider")) continue;
 
       for (const p of clientPeriods) {
         if (opts.closeSameDayFilter === "h-1" && p.closeSameDay) continue;

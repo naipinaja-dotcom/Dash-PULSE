@@ -3,10 +3,12 @@
 // admin.calculate.tsx): tarik data LIVE dari mgmt API dashelectric per client
 // yang (a) sudah di-link ke provider (clients.provider_id) DAN (b) ada di
 // "daftar reminder" aktif (payroll_reminder_schedules) — hitung fee pakai
-// skema pricing client itu, simpan ke delivery_records/attendance_logs, lalu
-// findOrCreatePayrollRun + generatePayrollDetails — SAMA PERSIS urutannya
-// dengan yang terjadi kalau admin klik "Sync ke Database" manual. Cron ini
-// TIDAK menambah behavior baru (tidak Finalize/Publish — itu tetap manual).
+// skema pricing client itu, simpan ke delivery_records/attendance_logs.
+// SENGAJA TIDAK bikin payroll_runs di sini (dulu pernah, dicabut lagi —
+// window rolling 2 hari cron ini gak nyambung sama periode gajian mingguan
+// per-client, bikin draft run kedua yang salah scope). Payroll run tetap
+// sepenuhnya urusan payroll-workflow.server.ts yang jalan setelahnya,
+// baca dari delivery_records/attendance_logs yang barusan di-sync di sini.
 //
 // Kenapa perlu file terpisah (bukan reuse createServerFn di
 // src/lib/api/live-fee-*.functions.ts apa adanya): fungsi-fungsi itu
@@ -40,7 +42,6 @@ import { fetchLiveDeliveries } from "./api/live-fee-deliveries.functions";
 import { fetchLiveAttendance } from "./api/live-fee-attendance.functions";
 import { upsertLiveDeliveries } from "./sync-live-deliveries";
 import { upsertLiveAttendance } from "./sync-live-attendance";
-import { findOrCreatePayrollRun, generatePayrollDetails } from "./payroll-generate";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
@@ -74,7 +75,6 @@ export interface LiveFeeSyncClientResult {
   category: string | null;
   delivery?: { fetched: number; inserted: number; overwritten: number };
   attendance?: { fetched: number; inserted: number };
-  payroll_run_id?: string;
   error?: string;
 }
 
@@ -136,14 +136,13 @@ async function syncOneClient(
     };
   }
 
-  if (scheme.scheme_for === "rider") {
-    const run = await findOrCreatePayrollRun(
-      { clientId: client.id, clientName: client.name, periodStart: from, periodEnd: to },
-      admin,
-    );
-    await generatePayrollDetails(run, admin);
-    out.payroll_run_id = run.id;
-  }
+  // TIDAK bikin/isi payroll_runs di sini — window rolling 2 hari (kemarin+
+  // hari ini) gak nyambung sama periode gajian mingguan client (Senin-Minggu
+  // dari Reminder Calendar), jadi kalau dipaksa findOrCreatePayrollRun pakai
+  // {from,to} di sini bakal bikin draft run KEDUA yang scope-nya salah,
+  // terpisah dari run mingguan asli. Payroll run yang bener tetap
+  // sepenuhnya urusan payroll-workflow.server.ts (resolvePeriodIfDue),
+  // yang bacanya dari delivery_records/attendance_logs yang barusan di-sync.
   return out;
 }
 

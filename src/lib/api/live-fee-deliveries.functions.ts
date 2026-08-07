@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { DeliveryRow } from "@/lib/pricing-calc";
+import { detectAreaFromAddress } from "@/lib/area-detect";
 
 // Sumber data LIVE untuk "Hitung Fee" — tarik pengiriman langsung dari mgmt API
 // dashelectric (bukan dari delivery_records yang harus di-upload dulu), lalu
@@ -128,7 +129,11 @@ function toDeliveryRow(x: UpstreamRow): LiveDeliveryRow {
     // (bukan ??) biar string kosong "" juga jatuh ke fallback.
     delivery_date: jktDay(x.completedAt || x.updatedAt || x.createdAt || ""),
     awb: deliveryId,
-    district: meta.city ?? null,
+    // meta.city dari provider sering kota polos ("Jakarta", bukan "Jakarta
+    // Selatan") yang ambigu buat matching rate per-area — coba tebak dulu
+    // dari teks alamat (kecamatan/singkatan, gak ambigu — lihat area-detect.ts),
+    // meta.city cuma fallback kalau alamatnya sendiri gak kasih apa-apa.
+    district: detectAreaFromAddress(dest.address) ?? (meta.city ?? null),
     distance_km: q.distance != null ? Number(q.distance) / 1000 : null, // API meter → km
     weight_kg: packages.length ? weightSum : (q.weight ?? null),
     destination_address: dest.address ?? null,

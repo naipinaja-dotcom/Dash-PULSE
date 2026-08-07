@@ -154,9 +154,9 @@ function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExa
     let total = 0;
     if (p.delivery.rate_by !== "flat") {
       const hit = p.delivery.rates.find((r) => norm(r.key) === norm(inp.area));
-      const fee = hit ? parseRupiah(hit.rate) : 0;
+      const fee = hit ? parseRupiah(hit.rate) : parseRupiah(p.delivery.default_rate ?? "0");
       steps.push({
-        text: `Flat per ${p.delivery.rate_by === "delivery_type" ? "Antar/Kembali" : "kolom"}: "${inp.area}"${hit ? "" : " (tidak ada tarif cocok)"}`,
+        text: `Flat per ${p.delivery.rate_by === "delivery_type" ? "Antar/Kembali" : "kolom"}: "${inp.area}"${hit ? "" : " (tidak ada tarif cocok, pakai rate default)"}`,
         amount: fee,
       });
       total += fee;

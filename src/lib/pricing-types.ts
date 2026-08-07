@@ -77,6 +77,11 @@ export interface ModularDeliveryConfig {
   rate_by: "flat" | "column" | "delivery_type";
   match_column: string;
   rates: { key: string; rate: number }[];
+  // Rate buat baris yang district/kolom-nya GAK ke-match satupun `rates` di
+  // atas (format beda, atau area di luar cakupan skema) — hanya berlaku pas
+  // Distance & Weight dua-duanya mati (rate_by="column" murni tanpa band).
+  // 0/kosong = area gak ke-match dianggap Rp0 (perilaku lama).
+  default_rate: number;
   unit_basis: "awb" | "unique_address";
   // Tag ringan dimensi aktif — duplikat dari `distance`/`weight` di atas,
   // disimpan supaya `pricing-store.ts` bisa reconstruct `PricingScheme.subtype`

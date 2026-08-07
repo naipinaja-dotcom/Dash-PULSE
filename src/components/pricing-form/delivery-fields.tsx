@@ -58,6 +58,7 @@ export interface ModularDeliveryState {
   rate_by: "flat" | "column" | "delivery_type";
   match_column: string;
   rates: { key: string; rate: string }[];
+  default_rate: string;
   unit_basis: "awb" | "unique_address";
 }
 
@@ -91,6 +92,7 @@ export function emptyDeliveryState(): ModularDeliveryState {
     rate_by: "flat",
     match_column: "Area",
     rates: [],
+    default_rate: "0",
     unit_basis: "awb",
   };
 }
@@ -151,6 +153,7 @@ export function buildDeliveryConfig(subtype: unknown, d: ModularDeliveryState): 
     rate_by: d.rate_by,
     match_column: d.match_column,
     rates: d.rates.map((r) => ({ key: r.key, rate: parseRupiah(r.rate) })),
+    default_rate: parseRupiah(d.default_rate),
     unit_basis: d.unit_basis,
     _dims: { distance: !!dims.distance, weight: !!dims.weight },
   };
@@ -234,6 +237,7 @@ export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType
     state.match_column = canonicalMatchColumn(c.match_column ?? "Area");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     state.rates = (c.rates ?? []).map((r: any) => ({ key: r.key, rate: String(r.rate) }));
+    state.default_rate = String(c.default_rate ?? "0");
     state.unit_basis = c.unit_basis ?? "awb";
     return state;
   }
@@ -702,6 +706,19 @@ export function DeliveryFields({
                 <AddRowBtn onClick={() => onChange({ ...value, rates: [...value.rates, { key: "", rate: "" }] })}>
                   Tambah Baris
                 </AddRowBtn>
+                {noDims && (
+                  <div className="flex flex-col gap-1.5 max-w-xs">
+                    <FieldLabel>Rate Default (kalau gak ke-match baris manapun)</FieldLabel>
+                    <RupiahInput
+                      value={value.default_rate}
+                      onChange={(v) => onChange({ ...value, default_rate: v })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Dipakai kalau nilai kolomnya (mis. district) gak cocok satu pun baris di atas — biar gak diam-diam
+                      jadi Rp0. Kosongkan/0 kalau memang mau tetap Rp0.
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </div>

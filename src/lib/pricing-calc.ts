@@ -355,7 +355,11 @@ export function calcRangeComponent(
 /** Gabungan Distance + Weight (sum) — pengganti calcFlatComponent/calcTierComponent/
  * calcThresholdComponent untuk skema baru (`env.type === "modular_v2"`). Skema lama
  * tetap dihitung lewat 3 fungsi component di atas, tidak disentuh. */
-export function calcModularDeliveryComponent(rows: DeliveryRow[], cfg: ModularDeliveryConfig): number[] {
+export function calcModularDeliveryComponent(
+  rows: DeliveryRow[],
+  cfg: ModularDeliveryConfig,
+  stats?: { unmatchedArea: number },
+): number[] {
   const out = new Array(rows.length).fill(0);
   const rateSettings = { rate_by: cfg.rate_by, match_column: cfg.match_column, rates: cfg.rates ?? [] };
 
@@ -388,10 +392,21 @@ export function calcModularDeliveryComponent(rows: DeliveryRow[], cfg: ModularDe
   // band Distance/Weight (di atas), jadi kalau dua-duanya dimatiin, rates
   // yang udah diisi admin bakal nyantol gak pernah dipakai — di sini
   // diterapin langsung sebagai base fee per baris.
+  // Area yang gak ke-match (district gak ada di `rates`, mis. beda format
+  // penulisan atau kota di luar cakupan skema) jatuh ke `default_rate`,
+  // BUKAN diam-diam Rp0 — dan dihitung ke `stats.unmatchedArea` biar
+  // ke-warning di calcScheme (lihat riwayat: Noovoleum Cleaning rider
+  // dibayar Rp0 total gara-gara district-nya gak match rate table).
   if (!cfg.distance?.enabled && !cfg.weight?.enabled && rateSettings.rate_by !== "flat") {
+    const defaultRate = Number((cfg as { default_rate?: number }).default_rate) || 0;
     rows.forEach((r, i) => {
       const hit = resolveRateHit(r, rateSettings);
-      out[i] += hit ? Number(hit.rate) || 0 : 0;
+      if (hit) {
+        out[i] += Number(hit.rate) || 0;
+      } else {
+        out[i] += defaultRate;
+        if (stats) stats.unmatchedArea++;
+      }
     });
   }
 
@@ -425,6 +440,7 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResul
   const byRider = groupBy(completed, riderKey);
 
   let baseByRow: number[];
+  const modStats = { unmatchedArea: 0 };
   if (env.type === "flat_unit") {
     baseByRow = calcFlatComponent(completed, cfg);
   } else if (env.type === "tier") {
@@ -434,9 +450,14 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResul
   } else if (env.type === "threshold_multiple") {
     baseByRow = calcThresholdComponent(completed, cfg);
   } else if (env.type === "modular_v2") {
-    baseByRow = calcModularDeliveryComponent(completed, cfg as ModularDeliveryConfig);
+    baseByRow = calcModularDeliveryComponent(completed, cfg as ModularDeliveryConfig, modStats);
   } else {
     baseByRow = new Array(completed.length).fill(0);
+  }
+  if (modStats.unmatchedArea > 0) {
+    warnings.push(
+      `${modStats.unmatchedArea} pengiriman area/district-nya gak ke-match rate manapun di skema ini — pakai rate default (cek kolom Area/district-nya, mungkin beda format sama rate table).`,
+    );
   }
 
   const idxOf = new Map<DeliveryRow, number>();

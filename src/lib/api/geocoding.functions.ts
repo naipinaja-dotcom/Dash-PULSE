@@ -14,14 +14,23 @@ async function requireAdmin(adminToken: string) {
 
 // Auto-isi "district" dari koordinat Lat/Long — dipakai upload Delivery
 // (admin.upload.tsx) waktu CSV punya kolom Lat/Long tapi district-nya
-// kosong/gak ada sama sekali. Pakai ORS Reverse Geocoding (Pelias), free
-// tier 40 req/menit & 2000/hari — dedup titik yang sama (dibulatkan 4
-// desimal, ~11m) dan jeda 1.6s antar-request biar gak kena rate limit.
+// kosong/gak ada sama sekali.
 //
-// Fallback: kalau ORS gak ngasih area spesifik (null), coba point-in-polygon
-// ke tabel PostGIS `area_boundaries` (RPC area_at_point) — batas Kabupaten/Kota
-// ADM2 Jabodetabek, backend only. Balikin nama kanonik "Kota X"/"Kabupaten X"
-// yang match key pricing per-area. Lihat migration 20260730000002.
+// Prioritas 1: point-in-polygon ke tabel PostGIS `area_boundaries` (RPC
+// area_at_point) — batas Kabupaten/Kota ADM2 Jabodetabek, backend only.
+// Balikin nama kanonik "Kota X"/"Kabupaten X" PERSIS yang dipakai key
+// pricing per-area (lihat migration 20260730000002) — presisi terjamin
+// selama titiknya masuk cakupan boundary ini.
+//
+// Prioritas 2 (fallback): ORS Reverse Geocoding (Pelias), buat titik DI LUAR
+// cakupan area_boundaries (kota selain Jabodetabek). Free tier 40 req/menit
+// & 2000/hari — dedup titik yang sama (dibulatkan 4 desimal, ~11m) dan jeda
+// 1.6s antar-request biar gak kena rate limit. ORS balikin nama lokasi MENTAH
+// (county/localadmin/locality) yang granularitasnya sering lebih kasar
+// (mis. "Jakarta" polos, bukan "Jakarta Selatan") — makanya bukan prioritas
+// pertama: kalau dicoba duluan dan "berhasil" dengan jawaban kasar, lookup
+// PostGIS yang presisi jadi gak pernah ke-pakai walau titiknya sebenarnya
+// ada di dalam boundary yang kita punya datanya.
 export const reverseGeocodeDistricts = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
@@ -50,19 +59,22 @@ export const reverseGeocodeDistricts = createServerFn({ method: "POST" })
 
     const districtByKey = new Map<string, string | null>();
     for (const [key, p] of uniquePoints) {
-      let district: string | null = null;
-      try {
-        const url = `https://api.openrouteservice.org/geocode/reverse?api_key=${apiKey}&point.lon=${p.lng}&point.lat=${p.lat}&size=1`;
-        const res = await fetch(url);
-        const json: any = await res.json();
-        const props = json?.features?.[0]?.properties;
-        district = props?.county || props?.localadmin || props?.locality || null;
-      } catch {
-        district = null;
+      let district = await areaFromDb(p);
+      if (!district) {
+        try {
+          const url = `https://api.openrouteservice.org/geocode/reverse?api_key=${apiKey}&point.lon=${p.lng}&point.lat=${p.lat}&size=1`;
+          const res = await fetch(url);
+          const json: any = await res.json();
+          const props = json?.features?.[0]?.properties;
+          district = props?.county || props?.localadmin || props?.locality || null;
+        } catch {
+          district = null;
+        }
+        // Cuma jeda kalau beneran manggil ORS — titik yang udah ke-resolve
+        // dari PostGIS gak perlu nunggu rate limit API luar.
+        await new Promise((r) => setTimeout(r, 1600));
       }
-      if (!district) district = await areaFromDb(p);
       districtByKey.set(key, district);
-      await new Promise((r) => setTimeout(r, 1600));
     }
 
     return { districts: data.points.map((p) => districtByKey.get(keyOf(p)) ?? null) };

@@ -17,6 +17,7 @@ const mock = vi.hoisted(() => {
         if (f.op === "in") return (f.val as unknown[]).includes(v);
         if (f.op === "gte") return v >= (f.val as string);
         if (f.op === "lte") return v <= (f.val as string);
+        if (f.op === "neq") return v !== f.val;
         return true;
       }),
     );
@@ -32,6 +33,7 @@ const mock = vi.hoisted(() => {
       in(col: string, val: unknown) { q.filters.push({ op: "in", col, val }); return b; },
       gte(col: string, val: unknown) { q.filters.push({ op: "gte", col, val }); return b; },
       lte(col: string, val: unknown) { q.filters.push({ op: "lte", col, val }); return b; },
+      neq(col: string, val: unknown) { q.filters.push({ op: "neq", col, val }); return b; },
       range() { return b; },
       single() { q.single = true; return b; },
       maybeSingle() { q.single = true; return b; },
@@ -50,12 +52,27 @@ const mock = vi.hoisted(() => {
     return b;
   }
 
-  return { client: { from: (t: string) => makeBuilder(t) }, tables, inserted };
+  // Mock RPC regenerate_payroll_details — mirror perilaku function Postgres
+  // asli (lihat migration atomic_regenerate_payroll_details): delete lama,
+  // insert baru, dalam "satu langkah" (gak ada window kegagalan buat di-tes
+  // di sini — atomicity-nya ada di sisi DB, bukan di mock).
+  function rpc(fn: string, params: any) {
+    return Promise.resolve().then(() => {
+      if (fn !== "regenerate_payroll_details") throw new Error(`unmocked rpc: ${fn}`);
+      const { p_run_id, p_details, p_deductions } = params;
+      tables.payroll_details = (tables.payroll_details ?? []).filter((d) => d.run_id !== p_run_id);
+      inserted.payroll_details = [...(inserted.payroll_details ?? []), ...p_details];
+      inserted.payroll_deductions = [...(inserted.payroll_deductions ?? []), ...p_deductions];
+      return { data: null, error: null };
+    });
+  }
+
+  return { client: { from: (t: string) => makeBuilder(t), rpc }, tables, inserted };
 });
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: mock.client }));
 
-import { generatePayrollDetails, type PayrollRunLite } from "@/lib/payroll-generate";
+import { generatePayrollDetails, computeInstallmentAdvance, type PayrollRunLite } from "@/lib/payroll-generate";
 
 function reset() {
   for (const k of Object.keys(mock.tables)) delete mock.tables[k];
@@ -111,7 +128,7 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
 
   it("mode='fixed' (cicilan): amount flat per_period_amount, gak dikali hari", () => {
     mock.tables.riders = [{ id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" }];
-    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1" }];
+    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1", status: "COMPLETED" }];
     mock.tables.attendance_logs = [];
     mock.tables.rider_installments = [
       { id: "ins1", rider_id: "r1", deduction_type_id: "rusak", mode: "fixed", daily_rate: null, active: true,
@@ -126,9 +143,27 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     });
   });
 
+  it("delivery_records status != COMPLETED (FAILED/PENDING_PICKUP) TIDAK ikut kehitung ke gaji", () => {
+    mock.tables.riders = [{ id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" }];
+    mock.tables.delivery_records = [
+      { rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1", status: "COMPLETED" },
+      { rider_id: "r1", driver_code: null, fee: 50000, delivery_date: "2026-07-22", client_id: "client-1", status: "FAILED" },
+      { rider_id: "r1", driver_code: null, fee: 50000, delivery_date: "2026-07-22", client_id: "client-1", status: "PENDING_PICKUP" },
+    ];
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [];
+    mock.tables.deduction_types = [];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      const detail = mock.inserted.payroll_details[0];
+      expect(detail.delivery_count).toBe(1); // cuma yang COMPLETED
+      expect(detail.gross_earning).toBe(100000);
+    });
+  });
+
   it("auto_recurring trigger_frequency='monthly_once' (BPJS): cuma kepotong 1x per bulan, lintas run/client manapun", () => {
     mock.tables.riders = [{ id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" }];
-    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1" }];
+    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1", status: "COMPLETED" }];
     mock.tables.attendance_logs = [];
     mock.tables.rider_installments = [];
     mock.tables.deduction_types = [
@@ -147,7 +182,7 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
 
   it("auto_recurring trigger_frequency='monthly_once' (BPJS): TETAP kepotong kalau belum pernah bulan ini", () => {
     mock.tables.riders = [{ id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" }];
-    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1" }];
+    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1", status: "COMPLETED" }];
     mock.tables.attendance_logs = [];
     mock.tables.rider_installments = [];
     mock.tables.deduction_types = [
@@ -165,7 +200,7 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
 
   it("auto_recurring trigger_frequency='every_payroll_run' (default): kepotong tiap run, gak di-dedup bulanan", () => {
     mock.tables.riders = [{ id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" }];
-    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1" }];
+    mock.tables.delivery_records = [{ rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1", status: "COMPLETED" }];
     mock.tables.attendance_logs = [];
     mock.tables.rider_installments = [];
     mock.tables.deduction_types = [
@@ -180,5 +215,58 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
       const ded = mock.inserted.payroll_deductions.find((d: any) => d.deduction_type_id === "adm");
       expect(ded?.amount).toBe(2500);
     });
+  });
+
+  it("auto_recurring TETAP kepotong walau gross rider di client ini nol (rider ke-discover lewat cicilan daily, bukan delivery)", () => {
+    mock.tables.riders = [{ id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" }];
+    mock.tables.delivery_records = []; // nol delivery di client ini periode ini
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [
+      { id: "ins1", rider_id: "r1", deduction_type_id: "sewa", mode: "daily", daily_rate: 0, active: true,
+        next_deduction_date: "2026-01-01", installments_paid: 0, installment_count: null, per_period_amount: null },
+    ];
+    mock.tables.deduction_types = [
+      { id: "adm", name: "Biaya Admin", recurring_amount: 2500, active: true, auto_recurring: true, trigger_frequency: "every_payroll_run" },
+    ];
+    mock.tables.payroll_runs = [];
+    mock.tables.payroll_details = [];
+    mock.tables.payroll_deductions = [];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      const detail = mock.inserted.payroll_details[0];
+      expect(detail.gross_earning).toBe(0);
+      const ded = mock.inserted.payroll_deductions.find((d: any) => d.deduction_type_id === "adm");
+      expect(ded?.amount).toBe(2500); // dulu di-skip gara-gara gate `gross > 0`
+    });
+  });
+});
+
+describe("computeInstallmentAdvance (publish — maju/nggaknya progress cicilan)", () => {
+  const noShortfall = { gross_earning: 100000, total_deduction: 50000 };
+  const shortfall = { gross_earning: 10000, total_deduction: 50000 };
+
+  it("mode='fixed': maju & selesai begitu paid mencapai installment_count", () => {
+    const ins = { mode: "fixed", installments_paid: 2, installment_count: 3 };
+    expect(computeInstallmentAdvance(ins, noShortfall)).toEqual({ installments_paid: 3, active: false });
+  });
+
+  it("mode='fixed': maju tapi masih aktif kalau belum mencapai installment_count", () => {
+    const ins = { mode: "fixed", installments_paid: 0, installment_count: 3 };
+    expect(computeInstallmentAdvance(ins, noShortfall)).toEqual({ installments_paid: 1, active: true });
+  });
+
+  it("mode='monthly': TIDAK PERNAH dianggap selesai (dulu mati abis publish 1x gara-gara installment_count null)", () => {
+    const ins = { mode: "monthly", installments_paid: 0, installment_count: null };
+    expect(computeInstallmentAdvance(ins, noShortfall)).toBeNull();
+  });
+
+  it("mode='daily': gak pernah disentuh sama sekali", () => {
+    const ins = { mode: "daily", installments_paid: 5, installment_count: null };
+    expect(computeInstallmentAdvance(ins, noShortfall)).toBeNull();
+  });
+
+  it("mode='fixed' dengan shortfall (gross < total_deduction, belum di-netting): JANGAN maju, ke-tagih lagi run berikutnya", () => {
+    const ins = { mode: "fixed", installments_paid: 0, installment_count: 3 };
+    expect(computeInstallmentAdvance(ins, shortfall)).toBeNull();
   });
 });

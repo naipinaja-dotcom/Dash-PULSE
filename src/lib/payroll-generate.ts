@@ -15,6 +15,25 @@ export interface PayrollRunLite {
   status?: string;
 }
 
+// Dipanggil dari publish() di admin.payroll.tsx per baris payroll_deductions
+// yang nunjuk ke sebuah cicilan, buat mutusin progress-nya maju atau nggak.
+// null = jangan sentuh installments_paid/active sama sekali baris ini.
+export function computeInstallmentAdvance(
+  ins: { mode: string; installments_paid: number; installment_count: number | null },
+  detail: { gross_earning: number; total_deduction: number },
+): { installments_paid: number; active: boolean } | null {
+  // mode='daily'/'monthly' (sewa) open-ended — gak ada installment_count buat
+  // dibandingin, tetap aktif sampai admin nonaktifin manual pas unit
+  // dikembaliin. Cuma mode='fixed' (cicilan) yang punya progress N/M.
+  if (ins.mode === "daily" || ins.mode === "monthly") return null;
+  // Shortfall belum diberesin (net_pay ke-clamp 0, potongan gak kekejar full
+  // oleh gross) — jangan tandain lunas, biar ke-tagih lagi di run berikutnya.
+  if (Number(detail.total_deduction) > Number(detail.gross_earning)) return null;
+  const paid = ins.installments_paid + 1;
+  const done = paid >= (ins.installment_count ?? 0);
+  return { installments_paid: paid, active: !done };
+}
+
 const DAY_MS = 86_400_000;
 
 // Siklus tagihan custom mode='monthly' (mis. 25 - 24 bulan depannya, bukan
@@ -66,11 +85,20 @@ export async function generatePayrollDetails(
   run: PayrollRunLite,
   client: typeof supabase = supabase,
 ): Promise<{ detailCount: number }> {
-  await client.from("payroll_details").delete().eq("run_id", run.id);
-
+  // Delete lama + insert baru kejadian di UJUNG fungsi ini, dalam satu RPC
+  // (satu transaction Postgres) — biar kalau ada apa pun yang gagal/throw di
+  // tengah komputasi di bawah, payroll_details/payroll_deductions run ini
+  // TIDAK kesentuh sama sekali (bukan keburu ke-delete duluan). Makanya semua
+  // query dedup di bawah (BPJS bulanan, siklus sewa monthly) explicit exclude
+  // run.id sendiri — dulu itu didapat gratis dari delete-di-awal ini.
   const [deliveries, attendance] = await Promise.all([
     fetchAllRows<{ rider_id: string | null; driver_code: string | null; fee: number | null }>((sb, from, to) => {
+      // Cuma order status='COMPLETED' yang boleh masuk gaji — samain sama Hitung
+      // Fee (admin.calculate.tsx) yang emang cuma nge-zip baris COMPLETED.
+      // Tanpa ini, order FAILED/PENDING_PICKUP ikut ngisi delivery_count (dan
+      // fee-nya kalau suatu saat kebetulan udah keisi sebelum status final).
       let q = sb.from("delivery_records").select("rider_id, driver_code, fee")
+        .eq("status", "COMPLETED")
         .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end);
       if (run.client_id) q = q.eq("client_id", run.client_id);
       return q.range(from, to);
@@ -145,7 +173,7 @@ export async function generatePayrollDetails(
     const monthEnd = new Date(Number(runMonth.slice(0, 4)), Number(runMonth.slice(5, 7)), 0)
       .toISOString().slice(0, 10); // hari terakhir bulan itu
     const { data: runsThisMonth } = await (client as any).from("payroll_runs")
-      .select("id").gte("period_end", monthStart).lte("period_end", monthEnd);
+      .select("id").gte("period_end", monthStart).lte("period_end", monthEnd).neq("id", run.id);
     const runIdsThisMonth = (runsThisMonth ?? []).map((r: { id: string }) => r.id);
     if (runIdsThisMonth.length > 0) {
       const { data: detailsThisMonth } = await (client as any).from("payroll_details")
@@ -193,6 +221,7 @@ export async function generatePayrollDetails(
       );
       for (const d of priorDeds as { installment_id: string; detail_id: string }[]) {
         const runId = runIdOfDetail.get(d.detail_id);
+        if (runId === run.id) continue; // punya run ini sendiri, belum ke-delete — jangan itung diri sendiri
         const periodEnd = runId ? periodEndOfRun.get(runId) : null;
         if (!periodEnd) continue;
         const inst = monthlyInsts.find((i) => i.id === d.installment_id);
@@ -325,10 +354,16 @@ export async function generatePayrollDetails(
       0,
     );
 
-    const autoApplicable = gross > 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? ((autoTypes ?? []) as any[]).filter((t) => !(t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)))
-      : [];
+    // Auto-recurring (Biaya Admin, BPJS) kepotong per payroll detail TANPA
+    // syarat gross>0 — sama kayak deduction cicilan (dedItems) di atas, biar
+    // konsisten: rider yang punya activity di client ini (walau gross-nya nol
+    // periode ini) tetap kena, gak digantung nunggu ada gross. Shortfall yang
+    // muncul (total_deduction > gross_earning) ditangani jalur netting yang
+    // udah ada di admin.payroll.tsx, bukan di-skip diam-diam di sini.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const autoApplicable = ((autoTypes ?? []) as any[]).filter(
+      (t) => !(t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)),
+    );
     const autoTotal = autoApplicable.reduce((s: number, t) => s + (Number(t.recurring_amount) || 0), 0);
 
     const totalDed = installTotal + autoTotal;
@@ -373,14 +408,16 @@ export async function generatePayrollDetails(
     }
   }
 
-  if (detailsToInsert.length) {
-    const { error: e1 } = await client.from("payroll_details").insert(detailsToInsert);
-    if (e1) throw e1;
-  }
-  if (deductionsToInsert.length) {
-    const { error: e2 } = await client.from("payroll_deductions").insert(deductionsToInsert);
-    if (e2) throw e2;
-  }
+  // Delete-lama + insert-baru dalam SATU RPC/transaction Postgres (lihat
+  // regenerate_payroll_details di migration) — kalau ini gagal, payroll_details
+  // run ini tetap utuh persis kayak sebelum "Generate Ulang" ditekan, bukan
+  // ketinggalan kosong/separuh.
+  const { error } = await (client as any).rpc("regenerate_payroll_details", {
+    p_run_id: run.id,
+    p_details: detailsToInsert,
+    p_deductions: deductionsToInsert,
+  });
+  if (error) throw error;
 
   return { detailCount: detailsToInsert.length };
 }

@@ -22,7 +22,7 @@ import {
   Pencil,
   AlertTriangle,
 } from "lucide-react";
-import { generatePayrollDetails } from "@/lib/payroll-generate";
+import { generatePayrollDetails, computeInstallmentAdvance } from "@/lib/payroll-generate";
 import { triggerPayrollWorkflow } from "@/lib/api/payroll-workflow.functions";
 import { IncentiveEditor } from "@/components/incentive-editor";
 import {
@@ -564,28 +564,22 @@ function PayrollPage() {
       // advance installments
       const { data: deds } = await supabase
         .from("payroll_deductions")
-        .select("installment_id, amount, payroll_details!inner(run_id)")
+        .select("installment_id, amount, payroll_details!inner(run_id, gross_earning, total_deduction)")
         .eq("payroll_details.run_id", activeRun.id);
       for (const d of deds ?? []) {
         if (!d.installment_id) continue;
+        const pd = (d as any).payroll_details;
         const { data: ins } = await supabase
           .from("rider_installments")
           .select("*")
           .eq("id", d.installment_id)
           .single();
         if (!ins) continue;
-        // mode='daily' (sewa) open-ended — gak ada installment_count buat
-        // dibandingin, tetap aktif sampai admin nonaktifin manual pas unit
-        // dikembaliin. Cuma mode='fixed' (cicilan) yang punya progress N/M.
-        if (ins.mode === "daily") continue;
-        const paid = ins.installments_paid + 1;
-        const done = paid >= (ins.installment_count ?? 0);
+        const advance = computeInstallmentAdvance(ins, pd);
+        if (!advance) continue;
         await supabase
           .from("rider_installments")
-          .update({
-            installments_paid: paid,
-            active: !done,
-          })
+          .update(advance)
           .eq("id", ins.id);
       }
       const { error: e2 } = await supabase

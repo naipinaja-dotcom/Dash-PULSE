@@ -40,10 +40,22 @@ describe("detectAreaFromAddress", () => {
   });
 
   // "Menteng Dalam" (kelurahan di Tebet/Jaksel) ngandung substring "MENTENG"
-  // yang collide sama kecamatan Menteng (beda tempat, Jakpus) — 2 sinyal
-  // beda, sistem BENER nolak nebak (null) daripada asal pilih salah satu.
-  it("substring kecamatan yang collide sama kelurahan lain — ambigu, gak ditebak", () => {
-    expect(detectAreaFromAddress("Menteng Dalam, Tebet, South Jakarta City, Jakarta")).toBeNull();
+  // yang collide sama kecamatan Menteng (beda tempat, Jakpus) — tapi alamat
+  // ini juga eksplisit nyebut "South Jakarta City" (tier kota, lebih kuat),
+  // jadi menang duluan TANPA sempat ngecek kecamatan yang collide itu.
+  it("nama kota eksplisit menang di atas kecamatan yang collide sama kelurahan lain", () => {
+    expect(detectAreaFromAddress("Menteng Dalam, Tebet, South Jakarta City, Jakarta")).toBe("Kota Jakarta Selatan");
+  });
+
+  // Tapi kalau yang ambigu itu di TIER KOTA sendiri (2 kota beda eksplisit
+  // disebut), jangan coba "diselamatkan" pakai kecamatan — tetap null.
+  it("ambigu di tier kota TIDAK lanjut coba tier kecamatan", () => {
+    expect(detectAreaFromAddress("Dari Jakarta Selatan (Menteng Dalam) pindah ke Jakarta Utara")).toBeNull();
+  });
+
+  it("singkatan dipisah spasi ('Jak Pus', 'jak sel') ikut ke-detect", () => {
+    expect(detectAreaFromAddress("Kompl Ruko Mega Grosir Cempaka Mas Blok N/25 , Jak Pus")).toBe("Kota Jakarta Pusat");
+    expect(detectAreaFromAddress("pondok indah, pondok pinang, keb lama, jak sel")).toBe("Kota Jakarta Selatan");
   });
 
   it("nama kecamatan doang (gak nyebut nama kota sama sekali) tetap ke-detect", () => {

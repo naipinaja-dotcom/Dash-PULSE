@@ -79,6 +79,8 @@ export async function upsertLiveDeliveries(
     distance_km: r.distance_km,
     weight_kg: r.weight_kg,
     destination_address: r.destination_address,
+    destination_lat: r.destination_lat,
+    destination_lng: r.destination_lng,
     sender_name: r.sender_name,
     receiver_name: r.receiver_name,
     service_type: r.service_type,

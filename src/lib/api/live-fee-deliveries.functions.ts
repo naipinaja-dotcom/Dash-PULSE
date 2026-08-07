@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { DeliveryRow } from "@/lib/pricing-calc";
-import { detectAreaFromAddress } from "@/lib/area-detect";
+import { detectAreaFromAddress, PRECISE_AREA_NAMES } from "@/lib/area-detect";
+import { getSupabaseAdmin } from "@/lib/supabase-admin.server";
 
 // Sumber data LIVE untuk "Hitung Fee" — tarik pengiriman langsung dari mgmt API
 // dashelectric (bukan dari delivery_records yang harus di-upload dulu), lalu
@@ -97,6 +98,11 @@ export interface LiveDeliveryRow extends DeliveryRow {
   sender_name: string | null;
   receiver_name: string | null;
   driver_name: string | null;
+  // Bukan dipakai pricing-calc (cuma butuh `district`) — buat enrichment
+  // area_at_point di enrichDistrictsFromCoordinates() & biar tersimpan ke
+  // delivery_records pas sync (lihat sync-live-deliveries.ts).
+  destination_lat: number | null;
+  destination_lng: number | null;
 }
 
 /** Reduksi 1 record upstream ke LiveDeliveryRow (dipakai pricing-calc + sync DB). */
@@ -120,6 +126,12 @@ function toDeliveryRow(x: UpstreamRow): LiveDeliveryRow {
   // dipakai buat klasifikasi DELIVERY/RETURN (lihat handler).
   const senderName = (x.sender?.firstName ?? "").trim() || null;
   const receiverName = (x.recipient?.firstName ?? "").trim() || null;
+  // quote.destination.coordinates.{latitude,longitude} — konfirmasi manual
+  // lewat sample response API, field ini beneran ada (bukan field flat
+  // dest.lat/dest.lng seperti diduga sebelumnya).
+  const coords = dest.coordinates ?? {};
+  const lat = typeof coords.latitude === "number" ? coords.latitude : null;
+  const lng = typeof coords.longitude === "number" ? coords.longitude : null;
   return {
     id: deliveryId, // id upstream — bukan uuid delivery_records
     rider_id: null, // diresolusi di client (by driver_code)
@@ -133,10 +145,14 @@ function toDeliveryRow(x: UpstreamRow): LiveDeliveryRow {
     // Selatan") yang ambigu buat matching rate per-area — coba tebak dulu
     // dari teks alamat (kecamatan/singkatan, gak ambigu — lihat area-detect.ts),
     // meta.city cuma fallback kalau alamatnya sendiri gak kasih apa-apa.
+    // Enrichment koordinat (area_at_point, kalau teks alamat gak ke-detect)
+    // kejadian belakangan di fetchLiveDeliveries() — lihat enrichDistrictsFromCoordinates.
     district: detectAreaFromAddress(dest.address) ?? (meta.city ?? null),
     distance_km: q.distance != null ? Number(q.distance) / 1000 : null, // API meter → km
     weight_kg: packages.length ? weightSum : (q.weight ?? null),
     destination_address: dest.address ?? null,
+    destination_lat: lat,
+    destination_lng: lng,
     // CSV "Service Type" = quote.service.type (mis. "INSTANT"), bukan .category ("FLEET+").
     service_type: svc.type ?? svc.category ?? x.businessUnit ?? null,
     status: x.status ?? null,
@@ -148,6 +164,39 @@ function toDeliveryRow(x: UpstreamRow): LiveDeliveryRow {
     receiver_name: receiverName,
     driver_name: driverName,
   };
+}
+
+// Baris yang district-nya belum presisi (teks alamat gak eksplisit nyebut
+// kota/kecamatan) tapi PUNYA koordinat — coba upgrade lewat PostGIS
+// `area_at_point` (sama fungsi yang dipakai jalur upload CSV, lihat
+// geocoding.functions.ts). Dedup per koordinat dibulatkan 4 desimal (~11m)
+// biar gak query DB berkali-kali buat titik yang sama (banyak pengiriman
+// numpuk di 1 alamat/hari). Mutasi `rows` in-place.
+async function enrichDistrictsFromCoordinates(rows: LiveDeliveryRow[]): Promise<void> {
+  const needsEnrich = rows.filter(
+    (r) => r.destination_lat != null && r.destination_lng != null && !PRECISE_AREA_NAMES.has(r.district ?? ""),
+  );
+  if (needsEnrich.length === 0) return;
+
+  const keyOf = (r: LiveDeliveryRow) => `${r.destination_lat!.toFixed(4)},${r.destination_lng!.toFixed(4)}`;
+  const uniquePoints = new Map<string, { lat: number; lng: number }>();
+  for (const r of needsEnrich) uniquePoints.set(keyOf(r), { lat: r.destination_lat!, lng: r.destination_lng! });
+
+  const admin = getSupabaseAdmin();
+  const areaByKey = new Map<string, string | null>();
+  for (const [key, p] of uniquePoints) {
+    try {
+      const { data: area } = await admin.rpc("area_at_point", { p_lat: p.lat, p_lng: p.lng });
+      areaByKey.set(key, (area as string | null) ?? null);
+    } catch {
+      areaByKey.set(key, null);
+    }
+  }
+
+  for (const r of needsEnrich) {
+    const area = areaByKey.get(keyOf(r));
+    if (area) r.district = area;
+  }
 }
 
 export interface LiveFeeDeliveriesResult {
@@ -212,6 +261,7 @@ export async function fetchLiveDeliveries(
 
   const matched = upstream.filter((x) => x.provider?.id === providerId);
   const rows = matched.map(toDeliveryRow);
+  await enrichDistrictsFromCoordinates(rows);
 
   // Klasifikasi DELIVERY/RETURN — replikasi classifyDeliveryType: hub = nama
   // pengirim (outlet) yang paling sering muncul; baris dari hub = DELIVERY,

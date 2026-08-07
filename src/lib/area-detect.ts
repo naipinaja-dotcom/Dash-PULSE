@@ -49,6 +49,9 @@ const CITY_PATTERNS: { canonical: string; keywords: string[] }[] = [
   { canonical: "Kota Depok", keywords: ["DEPOK"] }, // gak ada "Kabupaten Depok" di closed-set ini, gak ambigu
 ];
 
+/** Nama kanonik yang dianggap "udah presisi" — dipakai caller buat mutusin perlu di-enrich lagi atau nggak. */
+export const PRECISE_AREA_NAMES: ReadonlySet<string> = new Set(CITY_PATTERNS.map((p) => p.canonical));
+
 // TIER 2 — nama KECAMATAN (satu tingkat di bawah kota) — closed-set resmi 5
 // kota administratif DKI Jakarta (44 kecamatan). Banyak alamat operasional
 // nyebut kecamatan doang ("Kemayoran", "Tanjung Priok") tanpa nyebut nama

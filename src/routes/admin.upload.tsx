@@ -8,6 +8,7 @@ import { resolveOrCreateRiders } from "@/lib/rider-lookup";
 import { classifyAllClients } from "@/lib/delivery-classification";
 import { cleanDuplicateDeliveries } from "@/lib/delivery-dedup";
 import { reverseGeocodeDistricts } from "@/lib/api/geocoding.functions";
+import { detectAreaFromAddress } from "@/lib/area-detect";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
@@ -358,25 +359,34 @@ function DeliveryUpload() {
     );
     const droppedStatusCount = recordsRaw.length - records.length;
 
-    // Auto-isi district yang kosong dari koordinat (reverse geocoding ORS) —
-    // CSV operasional sering ada Lat/Long tapi kolom district-nya kosong/gak
-    // ada sama sekali. Kalau session admin habis atau ORS error, di-skip
-    // (bukan gagalin seluruh upload) — district tetap bisa diisi manual.
-    //
-    // Beberapa sistem operasional export kolom "District" isinya alamat
-    // lengkap (duplikat dari destination_address), bukan nama district
-    // singkat kayak yang dipakai override per-area di Pricing Scheme
-    // ("Jakarta Pusat", dll — semua <40 karakter). Nilai district sepanjang
-    // itu gak berguna buat matching pricing, jadi tetap dianggap "kosong"
-    // dan ditimpa hasil geocode kalau koordinatnya ada.
-    // ponytail: ambang 40 karakter, naikkan kalau ada nama district legit yang lebih panjang.
-    const looksLikeFullAddress = (d: string | null) => !d || d.trim().length > 40;
+    // Prioritas 1: coba deteksi area dari TEKS destination_address dulu —
+    // instan, gratis, gak kena rate limit API luar, dan sering udah cukup
+    // (banyak alamat operasional eksplisit nyebut kecamatan/kota: "Jaksel",
+    // "Tanjung Priok", dst) walau kolom District dari CSV sendiri kosong/
+    // ambigu ("Jakarta" polos). Override district CSV kalau ketemu — cuma
+    // pola yang GAK ambigu yang dicocokin (lihat area-detect.ts); kalau
+    // ragu, gak ditebak, lanjut ke prioritas 2.
+    const addressResolved = new Set<number>();
+    records.forEach((r, i) => {
+      const detected = detectAreaFromAddress(r.destination_address);
+      if (detected) {
+        r.district = detected;
+        addressResolved.add(i);
+      }
+    });
+
+    // Prioritas 2: buat baris yang GAK ke-detect dari alamat DAN punya
+    // koordinat — baru panggil geocode koordinat (PostGIS area_boundaries
+    // dulu — presisi terjamin buat Jabodetabek, ORS fallback buat di luar
+    // itu). Kalau session admin habis atau ORS/DB error, di-skip (bukan
+    // gagalin seluruh upload) — district yang ada (dari CSV atau prioritas
+    // 1) dipakai apa adanya.
     const needsGeocode = records.filter(
-      (r) => looksLikeFullAddress(r.district) && r.destination_lat != null && r.destination_lng != null,
+      (r, i) => !addressResolved.has(i) && r.destination_lat != null && r.destination_lng != null,
     );
     if (needsGeocode.length > 0) {
       if (!session?.access_token) {
-        toast.warning("Sesi admin habis — district dari koordinat dilewati, isi manual kalau perlu.");
+        toast.warning("Sesi admin habis — deteksi area dari koordinat dilewati, district yang ada dipakai apa adanya.");
       } else {
         try {
           const { districts } = await reverseGeocodeDistricts({
@@ -392,7 +402,7 @@ function DeliveryUpload() {
             if (districts[i]) r.district = districts[i];
           });
         } catch (e) {
-          toast.warning(`Gagal isi district dari koordinat: ${(e as Error).message}`);
+          toast.warning(`Gagal deteksi area dari koordinat: ${(e as Error).message}`);
         }
       }
     }

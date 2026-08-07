@@ -64,6 +64,14 @@ describe("detectAreaFromAddress", () => {
     expect(detectAreaFromAddress("Setiabudi Residences Tower B Suite 2706")).toBe("Kota Jakarta Selatan");
   });
 
+  it("nama kelurahan/kawasan terkenal (tier 3) — cuma dicek kalau kota & kecamatan gak nemu apa-apa", () => {
+    expect(detectAreaFromAddress("apartemen green lake Sunter tower Southern unit 25 AG")).toBe("Kota Jakarta Utara");
+    expect(detectAreaFromAddress("jl.pluit karang barat no 118")).toBe("Kota Jakarta Utara");
+    expect(detectAreaFromAddress("Jl. Pantai Kuta 4 no 18, perumahan ancol timur")).toBe("Kota Jakarta Utara");
+    expect(detectAreaFromAddress("Jl TM Bendungan Jatiluhur II no.8A Bendungan Hilir")).toBe("Kota Jakarta Pusat");
+    expect(detectAreaFromAddress("jalan multi karya 1 no 2 RT 6 RW 9 kel. Utan kayu utara")).toBe("Kota Jakarta Timur");
+  });
+
   it("null/kosong -> null", () => {
     expect(detectAreaFromAddress(null)).toBeNull();
     expect(detectAreaFromAddress("")).toBeNull();

@@ -66,6 +66,18 @@ const KECAMATAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
   { canonical: "Kota Jakarta Timur", keywords: ["CAKUNG", "CIPAYUNG", "CIRACAS", "DUREN SAWIT", "JATINEGARA", "KRAMAT JATI", "MAKASAR", "MATRAMAN", "PASAR REBO", "PULO GADUNG", "PULOGADUNG"] },
 ];
 
+// TIER 3 — nama KELURAHAN/kawasan terkenal (satu tingkat lagi di bawah
+// kecamatan) yang sering dipakai orang berdiri sendiri tanpa nyebut
+// kecamatan/kota-nya ("Sunter", "Pluit", "Ancol"). Cuma dicek kalau tier
+// 1 & 2 dua-duanya gak nemu apa-apa — daftar ini TERBUKA, tambahin nama
+// baru begitu ketemu residual "gak ke-match" yang genuinely gak ambigu
+// (1 nama = 1 kota doang).
+const KELURAHAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
+  { canonical: "Kota Jakarta Utara", keywords: ["SUNTER", "PLUIT", "ANCOL"] },
+  { canonical: "Kota Jakarta Pusat", keywords: ["BENDUNGAN HILIR"] },
+  { canonical: "Kota Jakarta Timur", keywords: ["UTAN KAYU"] },
+];
+
 function normalizeAddress(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9\s]/g, " ").replace(/\s+/g, " ");
 }
@@ -91,5 +103,7 @@ export function detectAreaFromAddress(address: string | null | undefined): strin
   const cityHits = matchTier(norm, CITY_PATTERNS);
   if (cityHits.size > 0) return cityHits.size === 1 ? [...cityHits][0] : null;
   const kecHits = matchTier(norm, KECAMATAN_PATTERNS);
-  return kecHits.size === 1 ? [...kecHits][0] : null;
+  if (kecHits.size > 0) return kecHits.size === 1 ? [...kecHits][0] : null;
+  const kelHits = matchTier(norm, KELURAHAN_PATTERNS);
+  return kelHits.size === 1 ? [...kelHits][0] : null;
 }

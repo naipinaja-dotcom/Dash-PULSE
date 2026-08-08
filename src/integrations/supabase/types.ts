@@ -366,9 +366,46 @@ export type Database = {
           },
         ]
       }
+      deduction_type_riders: {
+        Row: {
+          created_at: string
+          deduction_type_id: string
+          id: string
+          rider_id: string
+        }
+        Insert: {
+          created_at?: string
+          deduction_type_id: string
+          id?: string
+          rider_id: string
+        }
+        Update: {
+          created_at?: string
+          deduction_type_id?: string
+          id?: string
+          rider_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deduction_type_riders_deduction_type_id_fkey"
+            columns: ["deduction_type_id"]
+            isOneToOne: false
+            referencedRelation: "deduction_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deduction_type_riders_rider_id_fkey"
+            columns: ["rider_id"]
+            isOneToOne: false
+            referencedRelation: "riders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deduction_types: {
         Row: {
           active: boolean
+          applies_to_all: boolean
           auto_recurring: boolean
           code: string | null
           created_at: string | null
@@ -381,6 +418,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          applies_to_all?: boolean
           auto_recurring?: boolean
           code?: string | null
           created_at?: string | null
@@ -393,6 +431,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          applies_to_all?: boolean
           auto_recurring?: boolean
           code?: string | null
           created_at?: string | null
@@ -689,6 +728,7 @@ export type Database = {
           detail_id: string | null
           id: string
           installment_id: string | null
+          paid_amount: number | null
         }
         Insert: {
           amount?: number
@@ -698,6 +738,7 @@ export type Database = {
           detail_id?: string | null
           id?: string
           installment_id?: string | null
+          paid_amount?: number | null
         }
         Update: {
           amount?: number
@@ -707,6 +748,7 @@ export type Database = {
           detail_id?: string | null
           id?: string
           installment_id?: string | null
+          paid_amount?: number | null
         }
         Relationships: [
           {
@@ -1884,6 +1926,10 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      regenerate_payroll_details: {
+        Args: { p_deductions?: Json; p_details?: Json; p_run_id: string }
+        Returns: undefined
+      }
       st_3dclosestpoint: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: unknown

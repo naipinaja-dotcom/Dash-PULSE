@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
-import { Plus, Trash2, Loader2, X } from "lucide-react";
-import type { DType } from "./types";
+import { Plus, Trash2, Loader2, X, Users } from "lucide-react";
+import type { DType, Rider } from "./types";
 
 export function DTypesTab() {
   const [rows, setRows] = useState<DType[]>([]);
@@ -20,10 +20,61 @@ export function DTypesTab() {
     auto_recurring: false,
     recurring_amount: 0,
     trigger_frequency: "every_payroll_run" as "every_payroll_run" | "monthly_once",
+    applies_to_all: true,
   });
   const [saving, setSaving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const bulk = useBulkSelect(rows.map((r) => r.id));
+
+  // Kelola rider mana yang kena buat auto-recurring type dengan
+  // applies_to_all=false (mis. BPJS cuma sebagian rider) — dibuka per baris.
+  const [managingId, setManagingId] = useState<string | null>(null);
+  const [riders, setRiders] = useState<Rider[]>([]);
+  const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
+  const [riderSearch, setRiderSearch] = useState("");
+
+  const openManage = async (r: DType) => {
+    setManagingId(r.id);
+    setRiderSearch("");
+    if (riders.length === 0) {
+      const { data } = await supabase.from("riders").select("id, employee_id, full_name").order("full_name");
+      setRiders(data ?? []);
+    }
+    const { data: enrolled } = await (supabase as any)
+      .from("deduction_type_riders")
+      .select("rider_id")
+      .eq("deduction_type_id", r.id);
+    setEnrolledIds(new Set((enrolled ?? []).map((e: { rider_id: string }) => e.rider_id)));
+  };
+
+  const toggleEnrolled = async (typeId: string, riderId: string) => {
+    const isEnrolled = enrolledIds.has(riderId);
+    const next = new Set(enrolledIds);
+    isEnrolled ? next.delete(riderId) : next.add(riderId);
+    setEnrolledIds(next); // optimistic, dibalik lagi kalau gagal
+    const { error } = isEnrolled
+      ? await (supabase as any).from("deduction_type_riders").delete()
+          .eq("deduction_type_id", typeId).eq("rider_id", riderId)
+      : await (supabase as any).from("deduction_type_riders").insert({ deduction_type_id: typeId, rider_id: riderId });
+    if (error) {
+      toast.error(error.message);
+      setEnrolledIds(enrolledIds);
+    }
+  };
+
+  const toggleAppliesToAll = async (r: DType) => {
+    const { error } = await (supabase as any)
+      .from("deduction_types")
+      .update({ applies_to_all: !r.applies_to_all })
+      .eq("id", r.id);
+    if (error) return toast.error(error.message);
+    load();
+  };
+
+  const filteredRiders = riders.filter((r) => {
+    const q = riderSearch.trim().toLowerCase();
+    return !q || r.full_name.toLowerCase().includes(q) || r.employee_id.toLowerCase().includes(q);
+  });
 
   const load = async () => {
     setLoading(true);
@@ -52,6 +103,7 @@ export function DTypesTab() {
       auto_recurring: nf.auto_recurring,
       recurring_amount: nf.auto_recurring ? nf.recurring_amount : 0,
       trigger_frequency: nf.auto_recurring ? nf.trigger_frequency : "every_payroll_run",
+      applies_to_all: nf.auto_recurring ? nf.applies_to_all : true,
     });
     setSaving(false);
     if (error) return toast.error(error.message);
@@ -64,6 +116,7 @@ export function DTypesTab() {
       auto_recurring: false,
       recurring_amount: 0,
       trigger_frequency: "every_payroll_run",
+      applies_to_all: true,
     });
     setAdding(false);
     load();
@@ -259,6 +312,18 @@ export function DTypesTab() {
                   client-nya digaji &gt;1x/bulan (kayak Wicked Pies), gak dobel kepotong.
                 </p>
               </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={nf.applies_to_all}
+                  onChange={(e) => setNf({ ...nf, applies_to_all: e.target.checked })}
+                />
+                Berlaku untuk semua rider{" "}
+                <span className="text-muted-foreground text-xs">
+                  (uncheck kalau cuma sebagian rider yang ikut, mis. BPJS — bisa dipilih ridernya
+                  setelah disimpan)
+                </span>
+              </label>
             </div>
           )}
           <div className="flex justify-end gap-2 mt-4">
@@ -324,8 +389,8 @@ export function DTypesTab() {
               </tr>
             ) : (
               rows.map((r) => (
+                <Fragment key={r.id}>
                 <tr
-                  key={r.id}
                   className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
                 >
                   <td className="p-3">
@@ -348,10 +413,29 @@ export function DTypesTab() {
                   </td>
                   <td className="p-3 text-muted-foreground">
                     {r.auto_recurring ? (
-                      <span className="text-primary font-medium">
-                        Ya · Rp{Number(r.recurring_amount).toLocaleString("id-ID")} ·{" "}
-                        {r.trigger_frequency === "monthly_once" ? "bulanan" : "tiap run"}
-                      </span>
+                      <div className="space-y-1">
+                        <span className="text-primary font-medium block">
+                          Ya · Rp{Number(r.recurring_amount).toLocaleString("id-ID")} ·{" "}
+                          {r.trigger_frequency === "monthly_once" ? "bulanan" : "tiap run"}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => toggleAppliesToAll(r)}
+                            title="Klik untuk ganti"
+                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${r.applies_to_all ? "border-border text-muted-foreground bg-muted hover:bg-muted/70" : "border-primary/40 text-primary bg-primary-soft hover:bg-primary-soft/70"}`}
+                          >
+                            {r.applies_to_all ? "Semua rider" : "Rider tertentu"}
+                          </button>
+                          {!r.applies_to_all && (
+                            <button
+                              onClick={() => openManage(r)}
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-primary"
+                            >
+                              <Users className="w-3 h-3" /> Kelola
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     ) : (
                       "Tidak"
                     )}
@@ -375,6 +459,50 @@ export function DTypesTab() {
                     </button>
                   </td>
                 </tr>
+                {managingId === r.id && (
+                  <tr className="border-b border-border/60 bg-muted/20">
+                    <td colSpan={7} className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium">
+                          Rider yang kena "{r.name}" ({enrolledIds.size} dipilih)
+                        </span>
+                        <button
+                          onClick={() => setManagingId(null)}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <input
+                        placeholder="Cari nama / kode rider…"
+                        value={riderSearch}
+                        onChange={(e) => setRiderSearch(e.target.value)}
+                        className="w-full max-w-sm rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                      />
+                      <div className="mt-2 max-h-56 max-w-sm overflow-y-auto rounded-md border border-border divide-y divide-border">
+                        {filteredRiders.length === 0 ? (
+                          <div className="px-3 py-2 text-muted-foreground text-xs">Ga ada rider cocok</div>
+                        ) : (
+                          filteredRiders.map((rd) => (
+                            <label
+                              key={rd.id}
+                              className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted cursor-pointer text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={enrolledIds.has(rd.id)}
+                                onChange={() => toggleEnrolled(r.id, rd.id)}
+                              />
+                              <span className="font-mono text-xs text-muted-foreground">{rd.employee_id}</span>
+                              <span>{rd.full_name}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))
             )}
           </tbody>

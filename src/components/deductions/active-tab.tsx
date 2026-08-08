@@ -29,6 +29,8 @@ export function ActiveTab() {
   });
   const [saving, setSaving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -133,7 +135,18 @@ export function ActiveTab() {
     load();
   };
 
-  const bulk = useBulkSelect(rows.map((r) => r.id));
+  const typeOptions = [...new Map(rows.filter((r) => r.type).map((r) => [r.type!.id, r.type!])).values()];
+  const filteredRows = rows.filter((r) => {
+    const q = search.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      r.rider?.full_name.toLowerCase().includes(q) ||
+      r.rider?.employee_id.toLowerCase().includes(q);
+    const matchesType = !typeFilter || r.deduction_type_id === typeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  const bulk = useBulkSelect(filteredRows.map((r) => r.id));
 
   const handleBulkDelete = async () => {
     if (
@@ -176,10 +189,30 @@ export function ActiveTab() {
   };
 
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } =
-    usePagination(rows, 10);
+    usePagination(filteredRows, 10);
 
   return (
     <div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input
+          placeholder="Cari nama / kode rider…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm w-56"
+        />
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+        >
+          <option value="">Semua jenis potongan</option>
+          {typeOptions.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </div>
       {!loading && rows.length > 0 && (
         <div className="flex justify-end mb-2">
           <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />

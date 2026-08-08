@@ -22,7 +22,7 @@ import {
   Pencil,
   AlertTriangle,
 } from "lucide-react";
-import { generatePayrollDetails, computeInstallmentAdvance } from "@/lib/payroll-generate";
+import { generatePayrollDetails, computeInstallmentAdvance, DEDUCTION_PRIORITY } from "@/lib/payroll-generate";
 import { triggerPayrollWorkflow } from "@/lib/api/payroll-workflow.functions";
 import { IncentiveEditor } from "@/components/incentive-editor";
 import {
@@ -498,7 +498,25 @@ function PayrollPage() {
   // generatePayrollDetails() yang sama).
   const generate = async () => {
     if (!activeRun) return;
-    if (
+    // Run yang udah "published" berarti slip gaji UDAH dikirim dan paid_amount
+    // per potongan UDAH tercatat (dipakai buat ngitung tunggakan periode
+    // berikutnya, lihat getCarriedArrears di payroll-generate.ts). Generate
+    // Ulang di sini bakal ngehapus catatan paid_amount itu — tunggakan rider
+    // bisa ke-hitung dobel atau malah hilang di periode selanjutnya. Warning
+    // eksplisit sebelum boleh lanjut, bukan sekadar disable, biar admin masih
+    // bisa forsir kalau memang tau risikonya (mis. run itu salah total).
+    if (activeRun.status === "published") {
+      if (
+        !(await confirmDialog({
+          title: "Periode & client ini SUDAH di-publish",
+          description:
+            "Slip gaji udah terbit dan catatan pembayaran potongan (dipakai buat hitung tunggakan periode berikutnya) bakal ke-reset. Kalau ada rider yang lagi nunggak dari run ini, tunggakannya bisa ke-hitung dobel atau hilang. Lanjut cuma kalau kamu yakin run ini emang salah dan perlu diulang total.",
+          confirmText: "Saya paham risikonya, generate ulang",
+          danger: true,
+        }))
+      )
+        return;
+    } else if (
       !(await confirmDialog({
         title: "Generate ulang payroll?",
         description: "Detail payroll yang lama untuk run ini akan dihapus dan dihitung ulang.",
@@ -561,26 +579,47 @@ function PayrollPage() {
         .from("payslips")
         .upsert(slips, { onConflict: "detail_id" });
       if (e1) return toast.error(e1.message);
-      // advance installments
+      // Alokasi gross_earning tiap detail ke potongan-potongannya sesuai
+      // prioritas (Admin > BPJS > Kerusakan Barang > Kasbon > Sewa Molis >
+      // Pinjaman Kuota) — kalau gross gak cukup, prioritas rendah yang kena
+      // kurang duluan. paid_amount per baris dicatat di sini (cuma pas
+      // Publish), selisihnya otomatis ketagih lagi periode berikutnya lewat
+      // getCarriedArrears di payroll-generate.ts.
+      const grossByDetail = new Map<string, number>(dets.map((d: any) => [d.id, Number(d.gross_earning)]));
       const { data: deds } = await supabase
         .from("payroll_deductions")
-        .select("installment_id, amount, payroll_details!inner(run_id, gross_earning, total_deduction)")
-        .eq("payroll_details.run_id", activeRun.id);
-      for (const d of deds ?? []) {
-        if (!d.installment_id) continue;
-        const pd = (d as any).payroll_details;
-        const { data: ins } = await supabase
-          .from("rider_installments")
-          .select("*")
-          .eq("id", d.installment_id)
-          .single();
-        if (!ins) continue;
-        const advance = computeInstallmentAdvance(ins, pd);
-        if (!advance) continue;
-        await supabase
-          .from("rider_installments")
-          .update(advance)
-          .eq("id", ins.id);
+        .select("id, detail_id, installment_id, amount, deduction_types(code)")
+        .in("detail_id", dets.map((d: any) => d.id));
+
+      const byDetail = new Map<string, any[]>();
+      for (const d of (deds ?? []) as any[]) {
+        const arr = byDetail.get(d.detail_id) ?? [];
+        arr.push(d);
+        byDetail.set(d.detail_id, arr);
+      }
+
+      for (const [detailId, rows] of byDetail) {
+        let remaining = grossByDetail.get(detailId) ?? 0;
+        const sorted = [...(rows ?? [])].sort(
+          (a: any, b: any) =>
+            (DEDUCTION_PRIORITY[a.deduction_types?.code] ?? 99) - (DEDUCTION_PRIORITY[b.deduction_types?.code] ?? 99),
+        );
+        for (const row of sorted as any[]) {
+          const amount = Number(row.amount);
+          const paid = Math.max(0, Math.min(remaining, amount));
+          remaining -= paid;
+          await supabase.from("payroll_deductions").update({ paid_amount: paid }).eq("id", row.id);
+          if (!row.installment_id) continue;
+          const { data: ins } = await supabase
+            .from("rider_installments")
+            .select("*")
+            .eq("id", row.installment_id)
+            .single();
+          if (!ins) continue;
+          const advance = computeInstallmentAdvance(ins, paid >= amount);
+          if (!advance) continue;
+          await supabase.from("rider_installments").update(advance).eq("id", ins.id);
+        }
       }
       const { error: e2 } = await supabase
         .from("payroll_runs")

@@ -8,6 +8,7 @@ export type DType = {
   auto_recurring: boolean;
   recurring_amount: number;
   trigger_frequency: string | null;
+  applies_to_all: boolean;
 };
 export type Rider = { id: string; employee_id: string; full_name: string };
 export type MolisType = {

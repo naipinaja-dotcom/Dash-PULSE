@@ -15,23 +15,101 @@ export interface PayrollRunLite {
   status?: string;
 }
 
+// Urutan pelunasan pas gross gak cukup nutup semua potongan (dipakai di
+// publish() buat alokasi gross_earning ke tiap baris payroll_deductions,
+// prioritas rendah duluan yang kena kurang). Sesuai kesepakatan: Admin dulu
+// (kewajiban rutin kecil), baru BPJS, baru cicilan-cicilan installmentable,
+// sewa molis kedua-terakhir, pinjaman kuota paling akhir.
+export const DEDUCTION_PRIORITY: Record<string, number> = {
+  ADM: 1, BPJS: 2, RUSAK: 3, KASBON: 4, SEWA: 5, KUOTA: 6,
+};
+
 // Dipanggil dari publish() di admin.payroll.tsx per baris payroll_deductions
 // yang nunjuk ke sebuah cicilan, buat mutusin progress-nya maju atau nggak.
 // null = jangan sentuh installments_paid/active sama sekali baris ini.
 export function computeInstallmentAdvance(
   ins: { mode: string; installments_paid: number; installment_count: number | null },
-  detail: { gross_earning: number; total_deduction: number },
+  paidInFull: boolean,
 ): { installments_paid: number; active: boolean } | null {
   // mode='daily'/'monthly' (sewa) open-ended — gak ada installment_count buat
   // dibandingin, tetap aktif sampai admin nonaktifin manual pas unit
   // dikembaliin. Cuma mode='fixed' (cicilan) yang punya progress N/M.
   if (ins.mode === "daily" || ins.mode === "monthly") return null;
-  // Shortfall belum diberesin (net_pay ke-clamp 0, potongan gak kekejar full
-  // oleh gross) — jangan tandain lunas, biar ke-tagih lagi di run berikutnya.
-  if (Number(detail.total_deduction) > Number(detail.gross_earning)) return null;
+  // Baris ini gak lunas penuh (kena alokasi prioritas di publish()) — jangan
+  // tandain progress maju, sisa kurangnya udah otomatis nempel jadi tunggakan
+  // (lihat getCarriedArrears) buat ketagih lagi di run berikutnya.
+  if (!paidInFull) return null;
   const paid = ins.installments_paid + 1;
   const done = paid >= (ins.installment_count ?? 0);
   return { installments_paid: paid, active: !done };
+}
+
+// Tunggakan yang ke-bawa dari periode sebelumnya: nyari baris payroll_deductions
+// TERAKHIR yang udah di-publish (paid_amount ke-isi) buat installment/jenis yang
+// sama, selisih amount-paid_amount-nya itu tunggakannya. Idempotent kayak
+// closedCyclesByInst di atas — murni derive dari histori (bukan state yang
+// di-mutate), dan aman diulang: begitu satu baris lunas penuh, unpaid-nya 0,
+// gak nempel lagi ke periode berikutnya.
+async function getCarriedArrears(
+  installmentIds: string[],
+  autoTypeIds: string[],
+  excludeRunId: string,
+  client: typeof supabase,
+): Promise<{ byInstallment: Map<string, number>; byRiderType: Map<string, number> }> {
+  const byInstallment = new Map<string, number>();
+  const byRiderType = new Map<string, number>();
+  if (installmentIds.length === 0 && autoTypeIds.length === 0) {
+    return { byInstallment, byRiderType };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows: any[] = [];
+  if (installmentIds.length > 0) {
+    const { data } = await (client as any).from("payroll_deductions")
+      .select("id, detail_id, installment_id, deduction_type_id, amount, paid_amount")
+      .in("installment_id", installmentIds).not("paid_amount", "is", null);
+    rows.push(...(data ?? []));
+  }
+  if (autoTypeIds.length > 0) {
+    const { data } = await (client as any).from("payroll_deductions")
+      .select("id, detail_id, installment_id, deduction_type_id, amount, paid_amount")
+      .in("deduction_type_id", autoTypeIds).is("installment_id", null).not("paid_amount", "is", null);
+    rows.push(...(data ?? []));
+  }
+  if (rows.length === 0) return { byInstallment, byRiderType };
+
+  const detailIds = [...new Set(rows.map((r) => r.detail_id))];
+  const { data: details } = await (client as any).from("payroll_details")
+    .select("id, run_id, rider_id").in("id", detailIds);
+  const detailInfo = new Map<string, { id: string; run_id: string; rider_id: string }>(
+    (details ?? []).map((d: { id: string; run_id: string; rider_id: string }) => [d.id, d]),
+  );
+  const runIds = [...new Set([...detailInfo.values()].map((d) => d.run_id))].filter((id) => id !== excludeRunId);
+  const { data: runs } = await (client as any).from("payroll_runs").select("id, period_end").in("id", runIds);
+  const periodEndOfRun = new Map<string, string>(
+    (runs ?? []).map((r: { id: string; period_end: string }) => [r.id, r.period_end]),
+  );
+
+  const latestByInstallment = new Map<string, { periodEnd: string; unpaid: number }>();
+  const latestByRiderType = new Map<string, { periodEnd: string; unpaid: number }>();
+  for (const r of rows) {
+    const info = detailInfo.get(r.detail_id);
+    if (!info || info.run_id === excludeRunId) continue;
+    const periodEnd = periodEndOfRun.get(info.run_id);
+    if (!periodEnd) continue;
+    const unpaid = Math.max(0, Number(r.amount) - Number(r.paid_amount));
+    if (r.installment_id) {
+      const cur = latestByInstallment.get(r.installment_id);
+      if (!cur || periodEnd > cur.periodEnd) latestByInstallment.set(r.installment_id, { periodEnd, unpaid });
+    } else {
+      const key = `${info.rider_id}|${r.deduction_type_id}`;
+      const cur = latestByRiderType.get(key);
+      if (!cur || periodEnd > cur.periodEnd) latestByRiderType.set(key, { periodEnd, unpaid });
+    }
+  }
+  for (const [k, v] of latestByInstallment) byInstallment.set(k, v.unpaid);
+  for (const [k, v] of latestByRiderType) byRiderType.set(k, v.unpaid);
+  return { byInstallment, byRiderType };
 }
 
 const DAY_MS = 86_400_000;
@@ -154,9 +232,31 @@ export async function generatePayrollDetails(
   const [{ data: installments }, { data: autoTypes }] = await Promise.all([
     client.from("rider_installments").select("*").eq("active", true)
       .lte("next_deduction_date", run.period_end),
-    (client as any).from("deduction_types").select("id, name, recurring_amount, trigger_frequency")
+    (client as any).from("deduction_types").select("id, name, recurring_amount, trigger_frequency, applies_to_all")
       .eq("active", true).eq("auto_recurring", true),
   ]);
+
+  // applies_to_all=false (mis. BPJS yang cuma sebagian rider ikut) — cuma
+  // rider yang terdaftar di deduction_type_riders yang kena, bukan semua
+  // rider yang ada penghasilan kayak default-nya.
+  const restrictedTypeIds = ((autoTypes ?? []) as any[]).filter((t) => !t.applies_to_all).map((t) => t.id);
+  const enrolledSet = new Set<string>();
+  if (restrictedTypeIds.length > 0) {
+    const { data: enrolled } = await (client as any).from("deduction_type_riders")
+      .select("deduction_type_id, rider_id").in("deduction_type_id", restrictedTypeIds);
+    for (const e of (enrolled ?? []) as { deduction_type_id: string; rider_id: string }[]) {
+      enrolledSet.add(`${e.deduction_type_id}|${e.rider_id}`);
+    }
+  }
+
+  // Tunggakan yang belum lunas dari run sebelumnya (lihat getCarriedArrears) —
+  // ditambahin ke tagihan periode ini biar otomatis ketagih lagi, bukan hilang.
+  const { byInstallment: arrearsByInstallment, byRiderType: arrearsByRiderType } = await getCarriedArrears(
+    (installments ?? []).map((i: { id: string }) => i.id),
+    ((autoTypes ?? []) as { id: string }[]).map((t) => t.id),
+    run.id,
+    client,
+  );
 
   // Auto-recurring "monthly_once" (mis. BPJS) cuma boleh kepotong SEKALI per
   // bulan kalender per rider, LINTAS CLIENT manapun dia digaji — beda dari
@@ -326,6 +426,7 @@ export async function generatePayrollDetails(
     const rInstall = (installments ?? []).filter((i: any) => i.rider_id === rider.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dedItems = rInstall.map((i: any) => {
+      const arrears = arrearsByInstallment.get(i.id) ?? 0;
       if (i.mode === "daily") {
         const rate = Number(i.daily_rate || 0);
         const charged = dailyChargedDates.get(`${rider.id}|${i.id}`);
@@ -337,13 +438,13 @@ export async function generatePayrollDetails(
             if (!charged.has(d.toISOString().slice(0, 10))) days++;
           }
         }
-        return { amount: rate * days, days };
+        return { amount: rate * days + arrears, days, arrears };
       }
       if (i.mode === "monthly") {
         const days = monthlyDueDays(i, run.period_end, closedCyclesByInst);
-        return { amount: Number(i.daily_rate || 0) * days, days };
+        return { amount: Number(i.daily_rate || 0) * days + arrears, days, arrears };
       }
-      return { amount: Number(i.per_period_amount || 0), days: 0 };
+      return { amount: Number(i.per_period_amount || 0) + arrears, days: 0, arrears };
     });
     // charge_target='client_revenue' (mis. molis gratis buat rider, kita yang
     // nanggung sewanya) TIDAK ngurangin net_pay rider — biayanya kena di sisi
@@ -362,9 +463,15 @@ export async function generatePayrollDetails(
     // udah ada di admin.payroll.tsx, bukan di-skip diam-diam di sini.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const autoApplicable = ((autoTypes ?? []) as any[]).filter(
-      (t) => !(t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)),
+      (t) =>
+        !(t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)) &&
+        (t.applies_to_all || enrolledSet.has(`${t.id}|${rider.id}`)),
     );
-    const autoTotal = autoApplicable.reduce((s: number, t) => s + (Number(t.recurring_amount) || 0), 0);
+    const autoItems = autoApplicable.map((t) => {
+      const arrears = arrearsByRiderType.get(`${rider.id}|${t.id}`) ?? 0;
+      return { t, amount: (Number(t.recurring_amount) || 0) + arrears, arrears };
+    });
+    const autoTotal = autoItems.reduce((s: number, x) => s + x.amount, 0);
 
     const totalDed = installTotal + autoTotal;
     const net = Math.max(0, gross - totalDed);
@@ -387,10 +494,11 @@ export async function generatePayrollDetails(
         (ins.mode === "daily" || ins.mode === "monthly") && ins.charge_target === "client_revenue";
       const revenueNote = isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "";
       const cycleNote = ins.mode === "monthly" ? ` (potong per siklus tgl ${ins.cycle_start_day || 25})` : "";
+      const arrearsNote = item.arrears > 0 ? ` + tunggakan Rp${item.arrears.toLocaleString("id-ID")}` : "";
       const description =
         ins.mode === "daily" || ins.mode === "monthly"
-          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + cycleNote + revenueNote
-          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}`;
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + arrearsNote + cycleNote + revenueNote
+          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` + arrearsNote;
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,
@@ -398,12 +506,13 @@ export async function generatePayrollDetails(
         amount: isClientRevenue ? 0 : item.amount,
       });
     });
-    for (const t of autoApplicable) {
-      const amt = Number(t.recurring_amount) || 0;
-      if (amt <= 0) continue;
+    for (const x of autoItems) {
+      const t = x.t;
+      if (x.amount <= 0) continue;
+      const description = x.arrears > 0 ? `${t.name} + tunggakan Rp${x.arrears.toLocaleString("id-ID")}` : t.name;
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: t.id,
-        installment_id: null, description: t.name, amount: amt,
+        installment_id: null, description, amount: x.amount,
       });
     }
   }

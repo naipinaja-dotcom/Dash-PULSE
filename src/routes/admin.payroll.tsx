@@ -129,6 +129,10 @@ function PayrollPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editTypeId, setEditTypeId] = useState<string | null>(null);
   const [savingDeduction, setSavingDeduction] = useState(false);
+  const [addingDedForDetail, setAddingDedForDetail] = useState<string | null>(null);
+  const [newDedTypeId, setNewDedTypeId] = useState<string | null>(null);
+  const [newDedDescription, setNewDedDescription] = useState("");
+  const [newDedAmount, setNewDedAmount] = useState(0);
   const {
     pageSize: detailPageSize,
     setPageSize: setDetailPageSize,
@@ -437,6 +441,59 @@ function PayrollPage() {
       toast.success(
         'Potongan diperbarui. Ingat: kalau nanti "Generate Ulang" dijalankan, angka ini kehitung ulang dari cicilan/potongan-otomatis dan perubahan manual ini hilang.',
       );
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSavingDeduction(false);
+    }
+  };
+
+  // Potongan ad-hoc di luar cicilan/potongan-otomatis (mis. kasbon dadakan
+  // yang belum sempat dicatat lewat Cicilan Aktif) — pola sama persis kayak
+  // IncentiveEditor: gak nunjuk ke installment_id, dan cuma boleh selama run
+  // masih draft (sama kayak edit potongan lain di atas) biar gak numpuk sama
+  // risiko Generate Ulang/publish yang udah di-warning di tempat lain.
+  const addDeduction = async (detailId: string) => {
+    if (!newDedDescription.trim()) return toast.error("Keterangan wajib diisi");
+    if (newDedAmount <= 0) return toast.error("Jumlah harus lebih dari 0");
+    setSavingDeduction(true);
+    try {
+      const { data, error: e1 } = await supabase
+        .from("payroll_deductions")
+        .insert({
+          detail_id: detailId,
+          deduction_type_id: newDedTypeId,
+          installment_id: null,
+          description: newDedDescription.trim(),
+          amount: newDedAmount,
+        })
+        .select("*, deduction_types(name)")
+        .single();
+      if (e1) throw e1;
+
+      const list = [...(deductionsByDetail[detailId] ?? []), data as Deduction];
+      const newTotalDed = list.reduce((s, x) => s + Number(x.amount), 0);
+      const detail = details.find((x) => x.id === detailId);
+      if (!detail) throw new Error("Detail payroll tidak ditemukan di halaman ini — refresh dulu.");
+      const newNet = Math.max(0, detail.gross_earning - newTotalDed);
+      const { error: e2 } = await supabase
+        .from("payroll_details")
+        .update({ total_deduction: newTotalDed, net_pay: newNet })
+        .eq("id", detailId);
+      if (e2) throw e2;
+
+      setDeductionsByDetail((prev) => ({ ...prev, [detailId]: list }));
+      setDetails((prev) =>
+        prev.map((x) => (x.id === detailId ? { ...x, total_deduction: newTotalDed, net_pay: newNet } : x)),
+      );
+      posthog.capture("payroll_deduction_added", { run_id: activeRun?.id, detail_id: detailId });
+      toast.success(
+        'Potongan ditambahkan. Ingat: kalau nanti "Generate Ulang" dijalankan, baris ini ikut kehapus (gak nempel ke cicilan/potongan-otomatis manapun).',
+      );
+      setAddingDedForDetail(null);
+      setNewDedTypeId(null);
+      setNewDedDescription("");
+      setNewDedAmount(0);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -1428,6 +1485,60 @@ function PayrollPage() {
                                         )}
                                       </div>
                                     ))}
+                                    {activeRun.status !== "published" &&
+                                      (addingDedForDetail === d.id ? (
+                                        <div className="flex items-center gap-2 pt-1">
+                                          <select
+                                            value={newDedTypeId ?? ""}
+                                            onChange={(e) => setNewDedTypeId(e.target.value || null)}
+                                            className="w-40 rounded-md border border-border bg-background px-2 py-1 text-[12px]"
+                                          >
+                                            <option value="">(tanpa jenis)</option>
+                                            {dTypes.map((dt) => (
+                                              <option key={dt.id} value={dt.id}>
+                                                {dt.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <input
+                                            value={newDedDescription}
+                                            onChange={(e) => setNewDedDescription(e.target.value)}
+                                            placeholder="Keterangan (mis. Kasbon dadakan)"
+                                            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-[12px]"
+                                          />
+                                          <input
+                                            inputMode="numeric"
+                                            value={newDedAmount ? newDedAmount.toLocaleString("id-ID") : ""}
+                                            onChange={(e) => setNewDedAmount(parseRupiah(e.target.value))}
+                                            placeholder="Jumlah"
+                                            className="w-32 rounded-md border border-border bg-background px-2 py-1 text-[12px] text-right tabular-nums"
+                                          />
+                                          <button
+                                            onClick={() => addDeduction(d.id)}
+                                            disabled={savingDeduction}
+                                            className="rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-[12px] disabled:opacity-50"
+                                          >
+                                            {savingDeduction ? (
+                                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : (
+                                              "Simpan"
+                                            )}
+                                          </button>
+                                          <button
+                                            onClick={() => setAddingDedForDetail(null)}
+                                            className="text-[12px] text-muted-foreground hover:text-foreground"
+                                          >
+                                            Batal
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={() => setAddingDedForDetail(d.id)}
+                                          className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline pt-1"
+                                        >
+                                          <Plus className="w-3.5 h-3.5" /> Tambah Potongan
+                                        </button>
+                                      ))}
                                     {activeRun.status === "published" && (
                                       <p className="text-[11px] text-muted-foreground pt-1">
                                         Run sudah di-publish — potongan gak bisa diedit lagi dari

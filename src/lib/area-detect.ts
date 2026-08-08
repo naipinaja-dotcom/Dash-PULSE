@@ -73,7 +73,7 @@ const KECAMATAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
 // baru begitu ketemu residual "gak ke-match" yang genuinely gak ambigu
 // (1 nama = 1 kota doang).
 const KELURAHAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
-  { canonical: "Kota Jakarta Utara", keywords: ["SUNTER", "PLUIT", "ANCOL"] },
+  { canonical: "Kota Jakarta Utara", keywords: ["SUNTER", "PLUIT", "ANCOL", "MUARA KARANG"] },
   { canonical: "Kota Jakarta Pusat", keywords: ["BENDUNGAN HILIR"] },
   { canonical: "Kota Jakarta Timur", keywords: ["UTAN KAYU", "RAWAMANGUN"] },
   { canonical: "Kota Jakarta Barat", keywords: ["ROXY"] },

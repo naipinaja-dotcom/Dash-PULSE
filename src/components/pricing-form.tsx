@@ -61,11 +61,7 @@ import {
   loadAttendanceState,
   type AttendanceState,
 } from "./pricing-form/attendance-fields";
-import {
-  InteractiveCalc,
-  emptyHybridState,
-  type HybridState,
-} from "./pricing-form/interactive-calc";
+import { InteractiveCalc } from "./pricing-form/interactive-calc";
 import { loadDeliveryCompState } from "./pricing-form/attendance-delivery-comp";
 
 const CATEGORY_ICONS = { Truck, CalendarDays, Layers } as const;
@@ -75,7 +71,6 @@ const DIMENSION_ICONS = { distance: Ruler, weight: Package } as const;
 interface FormState {
   delivery: DeliveryState;
   attendance: AttendanceState;
-  hybrid: HybridState;
   addKgOn: boolean;
   addKg: StepTierState;
   multiDropOn: boolean;
@@ -88,7 +83,6 @@ function emptyForm(): FormState {
   return {
     delivery: emptyDeliveryState(),
     attendance: emptyAttendanceState(),
-    hybrid: emptyHybridState(),
     addKgOn: false,
     addKg: emptyStepTier(),
     multiDropOn: false,
@@ -149,7 +143,15 @@ function loadForm(scheme: PricingScheme | undefined): {
   schemeFor: SchemeFor;
 } {
   const form = emptyForm();
-  const category: PricingCategory = scheme?.category ?? "delivery";
+  const rawCategory: PricingCategory = scheme?.category ?? "delivery";
+  // "hybrid" gak ada tab/field-nya lagi di form ini (PRICING_CATEGORIES cuma
+  // delivery/attendance) — dulu category state dibiarin "hybrid" walau
+  // isinya udah dikonversi ke bentuk attendance di bawah, jadi form-nya
+  // render KOSONG TOTAL (gak ada kondisi category yang cocok) sementara
+  // Save tetap jalan diam-diam pakai data attendance yang gak pernah keliatan
+  // admin. Normalize ke "attendance" di sini biar field-nya beneran ke-render
+  // & bisa direview sebelum disimpan ulang.
+  const category: PricingCategory = rawCategory === "hybrid" ? "attendance" : rawCategory;
   const subtype: PricingSubtype = scheme?.subtype ?? (category === "delivery" ? { distance: true, weight: false } : null);
 
   if (!scheme || !scheme.params || scheme.params.version !== 1) {
@@ -162,9 +164,9 @@ function loadForm(scheme: PricingScheme | undefined): {
 
   if (category === "delivery") {
     form.delivery = loadDeliveryState(subtype, env.type, c);
-  } else if (category === "attendance") {
+  } else if (rawCategory === "attendance") {
     form.attendance = loadAttendanceState(c);
-  } else if (category === "hybrid") {
+  } else if (rawCategory === "hybrid") {
     // Legacy hybrid → attendance + deliveryComp enabled (ontime_bonus jadi incentive)
     form.attendance = {
       full_fee: String(c.full_fee ?? ""),
@@ -494,7 +496,6 @@ function PricingFormInner({
           subtype={subtype}
           delivery={f.delivery}
           attendance={f.attendance}
-          hybrid={f.hybrid}
           schemeFor={schemeFor}
           addKgOn={f.addKgOn}
           multiDropOn={f.multiDropOn}

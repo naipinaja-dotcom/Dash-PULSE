@@ -2,14 +2,14 @@
 // Sudah cukup berdiri sendiri di kode lama, dipindah nyaris apa adanya
 // (cuma nama field "calcType" 6-way diganti jadi kombinasi category+subtype).
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, Plus, Trash2 } from "lucide-react";
+import { Calculator } from "lucide-react";
 import type { PricingCategory, PricingSubtype, SchemeFor, PricingEnvelope, DeliveryDimensions } from "@/lib/pricing-types";
 import { calcAttendanceScheme, bandLookupFee } from "@/lib/pricing-calc";
 import { formatRupiah, parseRupiah } from "@/lib/format";
 import { type DeliveryState, type RangeRowState } from "./delivery-fields";
 import type { RangeRow } from "@/lib/pricing-types";
 import { type AttendanceState, buildAttendanceConfig } from "./attendance-fields";
-import { stepTierBreakdown, type ExStep } from "./shared";
+import { type ExStep } from "./shared";
 
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -23,22 +23,6 @@ function numericRows(rows: RangeRowState[]): RangeRow[] {
     add_per_step: r.type === "tier" ? parseRupiah(r.add_per_step) : 0,
   }));
 }
-
-export interface HybridState {
-  daily_fee: string;
-  standard_hours: string;
-  ontime_bonus: string;
-  order_by: "distance" | "weight";
-  order_tier: { base_fee: string; base_until: string; tiers: { from: string; to: string; step: string; add_per_step: string }[] };
-}
-
-export const emptyHybridState = (): HybridState => ({
-  daily_fee: "100000",
-  standard_hours: "8",
-  ontime_bonus: "20000",
-  order_by: "distance",
-  order_tier: { base_fee: "5000", base_until: "5", tiers: [{ from: "5", to: "", step: "1", add_per_step: "1000" }] },
-});
 
 interface WorkedExample {
   steps: ExStep[];
@@ -54,7 +38,6 @@ interface CalcInputs {
   totalKg: string;
   hours: string;
   isLate: boolean;
-  orders: { val: string }[];
 }
 
 interface InteractiveCalcProps {
@@ -62,7 +45,6 @@ interface InteractiveCalcProps {
   subtype: PricingSubtype;
   delivery: DeliveryState;
   attendance: AttendanceState;
-  hybrid: HybridState;
   schemeFor: SchemeFor;
   addKgOn: boolean;
   multiDropOn: boolean;
@@ -79,9 +61,8 @@ function defaultCalcInputs(p: InteractiveCalcProps): CalcInputs {
     distance: String(firstDistTo + 3),
     weight: String(firstWeightTo + 3),
     totalKg: String((Number(p.delivery.weight.threshold.default_threshold) || 10) * 2 + 1),
-    hours: p.category === "hybrid" ? (p.hybrid.standard_hours || "8") : (p.attendance.standard_hours || "8"),
+    hours: p.attendance.standard_hours || "8",
     isLate: false,
-    orders: [{ val: String((Number(p.hybrid.order_tier.base_until) || 0) + 3) }],
   };
 }
 
@@ -189,29 +170,6 @@ function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExa
     return { steps, total: { label: "Fee hari itu", amount: row?.fee ?? 0 }, notes };
   }
 
-  if (p.category === "hybrid") {
-    const h = p.hybrid;
-    const std = Number(h.standard_hours) || 0;
-    const fullFee = parseRupiah(h.daily_fee);
-    const proportion = std > 0 ? Math.min(1, (Number(inp.hours) || 0) / std) : ((Number(inp.hours) || 0) > 0 ? 1 : 0);
-    const daily_base = Math.round(fullFee * proportion);
-    const bonus = !inp.isLate ? parseRupiah(h.ontime_bonus) : 0;
-    const unit = h.order_by === "weight" ? "kg" : "km";
-    const steps: ExStep[] = [
-      { text: `Fee harian (${inp.hours} dari ${std} jam)`, amount: daily_base },
-      { text: `Bonus ontime${inp.isLate ? " (LATE — tidak cair)" : ""}`, amount: bonus },
-    ];
-    let orderTotal = 0;
-    inp.orders.forEach((o, i) => {
-      const { total: fee } = stepTierBreakdown(h.order_tier, Number(o.val) || 0, unit);
-      steps.push({ text: `Kiriman ${i + 1}: ${o.val || 0} ${unit}`, amount: fee });
-      orderTotal += fee;
-    });
-    if (inp.orders.length > 1) notes.push(`${inp.orders.length} kiriman — daily fee tetap 1× per hari.`);
-    notes.push("Daily fee & bonus ontime diambil dari data absensi saat hitung real.");
-    return { steps, total: { label: "Total hari itu", amount: daily_base + bonus + orderTotal }, notes };
-  }
-
   return { steps: [], total: { label: "Total", amount: 0 }, notes: [] };
 }
 
@@ -222,8 +180,6 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
 
   const p = (patch: Partial<CalcInputs>) => setInp((prev) => ({ ...prev, ...patch }));
   const result = useMemo(() => computeInteractive(props, inp), [props, inp]);
-  const orderUnit = props.hybrid.order_by === "weight" ? "kg" : "km";
-
   return (
     <div className="rounded-lg border border-primary-border/60 bg-primary-soft/40 px-4 py-3.5 mt-4">
       <div className="flex items-center gap-2 mb-3">
@@ -263,7 +219,7 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
           );
         })()}
 
-        {(props.category === "attendance" || props.category === "hybrid") && (
+        {props.category === "attendance" && (
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex flex-col gap-1">
               <span className="text-[11px] text-muted-foreground">Jam kerja</span>
@@ -279,31 +235,6 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {props.category === "hybrid" && (
-          <div>
-            <p className="text-[11px] text-muted-foreground mb-1">Kiriman ({orderUnit} masing-masing)</p>
-            <div className="space-y-1.5">
-              {inp.orders.map((o, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground w-14">Order {i + 1}</span>
-                  <input type="number" min="0" step="0.1" value={o.val}
-                    onChange={(e) => p({ orders: inp.orders.map((x, idx) => idx === i ? { val: e.target.value } : x) })}
-                    className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
-                  <span className="text-[11px] text-muted-foreground">{orderUnit}</span>
-                  {inp.orders.length > 1 && (
-                    <button type="button" onClick={() => p({ orders: inp.orders.filter((_, idx) => idx !== i) })}
-                      className="text-muted-foreground hover:text-destructive"><Trash2 className="w-3 h-3" /></button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <button type="button" onClick={() => p({ orders: [...inp.orders, { val: inp.orders[0]?.val ?? "5" }] })}
-              className="mt-1.5 text-[11px] text-primary flex items-center gap-1 hover:underline">
-              <Plus className="w-3 h-3" /> Tambah kiriman
-            </button>
           </div>
         )}
       </div>

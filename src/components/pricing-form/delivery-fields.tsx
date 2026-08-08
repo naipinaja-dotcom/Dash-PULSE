@@ -483,13 +483,12 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
           <RupiahInput value={value.default_rate} onChange={(v) => patch({ default_rate: v })} />
         </div>
       </div>
-      <TableShell>
-        <>
-          <Th>Area / Store</Th>
-          <Th className="w-32">Threshold (kg)</Th>
-          <Th className="w-44">Rate (Rp)</Th>
-          <Th className="w-10" />
-        </>
+      <TableShell head={<>
+        <Th>Area / Store</Th>
+        <Th className="w-32">Threshold (kg)</Th>
+        <Th className="w-44">Rate (Rp)</Th>
+        <Th className="w-10" />
+      </>}>
         {value.rules.map((r, i) => (
           <tr key={i} className="border-t border-border/60">
             <Td>
@@ -673,12 +672,11 @@ export function DeliveryFields({
                     </select>
                   </div>
                 )}
-                <TableShell>
-                  <>
-                    <Th>{value.rate_by === "delivery_type" ? "Nilai (DELIVERY / RETURN)" : "Nilai Kolom (cth: Jakarta Pusat)"}</Th>
-                    <Th className="w-44">Tarif (Rp)</Th>
-                    <Th className="w-10" />
-                  </>
+                <TableShell head={<>
+                  <Th>{value.rate_by === "delivery_type" ? "Nilai (DELIVERY / RETURN)" : "Nilai Kolom (cth: Jakarta Pusat)"}</Th>
+                  <Th className="w-44">Tarif (Rp)</Th>
+                  <Th className="w-10" />
+                </>}>
                   {value.rates.map((r, i) => (
                     <tr key={i} className="border-t border-border/60">
                       <Td>

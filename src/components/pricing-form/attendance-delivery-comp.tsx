@@ -200,8 +200,7 @@ export function AttendanceDeliveryCompFields({
                     <RupiahInput value={value.defaultRate} onChange={(v) => patch({ defaultRate: v })} />
                   </div>
                 </div>
-                <TableShell>
-                  <><Th>Nilai Kolom</Th><Th className="w-36">Tarif (Rp)</Th><Th className="w-10" /></>
+                <TableShell head={<><Th>Nilai Kolom</Th><Th className="w-36">Tarif (Rp)</Th><Th className="w-10" /></>}>
                   {value.rates.map((r, i) => (
                     <tr key={i} className="border-t border-border/60">
                       <Td><TextInput value={r.key} onChange={(e) => patch({ rates: value.rates.map((x, idx) => idx === i ? { ...x, key: e.target.value } : x) })} /></Td>
@@ -234,8 +233,7 @@ export function AttendanceDeliveryCompFields({
               <RupiahInput value={value.defaultRateThreshold} onChange={(v) => patch({ defaultRateThreshold: v })} />
             </div>
           </div>
-          <TableShell>
-            <><Th>Store/Area</Th><Th className="w-32">Threshold</Th><Th className="w-36">Rate (Rp)</Th><Th className="w-10" /></>
+          <TableShell head={<><Th>Store/Area</Th><Th className="w-32">Threshold</Th><Th className="w-36">Rate (Rp)</Th><Th className="w-10" /></>}>
             {value.thresholdRules.map((r, i) => (
               <tr key={i} className="border-t border-border/60">
                 <Td><TextInput value={r.key} onChange={(e) => patch({ thresholdRules: value.thresholdRules.map((x, idx) => idx === i ? { ...x, key: e.target.value } : x) })} /></Td>

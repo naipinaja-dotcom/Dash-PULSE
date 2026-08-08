@@ -137,13 +137,12 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
 
       <div>
         <p className="text-xs font-medium text-muted-foreground mb-2">Insentif</p>
-        <TableShell>
-          <>
-            <Th>Nama Insentif</Th>
-            <Th className="w-36">Jumlah (Rp)</Th>
-            <Th className="w-44">Syarat Cair</Th>
-            <Th className="w-10" />
-          </>
+        <TableShell head={<>
+          <Th>Nama Insentif</Th>
+          <Th className="w-36">Jumlah (Rp)</Th>
+          <Th className="w-44">Syarat Cair</Th>
+          <Th className="w-10" />
+        </>}>
           {value.incentives.map((c, i) => (
             <tr key={i} className="border-t border-border/60">
               <Td><TextInput value={c.label} placeholder="cth: Insentif Ontime" onChange={(e) => patch({ incentives: value.incentives.map((x, idx) => (idx === i ? { ...x, label: e.target.value } : x)) })} /></Td>

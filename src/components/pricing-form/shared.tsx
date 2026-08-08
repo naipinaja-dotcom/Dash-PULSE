@@ -47,27 +47,6 @@ export interface ExStep {
   amount?: number;
 }
 
-export function stepTierBreakdown(s: StepTierState, value: number, unit: string): { steps: ExStep[]; total: number } {
-  const base = parseRupiah(s.base_fee);
-  const baseUntil = Number(s.base_until) || 0;
-  const steps: ExStep[] = [{ text: `Tarif dasar (0–${baseUntil} ${unit})`, amount: base }];
-  let fee = base;
-  for (const t of s.tiers) {
-    const lo = Number(t.from) || 0;
-    const hi = t.to.trim() === "" ? Infinity : Number(t.to);
-    const step = Number(t.step) || 1;
-    const perStep = parseRupiah(t.add_per_step);
-    if (value > lo) {
-      const span = Math.min(value, hi) - lo;
-      const count = Math.ceil(span / step);
-      const add = count * perStep;
-      fee += add;
-      const hiLabel = hi === Infinity ? "∞" : String(hi);
-      steps.push({ text: `${lo}–${hiLabel} ${unit}: ${count} step × ${formatRupiah(perStep)}`, amount: add });
-    }
-  }
-  return { steps, total: fee };
-}
 
 // -------------------- Shared inputs --------------------
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -107,15 +86,13 @@ export function AddRowBtn({ onClick, children }: { onClick: () => void; children
   );
 }
 
-export function TableShell({ children }: { children: React.ReactNode }) {
+export function TableShell({ head, children }: { head: React.ReactNode; children: React.ReactNode }) {
   return (
     <table className="w-full text-sm">
       <thead>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">{(children as any)[0]}</tr>
+        <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">{head}</tr>
       </thead>
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <tbody>{(children as any).slice(1)}</tbody>
+      <tbody>{children}</tbody>
     </table>
   );
 }

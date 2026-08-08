@@ -76,6 +76,7 @@ const KELURAHAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
   { canonical: "Kota Jakarta Utara", keywords: ["SUNTER", "PLUIT", "ANCOL"] },
   { canonical: "Kota Jakarta Pusat", keywords: ["BENDUNGAN HILIR"] },
   { canonical: "Kota Jakarta Timur", keywords: ["UTAN KAYU", "RAWAMANGUN"] },
+  { canonical: "Kota Jakarta Barat", keywords: ["ROXY"] },
 ];
 
 function normalizeAddress(s: string): string {

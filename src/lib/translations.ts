@@ -262,6 +262,7 @@ const T = {
   "slip.ofOrders": { id: "dari", en: "of" },
   "slip.orders": { id: "order", en: "orders" },
   "slip.noOrderData": { id: "Tidak ada data order.", en: "No order data." },
+  "slip.dupAddressNote": { id: "Alamat sama dengan order lain di hari ini — sudah dihitung sekali.", en: "Same address as another order today — already counted once." },
 
   // ── Rider profile ──────────────────────────────────────────────────────
   "profile.title": { id: "Profil", en: "Profile" },

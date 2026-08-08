@@ -43,6 +43,7 @@ type DeliveryRow = {
   weight_kg: number | null;
   district: string | null;
   receiver_name: string | null;
+  destination_address: string | null;
   fee: number;
   status: string | null;
 };
@@ -326,7 +327,7 @@ function ClientCard({
     if (!fetched) {
       setLoading(true);
       sb.from("delivery_records")
-        .select("id, delivery_date, awb, dash_delivery_id, delivery_type, service_type, distance_km, weight_kg, district, receiver_name, fee, status")
+        .select("id, delivery_date, awb, dash_delivery_id, delivery_type, service_type, distance_km, weight_kg, district, receiver_name, destination_address, fee, status")
         .eq("rider_id", riderId)
         .eq("client_id", client.client_id)
         .gte("delivery_date", periodStart)
@@ -375,7 +376,17 @@ function ClientCard({
             <p className="text-xs text-muted-foreground px-3 py-2">{t("slip.noOrderData")}</p>
           ) : (
             <>
-              {deliveries.map((d) => {
+              {(() => {
+                // Skema "1 alamat unik/hari" (lihat pricing-calc.ts) bikin
+                // order ke-2+ ke alamat sama di hari yang sama jadi Rp0 —
+                // tanpa catatan ini keliatan kayak error/ke-skip ke rider,
+                // padahal emang sengaja gak dobel dihitung.
+                const addrDayCount = new Map<string, number>();
+                for (const d of deliveries) {
+                  const key = `${d.delivery_date}|${(d.destination_address ?? "").trim().toLowerCase()}`;
+                  addrDayCount.set(key, (addrDayCount.get(key) ?? 0) + 1);
+                }
+                return deliveries.map((d) => {
                 const orderId = d.awb ?? d.dash_delivery_id ?? d.id.slice(0, 8).toUpperCase();
                 const meta = [
                   d.service_type ?? d.delivery_type,
@@ -383,6 +394,12 @@ function ClientCard({
                   d.weight_kg != null && `${d.weight_kg} kg`,
                 ].filter(Boolean).join(" · ");
                 const dest = d.district ?? d.receiver_name;
+                const addrKey = `${d.delivery_date}|${(d.destination_address ?? "").trim().toLowerCase()}`;
+                const isDupZero =
+                  d.fee === 0 &&
+                  d.status?.toUpperCase() === "COMPLETED" &&
+                  d.destination_address &&
+                  (addrDayCount.get(addrKey) ?? 0) > 1;
                 return (
                   <div key={d.id} className="px-3 py-2.5 border-b border-border last:border-0">
                     <div className="flex items-start gap-3">
@@ -408,11 +425,17 @@ function ClientCard({
                             {d.status}
                           </div>
                         )}
+                        {isDupZero && (
+                          <div className="text-[10px] text-muted-foreground italic mt-1">
+                            {t("slip.dupAddressNote")}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
-              })}
+                });
+              })()}
               {deliveries.length === 20 && client.delivery_count > 20 && (
                 <p className="text-[11px] text-muted-foreground text-center px-3 py-2">
                   Menampilkan 20 dari {client.delivery_count} order

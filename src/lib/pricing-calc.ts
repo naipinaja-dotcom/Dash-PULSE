@@ -399,8 +399,28 @@ export function calcModularDeliveryComponent(
   // dibayar Rp0 total gara-gara district-nya gak match rate table).
   if (!cfg.distance?.enabled && !cfg.weight?.enabled && rateSettings.rate_by !== "flat") {
     const defaultRate = Number((cfg as { default_rate?: number }).default_rate) || 0;
-    rows.forEach((r, i) => {
+    // unit_basis="unique_address" (dipilih di form) DULU cuma kepake di mesin
+    // lama calcFlatComponent (calc_type="flat_unit") — pas modular_v2 dibikin,
+    // dedup-nya kelewat gak ke-port, jadi setting-nya kesimpen tapi gak pernah
+    // ngaruh ke hitungan (tiap AWB tetap kena tarif penuh walau alamat &
+    // tanggalnya sama, mis. multi-drop toko yang sama). Samain pola dedup-nya
+    // di sini: 1 alamat unik per rider per hari cuma dihitung sekali.
+    const idxOf = new Map<DeliveryRow, number>();
+    rows.forEach((r, i) => idxOf.set(r, i));
+    const byRider = groupBy(rows, riderKey);
+    const seenByRider = new Map<string, Set<string>>();
+    for (const [rid] of byRider) seenByRider.set(rid, new Set());
+    rows.forEach((r) => {
+      let billable = true;
+      if (cfg.unit_basis === "unique_address") {
+        const seen = seenByRider.get(riderKey(r))!;
+        const key = r.delivery_date + "|" + norm(r.destination_address);
+        if (seen.has(key)) billable = false;
+        else seen.add(key);
+      }
+      if (!billable) return;
       const hit = resolveRateHit(r, rateSettings);
+      const i = idxOf.get(r)!;
       if (hit) {
         out[i] += Number(hit.rate) || 0;
       } else {

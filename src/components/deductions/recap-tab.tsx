@@ -11,7 +11,7 @@ import { formatTanggal } from "@/lib/format";
 const sb = supabase as any;
 const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
-type PeriodEntry = { start: string; end: string; days: number; amount: number };
+type PeriodEntry = { start: string; end: string; days: number; amount: number; dates: string[] };
 
 type ClientBreakdown = {
   clientId: string;
@@ -180,6 +180,14 @@ export function RecapTab() {
             const days = dayMatch ? parseInt(dayMatch[1], 10) : 0;
             typeAgg.totalDays += days;
 
+            // Tanggal PERSIS yang kepotong, di-embed di description pas
+            // generate (lihat payroll-generate.ts) — fallback ke rentang
+            // periode run kalau baris lama sebelum fitur ini ada / gak match.
+            const datesMatch = ded.description?.match(/\(tgl ([\d/,\s]+)\)/);
+            const dates: string[] = datesMatch
+              ? datesMatch[1].split(",").map((s: string) => s.trim())
+              : [];
+
             const cKey = run.clientId ?? "_";
             if (!typeAgg.byClient.has(cKey)) {
               typeAgg.byClient.set(cKey, {
@@ -195,7 +203,7 @@ export function RecapTab() {
             cAgg.days += days;
             cAgg.amount += amount;
             cAgg.description = ded.description ?? cAgg.description;
-            cAgg.periods.push({ start: run.start, end: run.end, days, amount });
+            cAgg.periods.push({ start: run.start, end: run.end, days, amount, dates });
 
             rider.grandTotal += amount;
           }
@@ -386,7 +394,9 @@ export function RecapTab() {
                                         {periods.length > 1 && periods.map((p, pi) => (
                                           <tr key={`${c.clientId}-p${pi}`} className="text-muted-foreground">
                                             <td className="py-0.5 pr-4 pl-4 text-[11px]">
-                                              {formatTanggal(p.start)} — {formatTanggal(p.end)}
+                                              {d.mode === "daily" && p.dates.length > 0
+                                                ? `Tgl ${p.dates.join(", ")}`
+                                                : `${formatTanggal(p.start)} — ${formatTanggal(p.end)}`}
                                             </td>
                                             {d.mode === "daily" && (
                                               <td className="py-0.5 pr-4 text-right text-[11px] tabular-nums">{p.days} hari</td>
@@ -398,7 +408,9 @@ export function RecapTab() {
                                         {periods.length === 1 && (
                                           <tr className="text-muted-foreground">
                                             <td colSpan={d.mode === "daily" ? 4 : 3} className="py-0.5 pl-4 text-[11px]">
-                                              Periode: {formatTanggal(periods[0].start)} — {formatTanggal(periods[0].end)}
+                                              {d.mode === "daily" && periods[0].dates.length > 0
+                                                ? `Tanggal: ${periods[0].dates.join(", ")}`
+                                                : `Periode: ${formatTanggal(periods[0].start)} — ${formatTanggal(periods[0].end)}`}
                                             </td>
                                           </tr>
                                         )}

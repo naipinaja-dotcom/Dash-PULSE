@@ -334,10 +334,6 @@ export async function generatePayrollDetails(
     }
   }
 
-  const spanDays = Math.round(
-    (new Date(`${run.period_end}T00:00:00Z`).getTime() - new Date(`${run.period_start}T00:00:00Z`).getTime()) / 86_400_000,
-  ) + 1;
-
   // Cross-client dedup sewa harian: cari hari yang UDAH dipotong di run lain
   // yang periode-nya overlap — biar rider multi-client gak kena dobel.
   const dailyChargedDates = new Map<string, Set<string>>();
@@ -430,21 +426,24 @@ export async function generatePayrollDetails(
       if (i.mode === "daily") {
         const rate = Number(i.daily_rate || 0);
         const charged = dailyChargedDates.get(`${rider.id}|${i.id}`);
-        let days = spanDays;
-        if (charged?.size) {
-          days = 0;
-          const end = new Date(`${run.period_end}T00:00:00Z`);
-          for (const d = new Date(`${run.period_start}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-            if (!charged.has(d.toISOString().slice(0, 10))) days++;
-          }
+        // Tanggal PERSIS yang kena di periode ini (bukan cuma count) — biar
+        // recap/slip bisa nunjukin hari mana yang beneran kepotong, bukan
+        // cuma rentang periode run (yang bisa salah kalau sebagian harinya
+        // udah kepotong run lain, lihat dailyChargedDates di atas).
+        const chargedDates: string[] = [];
+        const end = new Date(`${run.period_end}T00:00:00Z`);
+        for (const d = new Date(`${run.period_start}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+          const iso = d.toISOString().slice(0, 10);
+          if (!charged?.has(iso)) chargedDates.push(iso);
         }
-        return { amount: rate * days + arrears, days, arrears };
+        const days = chargedDates.length;
+        return { amount: rate * days + arrears, days, arrears, chargedDates };
       }
       if (i.mode === "monthly") {
         const days = monthlyDueDays(i, run.period_end, closedCyclesByInst);
-        return { amount: Number(i.daily_rate || 0) * days + arrears, days, arrears };
+        return { amount: Number(i.daily_rate || 0) * days + arrears, days, arrears, chargedDates: [] as string[] };
       }
-      return { amount: Number(i.per_period_amount || 0) + arrears, days: 0, arrears };
+      return { amount: Number(i.per_period_amount || 0) + arrears, days: 0, arrears, chargedDates: [] as string[] };
     });
     // charge_target='client_revenue' (mis. molis gratis buat rider, kita yang
     // nanggung sewanya) TIDAK ngurangin net_pay rider — biayanya kena di sisi
@@ -495,9 +494,16 @@ export async function generatePayrollDetails(
       const revenueNote = isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "";
       const cycleNote = ins.mode === "monthly" ? ` (potong per siklus tgl ${ins.cycle_start_day || 25})` : "";
       const arrearsNote = item.arrears > 0 ? ` + tunggakan Rp${item.arrears.toLocaleString("id-ID")}` : "";
+      // Tanggal PERSIS yang kepotong (mode daily) — bukan cuma rentang periode
+      // run, biar keliatan kalau sebagian harinya udah kepotong run lain (lihat
+      // dailyChargedDates) dan Recap/slip gak nunjukin rentang yang menyesatkan.
+      const datesNote =
+        ins.mode === "daily" && item.chargedDates.length > 0
+          ? ` (tgl ${item.chargedDates.map((d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(", ")})`
+          : "";
       const description =
         ins.mode === "daily" || ins.mode === "monthly"
-          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + arrearsNote + cycleNote + revenueNote
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + datesNote + arrearsNote + cycleNote + revenueNote
           : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` + arrearsNote;
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,

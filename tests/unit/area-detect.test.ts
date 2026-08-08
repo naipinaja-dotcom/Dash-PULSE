@@ -75,6 +75,25 @@ describe("detectAreaFromAddress", () => {
     expect(detectAreaFromAddress("Jl.Muara Karang blok S 3 Selatan no. 36")).toBe("Kota Jakarta Utara");
   });
 
+  it("singkatan/format lain buat Bekasi & Tangerang ('Kota Bks', 'Tangerang Kota', 'Tangerang Regency')", () => {
+    expect(detectAreaFromAddress("Kec. Bekasi Tim., Kota Bks, Jawa Barat")).toBe("Kota Bekasi");
+    expect(detectAreaFromAddress("Karang Mulya, Kec. Karang Tengah, Tangerang Kota, Banten")).toBe("Kota Tangerang");
+    expect(detectAreaFromAddress("Kelapa Dua, Tangerang Regency, Banten 15810")).toBe("Kabupaten Tangerang");
+  });
+
+  it("kecamatan Kota Bekasi & Kota Tangerang (bukan cuma Jakarta) ikut ke-detect", () => {
+    expect(detectAreaFromAddress("Cluster Jade Blok No.J9, Cimuning, Kec. Mustika Jaya, Jawa Barat")).toBe("Kota Bekasi");
+    expect(detectAreaFromAddress("Gg. Berlian No.45, Medan Satria, Kecamatan Medan Satria, Jawa Barat")).toBe("Kota Bekasi");
+    expect(detectAreaFromAddress("Jl. Tawes IV No.79 A, Kelurahan Karawaci Baru, Kec. Karawaci, Tangerang")).toBe("Kota Tangerang");
+  });
+
+  it("kelurahan/kawasan tambahan (Pulomas, Pondok Indah, Cipedak, Jatijajar)", () => {
+    expect(detectAreaFromAddress("Jl Pulomas Barat Daya No.1A")).toBe("Kota Jakarta Timur");
+    expect(detectAreaFromAddress("Cimb niaga icon pondok indah, Jl. Metro Pondok Indah")).toBe("Kota Jakarta Selatan");
+    expect(detectAreaFromAddress("Jl. cipedak No.65 RT.7/RW.9")).toBe("Kota Jakarta Selatan");
+    expect(detectAreaFromAddress("JL.JATIJAJAR 2")).toBe("Kota Depok");
+  });
+
   it("null/kosong -> null", () => {
     expect(detectAreaFromAddress(null)).toBeNull();
     expect(detectAreaFromAddress("")).toBeNull();

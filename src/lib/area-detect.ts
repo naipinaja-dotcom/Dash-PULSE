@@ -39,10 +39,13 @@ const CITY_PATTERNS: { canonical: string; keywords: string[] }[] = [
     canonical: "Kota Jakarta Timur",
     keywords: ["JAKARTA TIMUR", "JAKTIM", "JAK TIM", "JKT TIMUR", "EAST JAKARTA"],
   },
-  { canonical: "Kota Tangerang Selatan", keywords: ["TANGERANG SELATAN", "TANGSEL"] },
-  { canonical: "Kota Tangerang", keywords: ["KOTA TANGERANG"] },
-  { canonical: "Kabupaten Tangerang", keywords: ["KABUPATEN TANGERANG", "KAB TANGERANG"] },
-  { canonical: "Kota Bekasi", keywords: ["KOTA BEKASI"] },
+  {
+    canonical: "Kota Tangerang Selatan",
+    keywords: ["TANGERANG SELATAN", "TANGSEL", "SOUTH TANGERANG"],
+  },
+  { canonical: "Kota Tangerang", keywords: ["KOTA TANGERANG", "TANGERANG KOTA"] },
+  { canonical: "Kabupaten Tangerang", keywords: ["KABUPATEN TANGERANG", "KAB TANGERANG", "TANGERANG REGENCY"] },
+  { canonical: "Kota Bekasi", keywords: ["KOTA BEKASI", "KOTA BKS"] },
   { canonical: "Kabupaten Bekasi", keywords: ["KABUPATEN BEKASI", "KAB BEKASI"] },
   { canonical: "Kota Bogor", keywords: ["KOTA BOGOR"] },
   { canonical: "Kabupaten Bogor", keywords: ["KABUPATEN BOGOR", "KAB BOGOR"] },
@@ -52,11 +55,12 @@ const CITY_PATTERNS: { canonical: string; keywords: string[] }[] = [
 /** Nama kanonik yang dianggap "udah presisi" — dipakai caller buat mutusin perlu di-enrich lagi atau nggak. */
 export const PRECISE_AREA_NAMES: ReadonlySet<string> = new Set(CITY_PATTERNS.map((p) => p.canonical));
 
-// TIER 2 — nama KECAMATAN (satu tingkat di bawah kota) — closed-set resmi 5
-// kota administratif DKI Jakarta (44 kecamatan). Banyak alamat operasional
-// nyebut kecamatan doang ("Kemayoran", "Tanjung Priok") tanpa nyebut nama
-// kotanya sama sekali — tanpa daftar ini gak ke-detect padahal gak ambigu
-// (1 kecamatan = 1 kota, gak ada kecamatan yang namanya kepake di 2 kota).
+// TIER 2 — nama KECAMATAN (satu tingkat di bawah kota) — closed-set resmi
+// buat DKI Jakarta (44 kecamatan, 5 kota) DAN Kota Bekasi/Kota Tangerang
+// (kecamatan-nya masing-masing cuma ada di SATU kota itu, gak ke-share
+// sama Kabupaten Bekasi/Kabupaten Tangerang/Tangerang Selatan, jadi tetep
+// gak ambigu). Banyak alamat operasional nyebut kecamatan doang
+// ("Kemayoran", "Mustika Jaya") tanpa nyebut nama kotanya sama sekali.
 // Cuma dicek kalau TIER 1 di atas gak nemu apa-apa (lihat catatan collision).
 const KECAMATAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
   { canonical: "Kota Jakarta Pusat", keywords: ["CEMPAKA PUTIH", "GAMBIR", "JOHAR BARU", "KEMAYORAN", "MENTENG", "SAWAH BESAR", "SENEN", "TANAH ABANG"] },
@@ -64,6 +68,8 @@ const KECAMATAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
   { canonical: "Kota Jakarta Barat", keywords: ["CENGKARENG", "GROGOL PETAMBURAN", "KALIDERES", "KEBON JERUK", "KEMBANGAN", "PALMERAH", "TAMAN SARI", "TAMANSARI", "TAMBORA"] },
   { canonical: "Kota Jakarta Selatan", keywords: ["CILANDAK", "JAGAKARSA", "KEBAYORAN BARU", "KEBAYORAN LAMA", "MAMPANG PRAPATAN", "PANCORAN", "PASAR MINGGU", "PESANGGRAHAN", "SETIABUDI", "TEBET"] },
   { canonical: "Kota Jakarta Timur", keywords: ["CAKUNG", "CIPAYUNG", "CIRACAS", "DUREN SAWIT", "JATINEGARA", "KRAMAT JATI", "MAKASAR", "MATRAMAN", "PASAR REBO", "PULO GADUNG", "PULOGADUNG"] },
+  { canonical: "Kota Bekasi", keywords: ["BANTAR GEBANG", "BANTARGEBANG", "BEKASI BARAT", "BEKASI SELATAN", "BEKASI TIMUR", "BEKASI UTARA", "JATIASIH", "JATISAMPURNA", "MEDAN SATRIA", "MUSTIKA JAYA", "MUSTIKAJAYA", "PONDOK GEDE", "RAWALUMBU"] },
+  { canonical: "Kota Tangerang", keywords: ["CIBODAS", "CILEDUG", "KARAWACI"] },
 ];
 
 // TIER 3 — nama KELURAHAN/kawasan terkenal (satu tingkat lagi di bawah
@@ -75,8 +81,10 @@ const KECAMATAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
 const KELURAHAN_PATTERNS: { canonical: string; keywords: string[] }[] = [
   { canonical: "Kota Jakarta Utara", keywords: ["SUNTER", "PLUIT", "ANCOL", "MUARA KARANG"] },
   { canonical: "Kota Jakarta Pusat", keywords: ["BENDUNGAN HILIR"] },
-  { canonical: "Kota Jakarta Timur", keywords: ["UTAN KAYU", "RAWAMANGUN"] },
+  { canonical: "Kota Jakarta Timur", keywords: ["UTAN KAYU", "RAWAMANGUN", "PULOMAS"] },
   { canonical: "Kota Jakarta Barat", keywords: ["ROXY"] },
+  { canonical: "Kota Jakarta Selatan", keywords: ["PONDOK INDAH", "CIPEDAK"] },
+  { canonical: "Kota Depok", keywords: ["JATIJAJAR", "JATI JAJAR"] },
 ];
 
 function normalizeAddress(s: string): string {

@@ -496,11 +496,23 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResul
     !!env.add_kg ||
     (["tier", "tier_daily"].includes(env.type) && !!cfg?.weight) ||
     (env.type === "modular_v2" && !!(cfg as ModularDeliveryConfig)?.weight?.enabled);
+  // modular_v2 dengan rate_by="column"/"delivery_type" (mis. skema Noovoleum
+  // Cleaning: 1 band Jarak 0-10000 flat cuma dipakai sebagai "gerbang" biar
+  // tabel tarif per-Area kepake) TIDAK beneran pakai nilai jarak buat nentuin
+  // nominal — nominalnya dari rate table, band jarak cuma syarat lolos/nggak.
+  // Baris kayak gini SALAH kalau di-flag "jarak 0 tapi kena fee": jaraknya
+  // emang gak pernah dipakai buat itung, jadi 0/kosong bukan anomali.
+  const modCfg = cfg as ModularDeliveryConfig;
+  const distanceDrivesAmount =
+    env.type === "modular_v2" &&
+    !!modCfg?.distance?.enabled &&
+    (modCfg.rate_by === "flat" || (modCfg.distance.rows ?? []).some((b) => b.type !== "flat"));
+  const dependsOnDistance = (["tier", "tier_daily"].includes(env.type) && !!cfg?.distance) || distanceDrivesAmount;
   const anomalies: RowAnomaly[] = [];
   completed.forEach((r, i) => {
     const fee = perRow[i].fee;
     const dist = Number(r.distance_km) || 0;
-    if ((!r.distance_km || dist === 0) && fee > 0) {
+    if (dependsOnDistance && (!r.distance_km || dist === 0) && fee > 0) {
       anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "zero_distance_paid", detail: `Jarak 0/kosong tapi kena fee ${fee.toLocaleString("id-ID")}` });
     }
     if (dependsOnWeight && (r.weight_kg === null || r.weight_kg === undefined)) {

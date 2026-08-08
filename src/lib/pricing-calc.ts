@@ -59,6 +59,25 @@ export interface SkippedRiderLine {
   statuses: Record<string, number>; // mis. { PENDING_PICKUP: 5, FAILED: 1 }
 }
 
+// Kelompokkan baris yang di-skip (status bukan COMPLETED) per rider —
+// transparansi, bukan aturan baru. Dipakai calcScheme & calcHybridScheme.
+function buildSkippedPerRider<T extends { status?: string | null }>(
+  rows: T[],
+  keyOf: (r: T) => string,
+): SkippedRiderLine[] {
+  const skipMap = new Map<string, SkippedRiderLine>();
+  for (const r of rows) {
+    if (isCompleted(r)) continue;
+    const k = keyOf(r);
+    const line = skipMap.get(k) ?? { rider: k, count: 0, statuses: {} };
+    line.count++;
+    const st = String(r.status ?? "").trim().toUpperCase() || "(KOSONG)";
+    line.statuses[st] = (line.statuses[st] ?? 0) + 1;
+    skipMap.set(k, line);
+  }
+  return [...skipMap.values()].sort((a, b) => b.count - a.count);
+}
+
 export interface CalcResult {
   perRow: RowFee[]; // 1 entri per baris COMPLETED (buat commit ke DB)
   perRider: RiderLine[];
@@ -99,7 +118,7 @@ function applyBillingAddons(
 // ---------------- helpers ----------------
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) => r.rider_id || r.driver_code || "(tanpa rider)";
-const isCompleted = (r: DeliveryRow) => norm(r.status) === "completed";
+export const isCompleted = (r: { status?: string | null }) => norm(r.status) === "completed";
 
 // Override tarif per-area ditulis manual pakai prefix administratif ("Kota
 // Jakarta Pusat", "Kabupaten Tangerang"), tapi district hasil reverse-geocode
@@ -198,33 +217,39 @@ function allocInt(total: number, weights: number[]): number[] {
 // Murni: tanpa skip/anomaly/modifier logic — itu tetap tanggung jawab
 // wrapper (calcScheme).
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function calcFlatComponent(rows: DeliveryRow[], cfg: any): number[] {
-  const out = new Array(rows.length).fill(0);
-  const idxOf = new Map<DeliveryRow, number>();
-  rows.forEach((r, i) => idxOf.set(r, i));
-
+// "unit_basis"/"unit" === "unique_address": 1 alamat unik per rider per hari
+// cuma dihitung sekali (kunjungan ke-2+ ke alamat sama gak dapet tarif lagi,
+// mis. multi-drop toko yang sama). Dipakai calcFlatComponent (mesin lama,
+// calc_type="flat_unit") DAN calcModularDeliveryComponent (jalur flat murni)
+// — satu tempat biar dua-duanya konsisten.
+function billableByUniqueAddress(rows: DeliveryRow[]): Set<DeliveryRow> {
+  const billable = new Set<DeliveryRow>();
   const byRider = groupBy(rows, riderKey);
   for (const [, rrows] of byRider) {
     const seen = new Set<string>();
     for (const r of rrows) {
-      let rate = 0;
-      let billable = true;
-      if (cfg.unit === "unique_address") {
-        const key = r.delivery_date + "|" + norm(r.destination_address);
-        if (seen.has(key)) billable = false;
-        else seen.add(key);
-      }
-      if (billable) {
-        if (cfg.rate_by === "flat") rate = Number(cfg.flat_rate) || 0;
-        else {
-          const hit = findByKey(cfg.rates || [], resolveField(r, cfg.match_column));
-          rate = hit ? Number(hit.rate) || 0 : Number(cfg.default_rate) || 0;
-        }
-      }
-      out[idxOf.get(r)!] = rate;
+      const key = r.delivery_date + "|" + norm(r.destination_address);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      billable.add(r);
     }
   }
+  return billable;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function calcFlatComponent(rows: DeliveryRow[], cfg: any): number[] {
+  const out = new Array(rows.length).fill(0);
+  const billable = cfg.unit === "unique_address" ? billableByUniqueAddress(rows) : null;
+  rows.forEach((r, i) => {
+    if (billable && !billable.has(r)) return;
+    if (cfg.rate_by === "flat") {
+      out[i] = Number(cfg.flat_rate) || 0;
+      return;
+    }
+    const hit = findByKey(cfg.rates || [], resolveField(r, cfg.match_column));
+    out[i] = hit ? Number(hit.rate) || 0 : Number(cfg.default_rate) || 0;
+  });
   return out;
 }
 
@@ -399,26 +424,11 @@ export function calcModularDeliveryComponent(
   // dibayar Rp0 total gara-gara district-nya gak match rate table).
   if (!cfg.distance?.enabled && !cfg.weight?.enabled && rateSettings.rate_by !== "flat") {
     const defaultRate = Number((cfg as { default_rate?: number }).default_rate) || 0;
-    // unit_basis="unique_address" (dipilih di form) DULU cuma kepake di mesin
-    // lama calcFlatComponent (calc_type="flat_unit") — pas modular_v2 dibikin,
-    // dedup-nya kelewat gak ke-port, jadi setting-nya kesimpen tapi gak pernah
-    // ngaruh ke hitungan (tiap AWB tetap kena tarif penuh walau alamat &
-    // tanggalnya sama, mis. multi-drop toko yang sama). Samain pola dedup-nya
-    // di sini: 1 alamat unik per rider per hari cuma dihitung sekali.
+    const billable = cfg.unit_basis === "unique_address" ? billableByUniqueAddress(rows) : null;
     const idxOf = new Map<DeliveryRow, number>();
     rows.forEach((r, i) => idxOf.set(r, i));
-    const byRider = groupBy(rows, riderKey);
-    const seenByRider = new Map<string, Set<string>>();
-    for (const [rid] of byRider) seenByRider.set(rid, new Set());
     rows.forEach((r) => {
-      let billable = true;
-      if (cfg.unit_basis === "unique_address") {
-        const seen = seenByRider.get(riderKey(r))!;
-        const key = r.delivery_date + "|" + norm(r.destination_address);
-        if (seen.has(key)) billable = false;
-        else seen.add(key);
-      }
-      if (!billable) return;
+      if (billable && !billable.has(r)) return;
       const hit = resolveRateHit(r, rateSettings);
       const i = idxOf.get(r)!;
       if (hit) {
@@ -438,19 +448,7 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResul
   const warnings: string[] = [];
   const completed = rows.filter(isCompleted);
   const skipped = rows.length - completed.length;
-
-  // kelompokkan baris yang di-skip per rider (transparansi, bukan aturan baru)
-  const skipMap = new Map<string, SkippedRiderLine>();
-  for (const r of rows) {
-    if (isCompleted(r)) continue;
-    const k = riderKey(r);
-    const line = skipMap.get(k) ?? { rider: k, count: 0, statuses: {} };
-    line.count++;
-    const st = String(r.status ?? "").trim().toUpperCase() || "(KOSONG)";
-    line.statuses[st] = (line.statuses[st] ?? 0) + 1;
-    skipMap.set(k, line);
-  }
-  const skippedPerRider = [...skipMap.values()].sort((a, b) => b.count - a.count);
+  const skippedPerRider = buildSkippedPerRider(rows, riderKey);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cfg = env.config as any;
@@ -775,18 +773,7 @@ export function calcHybridScheme(
 
   const completed = deliveries.filter(isCompleted);
   const skipped = deliveries.length - completed.length;
-
-  const skipMap = new Map<string, SkippedRiderLine>();
-  for (const r of deliveries) {
-    if (isCompleted(r)) continue;
-    const k = riderKey(r);
-    const line = skipMap.get(k) ?? { rider: k, count: 0, statuses: {} };
-    line.count++;
-    const st = String(r.status ?? "").trim().toUpperCase() || "(KOSONG)";
-    line.statuses[st] = (line.statuses[st] ?? 0) + 1;
-    skipMap.set(k, line);
-  }
-  const skippedPerRider = [...skipMap.values()].sort((a, b) => b.count - a.count);
+  const skippedPerRider = buildSkippedPerRider(deliveries, riderKey);
 
   const idxOf = new Map<DeliveryRow, number>();
   completed.forEach((r, i) => idxOf.set(r, i));

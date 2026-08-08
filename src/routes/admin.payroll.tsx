@@ -385,12 +385,28 @@ function PayrollPage() {
     setEditTypeId(d.deduction_type_id);
   };
 
-  // Koreksi 1 baris potongan yang udah ke-generate ke payroll run. Constraint
-  // dari PRD §9.1: `payroll_deductions.amount` numpang ke `payroll_details.
-  // total_deduction`/`net_pay` — jadi tiap edit HARUS recompute & simpan ulang
-  // total di baris detail induknya, bukan cuma update baris deduction-nya.
-  // Gak ada mekanisme buat "melindungi" edit manual ini dari Generate Ulang
-  // (yang selalu hapus-total & bikin ulang semua detail+deduction dari nol) —
+  // Habis 1 baris payroll_deductions ditambah/diedit, total_deduction/net_pay
+  // di payroll_details induknya HARUS direcompute & disimpen ulang (PRD §9.1:
+  // amount numpang ke situ) — satu tempat dipakai saveDeductionEdit & addDeduction.
+  const applyDeductionListChange = async (detailId: string, list: Deduction[]) => {
+    const newTotalDed = list.reduce((s, x) => s + Number(x.amount), 0);
+    const detail = details.find((x) => x.id === detailId);
+    if (!detail) throw new Error("Detail payroll tidak ditemukan di halaman ini — refresh dulu.");
+    const newNet = Math.max(0, detail.gross_earning - newTotalDed);
+    const { error } = await supabase
+      .from("payroll_details")
+      .update({ total_deduction: newTotalDed, net_pay: newNet })
+      .eq("id", detailId);
+    if (error) throw error;
+    setDeductionsByDetail((prev) => ({ ...prev, [detailId]: list }));
+    setDetails((prev) =>
+      prev.map((x) => (x.id === detailId ? { ...x, total_deduction: newTotalDed, net_pay: newNet } : x)),
+    );
+  };
+
+  // Koreksi 1 baris potongan yang udah ke-generate ke payroll run. Gak ada
+  // mekanisme buat "melindungi" edit manual ini dari Generate Ulang (yang
+  // selalu hapus-total & bikin ulang semua detail+deduction dari nol) —
   // makanya di-warning eksplisit di toast, bukan diam-diam ketimpa nanti.
   const saveDeductionEdit = async (d: Deduction) => {
     if (!activeRun) return;
@@ -416,22 +432,7 @@ function PayrollPage() {
             }
           : x,
       );
-      const newTotalDed = list.reduce((s, x) => s + Number(x.amount), 0);
-      const detail = details.find((x) => x.id === d.detail_id);
-      if (!detail) throw new Error("Detail payroll tidak ditemukan di halaman ini — refresh dulu.");
-      const newNet = Math.max(0, detail.gross_earning - newTotalDed);
-      const { error: e2 } = await supabase
-        .from("payroll_details")
-        .update({ total_deduction: newTotalDed, net_pay: newNet })
-        .eq("id", d.detail_id);
-      if (e2) throw e2;
-
-      setDeductionsByDetail((prev) => ({ ...prev, [d.detail_id]: list }));
-      setDetails((prev) =>
-        prev.map((x) =>
-          x.id === d.detail_id ? { ...x, total_deduction: newTotalDed, net_pay: newNet } : x,
-        ),
-      );
+      await applyDeductionListChange(d.detail_id, list);
       setEditingDeductionId(null);
       posthog.capture("payroll_deduction_edited", {
         run_id: activeRun.id,
@@ -472,20 +473,7 @@ function PayrollPage() {
       if (e1) throw e1;
 
       const list = [...(deductionsByDetail[detailId] ?? []), data as Deduction];
-      const newTotalDed = list.reduce((s, x) => s + Number(x.amount), 0);
-      const detail = details.find((x) => x.id === detailId);
-      if (!detail) throw new Error("Detail payroll tidak ditemukan di halaman ini — refresh dulu.");
-      const newNet = Math.max(0, detail.gross_earning - newTotalDed);
-      const { error: e2 } = await supabase
-        .from("payroll_details")
-        .update({ total_deduction: newTotalDed, net_pay: newNet })
-        .eq("id", detailId);
-      if (e2) throw e2;
-
-      setDeductionsByDetail((prev) => ({ ...prev, [detailId]: list }));
-      setDetails((prev) =>
-        prev.map((x) => (x.id === detailId ? { ...x, total_deduction: newTotalDed, net_pay: newNet } : x)),
-      );
+      await applyDeductionListChange(detailId, list);
       posthog.capture("payroll_deduction_added", { run_id: activeRun?.id, detail_id: detailId });
       toast.success(
         'Potongan ditambahkan. Ingat: kalau nanti "Generate Ulang" dijalankan, baris ini ikut kehapus (gak nempel ke cicilan/potongan-otomatis manapun).',

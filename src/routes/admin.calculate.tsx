@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePostHog } from "@posthog/react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
@@ -18,6 +18,7 @@ import {
   type AttendanceCalcResult,
   calcHybridScheme,
   type CombinedCalcResult,
+  isCompleted,
 } from "@/lib/pricing-calc";
 import { formatRupiah } from "@/lib/format";
 import { toast } from "sonner";
@@ -42,21 +43,30 @@ function firstOfMonth() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
-function today() {
-  return new Date().toISOString().slice(0, 10);
+// Insert baris fee_calculation_audit_log + toast warning kalau gagal — dipakai
+// commit() & commitInvoice(). Fee/invoice-nya sendiri udah kesimpen valid
+// SEBELUM ini dipanggil, jadi audit log gagal itu sekunder: dikasih tau lewat
+// warning (bukan error) biar user gak salah kira data utamanya ilang.
+async function logFeeAudit(entry: {
+  action: "commit_payroll" | "commit_invoice";
+  client_id: string | null;
+  scheme_id: string;
+  scheme_name: string | null;
+  scheme_snapshot: unknown;
+  period_start: string;
+  period_end: string;
+  row_count: number;
+  total_amount: number;
+  committed_by: string | null;
+  calc_table?: string;
+  affected_row_ids?: unknown[];
+}, successMessage: string) {
+  const { error } = await (supabase as any).from("fee_calculation_audit_log").insert(entry);
+  if (error) toast.warning(`${successMessage}, tapi audit log gagal disimpan: ${error.message}`);
 }
 
-// Sama persis dengan `isCompleted` internal di pricing-calc.ts (norm status
-// trim+lowercase) — dipakai di sini cuma buat rekonstruksi urutan baris
-// `completed` yang dipakai calcScheme()/calcHybridScheme() waktu nge-zip
-// DeliveryRow asli (buat ambil km/kg) sama PricingCalc `perRow` hasilnya
-// (yang gak nyimpen km/kg). Kalkulasi fee-nya sendiri TETAP dari engine,
-// ini cuma buat nampilin, tidak menghitung ulang apa pun.
-function normStatus(s: unknown): string {
-  return String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-function isCompletedRow(status: unknown): boolean {
-  return normStatus(status) === "completed";
+function today() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function CalculatePage() {
@@ -198,7 +208,7 @@ function CalculatePage() {
         // Zip baris COMPLETED (urutan sama seperti dipakai calcHybridScheme
         // secara internal) dengan res.perRow buat dapetin km/kg per baris —
         // engine-nya sendiri gak nyimpen km/kg di output, cuma fee.
-        const completedHybrid = deliveryRows.filter((r) => isCompletedRow(r.status));
+        const completedHybrid = deliveryRows.filter((r) => isCompleted(r));
         const ddHybrid: Record<string, DrilldownRow[]> = {};
         completedHybrid.forEach((r, i) => {
           const key = r.rider_id || r.driver_code || "(tanpa rider)";
@@ -319,7 +329,7 @@ function CalculatePage() {
 
         // Zip baris COMPLETED (urutan sama seperti dipakai calcScheme secara
         // internal) dengan res.perRow buat dapetin km/kg per baris.
-        const completedDeliv = rows.filter((r) => isCompletedRow(r.status));
+        const completedDeliv = rows.filter((r) => isCompleted(r));
         const ddDeliv: Record<string, DrilldownRow[]> = {};
         completedDeliv.forEach((r, i) => {
           const key = r.rider_id || r.driver_code || "(tanpa rider)";
@@ -471,7 +481,7 @@ function CalculatePage() {
       // affected_row_ids: PERSIS baris yang barusan di-update — dipakai buat
       // "Reject" (salah pilih tanggal/client, udah keburu commit) biar bisa
       // di-reset balik ke fee=0 tanpa nyenggol baris lain yang gak terkait.
-      const { error: auditErr } = await (supabase as any).from("fee_calculation_audit_log").insert({
+      await logFeeAudit({
         action: "commit_payroll",
         client_id: clientId || null,
         scheme_id: ranScheme.id,
@@ -482,11 +492,7 @@ function CalculatePage() {
         calc_table: table,
         affected_row_ids: rows.map((r) => r.id).filter(Boolean),
         committed_by: user?.id ?? null,
-      });
-      // Fee-nya udah kesimpen valid (update loop di atas udah sukses & dicek
-      // errornya) — audit log gagal itu sekunder, jangan bikin user pikir fee-nya
-      // ilang. Tetep dikasih tau biar ketauan kalau tabelnya belum ke-migrate.
-      if (auditErr) toast.warning(`Fee tersimpan, tapi audit log gagal disimpan: ${auditErr.message}`);
+      }, "Fee tersimpan");
 
       posthog.capture("fee_committed_to_payroll", {
         category: ranScheme.category,
@@ -552,7 +558,7 @@ function CalculatePage() {
       });
       if (error) throw error;
       // Audit trail — sama seperti commit() di atas, snapshot skema + siapa/kapan.
-      const { error: auditErr } = await (supabase as any).from("fee_calculation_audit_log").insert({
+      await logFeeAudit({
         action: "commit_invoice",
         client_id: clientId,
         scheme_id: ranScheme.id,
@@ -561,8 +567,7 @@ function CalculatePage() {
         period_start: from, period_end: to,
         row_count: r.perRider.length, total_amount: total,
         committed_by: user?.id ?? null,
-      });
-      if (auditErr) toast.warning(`Invoice tersimpan, tapi audit log gagal disimpan: ${auditErr.message}`);
+      }, "Invoice tersimpan");
       posthog.capture("invoice_committed", {
         category: ranScheme.category,
         subtype: ranScheme.subtype ?? null,
@@ -849,52 +854,25 @@ function CalculatePage() {
           )}
 
           {/* Commit */}
-          {ranScheme.scheme_for === "rider" ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Cek dulu angkanya di atas. Kalau udah bener, <strong>Commit</strong> untuk simpan
-                  fee ke data pengiriman — angka ini yang dipungut <strong>Payroll Run</strong>.
-                </span>
-              </div>
-              <button
-                onClick={commit}
-                disabled={committing}
-                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {committing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {committing ? "Menyimpan…" : "Commit ke Payroll"}
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Skema ini <strong>Client (revenue)</strong>. Cek dulu angkanya di atas, lalu{" "}
-                  <strong>Commit</strong> untuk simpan sebagai invoice periode ini — bisa dilihat &
-                  di-export di halaman <strong>Invoices</strong>.
-                </span>
-              </div>
-              <button
-                onClick={commitInvoice}
-                disabled={committing}
-                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {committing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {committing ? "Menyimpan…" : "Commit ke Invoice"}
-              </button>
-            </div>
-          )}
+          <CommitPanel
+            ranScheme={ranScheme}
+            committing={committing}
+            onCommit={commit}
+            onCommitInvoice={commitInvoice}
+            riderMessage={
+              <>
+                Cek dulu angkanya di atas. Kalau udah bener, <strong>Commit</strong> untuk simpan
+                fee ke data pengiriman — angka ini yang dipungut <strong>Payroll Run</strong>.
+              </>
+            }
+            clientMessage={
+              <>
+                Skema ini <strong>Client (revenue)</strong>. Cek dulu angkanya di atas, lalu{" "}
+                <strong>Commit</strong> untuk simpan sebagai invoice periode ini — bisa dilihat &
+                di-export di halaman <strong>Invoices</strong>.
+              </>
+            }
+          />
         </>
       )}
 
@@ -1050,50 +1028,23 @@ function CalculatePage() {
             </div>
           )}
 
-          {ranScheme.scheme_for === "rider" ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Cek dulu angkanya di atas. Kalau udah bener, <strong>Commit</strong> untuk simpan
-                  fee ke data pengiriman — angka ini yang dipungut <strong>Payroll Run</strong>.
-                </span>
-              </div>
-              <button
-                onClick={commit}
-                disabled={committing}
-                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {committing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {committing ? "Menyimpan…" : "Commit ke Payroll"}
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Skema ini <strong>Client (revenue)</strong>. Commit untuk simpan sebagai invoice.
-                </span>
-              </div>
-              <button
-                onClick={commitInvoice}
-                disabled={committing}
-                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {committing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {committing ? "Menyimpan…" : "Commit ke Invoice"}
-              </button>
-            </div>
-          )}
+          <CommitPanel
+            ranScheme={ranScheme}
+            committing={committing}
+            onCommit={commit}
+            onCommitInvoice={commitInvoice}
+            riderMessage={
+              <>
+                Cek dulu angkanya di atas. Kalau udah bener, <strong>Commit</strong> untuk simpan
+                fee ke data pengiriman — angka ini yang dipungut <strong>Payroll Run</strong>.
+              </>
+            }
+            clientMessage={
+              <>
+                Skema ini <strong>Client (revenue)</strong>. Commit untuk simpan sebagai invoice.
+              </>
+            }
+          />
         </>
       )}
 
@@ -1222,55 +1173,66 @@ function CalculatePage() {
           )}
 
           {/* Commit */}
-          {ranScheme.scheme_for === "rider" ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Cek dulu angkanya di atas. Kalau udah bener, <strong>Commit</strong> untuk simpan
-                  fee ke data absensi — angka ini yang dipungut <strong>Payroll Run</strong>.
-                </span>
-              </div>
-              <button
-                onClick={commit}
-                disabled={committing}
-                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {committing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {committing ? "Menyimpan…" : "Commit ke Payroll"}
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Skema ini <strong>Client (revenue)</strong>. Cek dulu angkanya di atas, lalu{" "}
-                  <strong>Commit</strong> untuk simpan sebagai invoice periode ini — bisa dilihat &
-                  di-export di halaman <strong>Invoices</strong>.
-                </span>
-              </div>
-              <button
-                onClick={commitInvoice}
-                disabled={committing}
-                className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {committing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {committing ? "Menyimpan…" : "Commit ke Invoice"}
-              </button>
-            </div>
-          )}
+          <CommitPanel
+            ranScheme={ranScheme}
+            committing={committing}
+            onCommit={commit}
+            onCommitInvoice={commitInvoice}
+            riderMessage={
+              <>
+                Cek dulu angkanya di atas. Kalau udah bener, <strong>Commit</strong> untuk simpan
+                fee ke data absensi — angka ini yang dipungut <strong>Payroll Run</strong>.
+              </>
+            }
+            clientMessage={
+              <>
+                Skema ini <strong>Client (revenue)</strong>. Cek dulu angkanya di atas, lalu{" "}
+                <strong>Commit</strong> untuk simpan sebagai invoice periode ini — bisa dilihat &
+                di-export di halaman <strong>Invoices</strong>.
+              </>
+            }
+          />
         </>
       )}
     </AdminLayout>
+  );
+}
+
+// Panel "Commit ke Payroll/Invoice" — sama persis strukturnya di ketiga hasil
+// (delivery/hybrid/attendance), cuma teks penjelasannya beda tipis per kategori
+// (makanya diterima sebagai prop, bukan di-hardcode, biar teks yang tampil ke
+// user gak berubah dikit pun dibanding sebelum digabung).
+function CommitPanel({
+  ranScheme,
+  committing,
+  onCommit,
+  onCommitInvoice,
+  riderMessage,
+  clientMessage,
+}: {
+  ranScheme: PricingScheme;
+  committing: boolean;
+  onCommit: () => void;
+  onCommitInvoice: () => void;
+  riderMessage: ReactNode;
+  clientMessage: ReactNode;
+}) {
+  const isRider = ranScheme.scheme_for === "rider";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
+      <div className="flex items-start gap-2 text-xs text-muted-foreground">
+        <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <span>{isRider ? riderMessage : clientMessage}</span>
+      </div>
+      <button
+        onClick={isRider ? onCommit : onCommitInvoice}
+        disabled={committing}
+        className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
+      >
+        {committing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+        {committing ? "Menyimpan…" : isRider ? "Commit ke Payroll" : "Commit ke Invoice"}
+      </button>
+    </div>
   );
 }
 

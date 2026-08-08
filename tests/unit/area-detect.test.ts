@@ -70,6 +70,7 @@ describe("detectAreaFromAddress", () => {
     expect(detectAreaFromAddress("Jl. Pantai Kuta 4 no 18, perumahan ancol timur")).toBe("Kota Jakarta Utara");
     expect(detectAreaFromAddress("Jl TM Bendungan Jatiluhur II no.8A Bendungan Hilir")).toBe("Kota Jakarta Pusat");
     expect(detectAreaFromAddress("jalan multi karya 1 no 2 RT 6 RW 9 kel. Utan kayu utara")).toBe("Kota Jakarta Timur");
+    expect(detectAreaFromAddress("Jl. Waru no.32 Rt.02/08 Rawamangun (seberang fotocopy bintang grafika)")).toBe("Kota Jakarta Timur");
   });
 
   it("null/kosong -> null", () => {

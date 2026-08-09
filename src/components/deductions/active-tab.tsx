@@ -118,9 +118,26 @@ export function ActiveTab() {
           `Jumlah cicilan gak boleh kurang dari yang sudah terbayar (${r.installments_paid}).`,
         );
       }
+      // per_period_amount buat cicilan SISA (bukan total_amount baru dibagi
+      // rata ke SEMUA cicilan) — kalau udah ada yang kebayar di rate LAMA,
+      // bagi rata ulang bikin total akhir yang beneran ketagih meleset dari
+      // total_amount yang diminta (sisa yang udah lunas gak ke-reconcile).
+      const alreadyPaid = r.installments_paid * (r.per_period_amount ?? 0);
+      const remainingCount = ef.installment_count - r.installments_paid;
+      const remainingAmount = ef.total_amount - alreadyPaid;
+      if (remainingCount === 0) {
+        if (remainingAmount > 0.5) {
+          setSaving(false);
+          return toast.error(
+            `Total baru gak konsisten — ${r.installments_paid}× udah lunas (Rp${alreadyPaid.toLocaleString("id-ID")}) tapi total barunya lebih tinggi dan gak nyisain cicilan lagi buat nutup selisihnya. Naikin jumlah cicilan atau turunin total.`,
+          );
+        }
+        update.per_period_amount = 0;
+      } else {
+        update.per_period_amount = +(Math.max(0, remainingAmount) / remainingCount).toFixed(2);
+      }
       update.total_amount = ef.total_amount;
       update.installment_count = ef.installment_count;
-      update.per_period_amount = +(ef.total_amount / ef.installment_count).toFixed(2);
       update.daily_rate = null;
       update.cycle_start_day = null;
       update.charge_target = "rider";

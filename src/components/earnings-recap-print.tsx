@@ -9,15 +9,12 @@ export type EarningsRecapPrintProps = {
   to: string;
   riderName: string;
   employeeId: string;
-  clients: { client_id: string; client_name: string; count: number; total: number }[];
-  completedOrders: number;
-  completedFee: number;
-  published: { slips: number; orders: number; gross: number; deduction: number; net: number };
+  published: { slips: number; orders: number; gross: number; deduction: number; net: number; clients: { client_id: string; client_name: string; orders: number; gross: number }[] };
   onClose: () => void;
 };
 
 export function EarningsRecapPrint({
-  from, to, riderName, employeeId, clients, completedOrders, completedFee, published, onClose,
+  from, to, riderName, employeeId, published, onClose,
 }: EarningsRecapPrintProps) {
   const [saving, setSaving] = useState(false);
 
@@ -51,14 +48,14 @@ export function EarningsRecapPrint({
           <div style={{ padding: "20px 28px 28px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
               <div><img src="/dash-logo.png" alt="DASH" style={{ height: 32, marginBottom: 4 }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} /><div style={{ fontSize: 11, color: "#666" }}>PT. Dash Elektrik Indonesia</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 11, fontWeight: 700 }}>REKAP PENDAPATAN RIDER</div><div style={{ fontSize: 11, color: "#666", marginTop: 3 }}>{formatTanggal(from)} - {formatTanggal(to)}</div><div style={{ fontSize: 10, color: "#999", marginTop: 3 }}>Dibuat: {formatTanggal(new Date().toISOString().slice(0, 10))}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 11, fontWeight: 700 }}>REKAP PENGHASILAN FINAL</div><div style={{ fontSize: 11, color: "#666", marginTop: 3 }}>{formatTanggal(from)} - {formatTanggal(to)}</div><div style={{ fontSize: 10, color: "#999", marginTop: 3 }}>Dibuat: {formatTanggal(new Date().toISOString().slice(0, 10))}</div></div>
             </div>
             <div style={{ background: "#f8f7ff", borderRadius: 6, padding: "10px 14px", marginBottom: 16, ...exact }}><table style={{ fontSize: 12 }}><tbody><tr><td style={{ color: "#666", paddingRight: 16, paddingBottom: 2 }}>Nama</td><td style={{ fontWeight: 600 }}>{riderName}</td></tr><tr><td style={{ color: "#666", paddingRight: 16 }}>Kode Mitra</td><td style={{ fontWeight: 600 }}>{employeeId}</td></tr></tbody></table></div>
-            <Label>Akumulasi Order Selesai</Label>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 18 }}><thead><tr style={{ borderBottom: "2px solid #e0e0e0" }}><th style={{ textAlign: "left", padding: "6px 0" }}>Client</th><th style={{ textAlign: "center", padding: "6px 8px" }}>Order</th><th style={{ textAlign: "right", padding: "6px 0" }}>Fee</th></tr></thead><tbody>{clients.map((client) => <tr key={client.client_id} style={{ borderBottom: "1px solid #f0f0f0" }}><td style={{ padding: "6px 0" }}>{client.client_name}</td><td style={{ textAlign: "center", padding: "6px 8px" }}>{client.count}</td><td style={{ textAlign: "right", padding: "6px 0", fontFamily: "monospace" }}>{formatRupiah(client.total)}</td></tr>)}<tr style={{ borderTop: "2px solid #e0e0e0", fontWeight: 700 }}><td style={{ padding: "8px 0" }}>Total fee order selesai</td><td style={{ textAlign: "center", padding: "8px" }}>{completedOrders}</td><td style={{ textAlign: "right", padding: "8px 0", fontFamily: "monospace" }}>{formatRupiah(completedFee)}</td></tr></tbody></table>
-            <Label>Rekap Payslip Terbit</Label>
-            {published.slips > 0 ? <><p style={{ fontSize: 11, color: "#666", margin: "0 0 8px" }}>{published.slips} payslip resmi - {published.orders} order pada periode ini</p><div style={{ background: "#7c5cff", borderRadius: 8, padding: "14px 18px", color: "#fff", ...exact }}><Line label="Gross" value={formatRupiah(published.gross)} /><Line label="Potongan" value={`-${formatRupiah(published.deduction)}`} /><div style={{ borderTop: "1px solid rgba(255,255,255,.3)", marginTop: 6, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 13, fontWeight: 700 }}>PENDAPATAN BERSIH</span><span style={{ fontSize: 20, fontWeight: 700, fontFamily: "monospace" }}>{formatRupiah(published.net)}</span></div></div></> : <div style={{ background: "#fff7ed", color: "#9a3412", borderRadius: 6, padding: "12px 14px", fontSize: 11, ...exact }}>Belum ada payslip terbit penuh pada periode ini. Akumulasi fee order di atas bukan bukti penghasilan final.</div>}
-            <div style={{ marginTop: 22, paddingTop: 12, borderTop: "1px solid #e0e0e0", fontSize: 10, color: "#777", lineHeight: 1.5 }}><FileDown size={11} style={{ verticalAlign: "-2px", marginRight: 4 }} />Dokumen ini adalah rekap sistem DASH. Nilai penghasilan resmi untuk pengajuan cicilan mengacu pada bagian Rekap Payslip Terbit.</div>
+            <Label>Rincian Penghasilan Final per Client</Label>
+            <p style={{ fontSize: 11, color: "#666", margin: "0 0 8px" }}>{published.slips} payslip resmi - {published.orders} order yang sudah dipublish</p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 18 }}><thead><tr style={{ borderBottom: "2px solid #e0e0e0" }}><th style={{ textAlign: "left", padding: "6px 0" }}>Client</th><th style={{ textAlign: "center", padding: "6px 8px" }}>Order</th><th style={{ textAlign: "right", padding: "6px 0" }}>Gross</th></tr></thead><tbody>{published.clients.map((client) => <tr key={client.client_id} style={{ borderBottom: "1px solid #f0f0f0" }}><td style={{ padding: "6px 0" }}>{client.client_name}</td><td style={{ textAlign: "center", padding: "6px 8px" }}>{client.orders}</td><td style={{ textAlign: "right", padding: "6px 0", fontFamily: "monospace" }}>{formatRupiah(client.gross)}</td></tr>)}<tr style={{ borderTop: "2px solid #e0e0e0", fontWeight: 700 }}><td style={{ padding: "8px 0" }}>Total gross published</td><td style={{ textAlign: "center", padding: "8px" }}>{published.orders}</td><td style={{ textAlign: "right", padding: "8px 0", fontFamily: "monospace" }}>{formatRupiah(published.gross)}</td></tr></tbody></table>
+            <div style={{ background: "#7c5cff", borderRadius: 8, padding: "14px 18px", color: "#fff", ...exact }}><Line label="Gross" value={formatRupiah(published.gross)} /><Line label="Potongan" value={`-${formatRupiah(published.deduction)}`} /><div style={{ borderTop: "1px solid rgba(255,255,255,.3)", marginTop: 6, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 13, fontWeight: 700 }}>PENDAPATAN BERSIH FINAL</span><span style={{ fontSize: 20, fontWeight: 700, fontFamily: "monospace" }}>{formatRupiah(published.net)}</span></div></div>
+            <div style={{ marginTop: 22, paddingTop: 12, borderTop: "1px solid #e0e0e0", fontSize: 10, color: "#777", lineHeight: 1.5 }}><FileDown size={11} style={{ verticalAlign: "-2px", marginRight: 4 }} />Dokumen ini hanya memuat payslip yang telah dipublish. Pendapatan bersih final sudah setelah seluruh potongan yang tercatat.</div>
           </div>
         </div>
       </div>

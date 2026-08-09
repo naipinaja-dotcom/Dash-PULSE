@@ -8,7 +8,8 @@ import { EarningsRecapPrint } from "@/components/earnings-recap-print";
 const sb = supabase as any;
 
 type Row = { client_id: string; client_name: string; count: number; total: number };
-type PublishedSummary = { slips: number; orders: number; gross: number; deduction: number; net: number };
+type PublishedClient = { client_id: string; client_name: string; orders: number; gross: number };
+type PublishedSummary = { slips: number; orders: number; gross: number; deduction: number; net: number; clients: PublishedClient[] };
 
 export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: { riderId: string; riderReady: boolean; riderName: string; employeeId: string }) {
   const today = new Date();
@@ -36,7 +37,7 @@ export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: 
         .lte("delivery_date", to),
       sb
         .from("payslips")
-        .select("data, payroll_runs(period_start, period_end)")
+        .select("detail_id, data, payroll_runs(period_start, period_end)")
         .eq("rider_id", riderId),
     ]);
     if (deliveryError || payslipError) {
@@ -55,21 +56,44 @@ export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: 
       map.set(cid, cur);
     }
     setRows(Array.from(map, ([client_id, v]) => ({ client_id, ...v })).sort((a, b) => b.total - a.total));
-    const summary = (payslipData ?? [])
+    const selectedSlips = (payslipData ?? [])
       .filter((slip: { payroll_runs: { period_start: string; period_end: string } | null }) => {
         const period = slip.payroll_runs;
         return period && period.period_start >= from && period.period_end <= to;
-      })
-      .reduce(
+      });
+    const detailIds = selectedSlips.map((slip: { detail_id: string }) => slip.detail_id).filter(Boolean);
+    const { data: details, error: detailsError } = detailIds.length
+      ? await sb.from("payroll_details").select("id, client_id, clients(name)").in("id", detailIds)
+      : { data: [], error: null };
+    if (detailsError) {
+      setError("Rekap payslip resmi belum bisa dimuat. Coba lagi sebentar.");
+      setRows(null);
+      setPublished(null);
+      setLoading(false);
+      return;
+    }
+    const detailMap = new Map((details ?? []).map((detail: { id: string; client_id: string; clients: { name: string } | null }) => [detail.id, detail]));
+    const byClient = new Map<string, PublishedClient>();
+    const summary = selectedSlips.reduce(
         (acc: PublishedSummary, slip: { data: { delivery_count?: number; gross_earning?: number; total_deduction?: number; net_pay?: number } }) => ({
           slips: acc.slips + 1,
           orders: acc.orders + Number(slip.data?.delivery_count ?? 0),
           gross: acc.gross + Number(slip.data?.gross_earning ?? 0),
           deduction: acc.deduction + Number(slip.data?.total_deduction ?? 0),
           net: acc.net + Number(slip.data?.net_pay ?? 0),
+          clients: acc.clients,
         }),
-        { slips: 0, orders: 0, gross: 0, deduction: 0, net: 0 },
+        { slips: 0, orders: 0, gross: 0, deduction: 0, net: 0, clients: [] },
       );
+    for (const slip of selectedSlips as { detail_id: string; data: { delivery_count?: number; gross_earning?: number } }[]) {
+      const detail = detailMap.get(slip.detail_id);
+      const clientId = detail?.client_id ?? "_unknown";
+      const client = byClient.get(clientId) ?? { client_id: clientId, client_name: detail?.clients?.name ?? "Tanpa Client", orders: 0, gross: 0 };
+      client.orders += Number(slip.data?.delivery_count ?? 0);
+      client.gross += Number(slip.data?.gross_earning ?? 0);
+      byClient.set(clientId, client);
+    }
+    summary.clients = [...byClient.values()].sort((a, b) => b.gross - a.gross);
     setPublished(summary);
     setLoading(false);
   }
@@ -99,8 +123,8 @@ export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: 
       {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
       {rows !== null && published !== null && (
         <div className="mt-4 space-y-3">
-          <div className="rounded-2xl border border-primary/25 bg-primary-soft/35 p-4 dark:bg-primary/10">
-            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-semibold tracking-[.13em] uppercase text-primary">Akumulasi order selesai</p><p className="text-[11px] text-muted-foreground mt-1">Semua client · {grandCount} order</p></div><span className="text-lg font-bold text-primary tabular-nums">{formatRupiah(grand)}</span></div>
+            <div className="rounded-2xl border border-primary/25 bg-primary-soft/35 p-4 dark:bg-primary/10">
+            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-semibold tracking-[.13em] uppercase text-primary">Pendapatan berjalan</p><p className="text-[11px] text-muted-foreground mt-1">Semua client · {grandCount} order · belum final</p></div><span className="text-lg font-bold text-primary tabular-nums">{formatRupiah(grand)}</span></div>
           </div>
           {rows.length === 0 ? (
             <p className="text-xs text-muted-foreground">Tidak ada delivery di periode ini.</p>
@@ -119,9 +143,9 @@ export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: 
           )}
           {published.slips > 0 ? (
             <div className="rounded-2xl border border-success/25 bg-success/10 p-4">
-              <div className="flex items-start gap-2"><BadgeCheck className="w-4 h-4 text-success mt-0.5 flex-shrink-0" /><div><p className="text-[10px] font-semibold tracking-[.13em] uppercase text-success">Rekap payslip terbit</p><p className="text-[11px] text-muted-foreground mt-1">{published.slips} payslip resmi · {published.orders} order · dasar pengajuan cicilan</p></div></div>
+              <div className="flex items-start gap-2"><BadgeCheck className="w-4 h-4 text-success mt-0.5 flex-shrink-0" /><div><p className="text-[10px] font-semibold tracking-[.13em] uppercase text-success">Pendapatan bersih final</p><p className="text-[11px] text-muted-foreground mt-1">{published.slips} payslip resmi · {published.orders} order · dasar pengajuan cicilan</p></div></div>
               <div className="grid grid-cols-3 gap-2 mt-4 border-t border-success/20 pt-3 text-center"><div><span className="block text-[10px] text-muted-foreground">Gross</span><b className="block mt-1 text-[11px] tabular-nums">{formatRupiah(published.gross)}</b></div><div><span className="block text-[10px] text-muted-foreground">Potongan</span><b className="block mt-1 text-[11px] text-warning tabular-nums">{formatRupiah(published.deduction)}</b></div><div><span className="block text-[10px] text-muted-foreground">Bersih</span><b className="block mt-1 text-[11px] text-success tabular-nums">{formatRupiah(published.net)}</b></div></div>
-              <button onClick={() => setShowRecapPrint(true)} className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-success px-3 py-2.5 text-xs font-semibold text-success-foreground shadow-sm"><Download className="w-4 h-4" />Unduh Rekap Pendapatan</button>
+              <button onClick={() => setShowRecapPrint(true)} className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-success px-3 py-2.5 text-xs font-semibold text-success-foreground shadow-sm"><Download className="w-4 h-4" />Unduh Rekap Penghasilan Final</button>
             </div>
           ) : (
             <div className="flex gap-2 rounded-xl bg-muted/60 p-3 text-[11px] text-muted-foreground"><FileText className="w-4 h-4 flex-shrink-0" />Belum ada payslip terbit penuh dalam periode ini. Akumulasi fee di atas masih pendapatan berjalan, bukan bukti penghasilan final.</div>
@@ -129,7 +153,7 @@ export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: 
         </div>
       )}
       {showRecapPrint && rows !== null && published !== null && (
-        <EarningsRecapPrint from={from} to={to} riderName={riderName} employeeId={employeeId} clients={rows} completedOrders={grandCount} completedFee={grand} published={published} onClose={() => setShowRecapPrint(false)} />
+        <EarningsRecapPrint from={from} to={to} riderName={riderName} employeeId={employeeId} published={published} onClose={() => setShowRecapPrint(false)} />
       )}
     </div>
   );

@@ -446,6 +446,21 @@ function CalculatePage() {
         : (result?.perRow.filter((r) => r.id) ?? []);
     if (rows.length === 0) return toast.error("Tidak ada baris untuk disimpan.");
     const table = isAttendance ? "attendance_logs" : "delivery_records";
+
+    // Begitu ada payroll run buat client+periode ini yang UDAH di-publish,
+    // angkanya dianggap final (udah dikirim/kepake buat slip gaji rider) —
+    // Hitung Fee ulang gak boleh diam-diam nimpa data sumbernya. Selama belum
+    // published (masih draft/finalized), commit ulang tetap boleh.
+    let publishedQ = (supabase as any).from("payroll_runs").select("id, name")
+      .eq("period_start", from).eq("period_end", to).eq("status", "published");
+    publishedQ = clientId ? publishedQ.eq("client_id", clientId) : publishedQ.is("client_id", null);
+    const { data: publishedRun } = await publishedQ.maybeSingle();
+    if (publishedRun) {
+      return toast.error(
+        `Periode ini udah di-publish sebagai payroll "${publishedRun.name}" — gak bisa commit ulang, angkanya udah final. Batalin publish run itu dulu di Payroll Run kalau emang perlu dikoreksi.`,
+      );
+    }
+
     if (
       !(await confirmDialog({
         title: "Simpan hasil fee?",

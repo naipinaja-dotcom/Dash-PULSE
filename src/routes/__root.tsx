@@ -17,6 +17,16 @@ import { I18nProvider, useT } from "@/lib/i18n";
 import { Toaster } from "@/components/ui/sonner";
 import { ConfirmHost } from "@/components/confirm-dialog";
 
+function isStaleDeploymentAsset(error: Error) {
+  const message = `${error.name}: ${error.message}`.toLowerCase();
+  return [
+    "failed to fetch dynamically imported module",
+    "importing a module script failed",
+    "loading chunk",
+    "chunkloaderror",
+  ].some((fragment) => message.includes(fragment));
+}
+
 function NotFoundComponent() {
   const { t } = useT();
   return (
@@ -45,6 +55,17 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
+
+    // A browser tab kept open across a Vercel deploy can request an old lazy
+    // route chunk that no longer exists. Refresh once to load the new manifest;
+    // keep the regular error UI if the error survives the refresh.
+    if (isStaleDeploymentAsset(error)) {
+      const key = `dash-reloaded-for-assets:${window.location.href}`;
+      if (!window.sessionStorage.getItem(key)) {
+        window.sessionStorage.setItem(key, "1");
+        window.location.reload();
+      }
+    }
   }, [error]);
 
   return (

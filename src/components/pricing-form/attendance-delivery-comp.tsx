@@ -5,8 +5,20 @@ import { parseRupiah } from "@/lib/format";
 import {
   AddRowBtn, FieldLabel, RupiahInput, StepTierEditor, Td, TableShell,
   TextInput, Th, RowDeleteBtn, buildStepTier, stepTierToState, emptyStepTier,
+  RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel,
   type StepTierState,
 } from "./shared";
+
+// Ketik bebas selain 3 pilihan di RESOLVABLE_COLUMN_OPTIONS diam-diam
+// fallback ke Area/district di resolveField() (pricing-calc.ts) — termasuk
+// default lama "sender_name" yang gak pernah beneran match apa pun. Normalize
+// biar skema lama yang kepalanjur kesimpen begitu tetap kebaca konsisten
+// dengan behavior aslinya (yang emang udah jadi Area selama ini).
+function normalizeResolvableColumn(v: unknown): (typeof RESOLVABLE_COLUMN_OPTIONS)[number] {
+  return (RESOLVABLE_COLUMN_OPTIONS as readonly string[]).includes(v as string)
+    ? (v as (typeof RESOLVABLE_COLUMN_OPTIONS)[number])
+    : "Area";
+}
 
 export type DeliveryCompMethod = "flat" | "tier" | "threshold";
 
@@ -40,7 +52,7 @@ export function emptyDeliveryCompState(): AttendanceDeliveryCompState {
     matchColumn: "Delivery Type",
     rates: [],
     defaultRate: "3000",
-    groupBy: "sender_name",
+    groupBy: "Area",
     defaultThreshold: "10",
     defaultRateThreshold: "5000",
     thresholdRules: [],
@@ -73,7 +85,7 @@ export function buildDeliveryCompConfig(s: AttendanceDeliveryCompState): Record<
   return {
     ...base,
     window: "daily_store",
-    group_by: s.groupBy || "sender_name",
+    group_by: s.groupBy || "Area",
     default: { threshold: Number(s.defaultThreshold) || 0, rate: parseRupiah(s.defaultRateThreshold) },
     rules: s.thresholdRules.filter((r) => r.key.trim()).map((r) => ({ key: r.key.trim(), threshold: Number(r.threshold) || 0, rate: parseRupiah(r.rate) })),
   };
@@ -91,12 +103,12 @@ export function loadDeliveryCompState(c: any): AttendanceDeliveryCompState {
   s.unit = c.unit === "unique_address" ? "unique_address" : "awb";
   s.rateBy = c.rate_by === "flat" ? "flat" : "column";
   s.flatRate = String(c.flat_rate ?? "");
-  s.matchColumn = c.match_column ?? "Delivery Type";
+  s.matchColumn = normalizeResolvableColumn(c.match_column ?? "Delivery Type");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   s.rates = (c.rates ?? []).map((r: any) => ({ key: r.key ?? "", rate: String(r.rate ?? "") }));
   s.defaultRate = String(c.default_rate ?? "");
   // threshold
-  s.groupBy = c.group_by ?? "sender_name";
+  s.groupBy = normalizeResolvableColumn(c.group_by ?? "Area");
   s.defaultThreshold = String(c.default?.threshold ?? "");
   s.defaultRateThreshold = String(c.default?.rate ?? "");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,7 +205,15 @@ export function AttendanceDeliveryCompFields({
                 <div className="grid grid-cols-2 gap-3 max-w-sm">
                   <div className="flex flex-col gap-1.5">
                     <FieldLabel>Kolom pembeda</FieldLabel>
-                    <TextInput value={value.matchColumn} onChange={(e) => patch({ matchColumn: e.target.value })} placeholder="Delivery Type" />
+                    <select
+                      value={value.matchColumn}
+                      onChange={(e) => patch({ matchColumn: e.target.value })}
+                      className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
+                    >
+                      {RESOLVABLE_COLUMN_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{resolvableColumnLabel(opt)}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <FieldLabel>Tarif default (Rp)</FieldLabel>
@@ -220,8 +240,16 @@ export function AttendanceDeliveryCompFields({
       {value.method === "threshold" && (
         <div className="space-y-3">
           <div className="max-w-xs flex flex-col gap-1.5">
-            <FieldLabel>Kolom pengelompokan (default: sender_name)</FieldLabel>
-            <TextInput value={value.groupBy} onChange={(e) => patch({ groupBy: e.target.value })} placeholder="sender_name" />
+            <FieldLabel>Kolom pengelompokan</FieldLabel>
+            <select
+              value={value.groupBy}
+              onChange={(e) => patch({ groupBy: e.target.value })}
+              className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
+            >
+              {RESOLVABLE_COLUMN_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{resolvableColumnLabel(opt)}</option>
+              ))}
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3 max-w-sm">
             <div className="flex flex-col gap-1.5">

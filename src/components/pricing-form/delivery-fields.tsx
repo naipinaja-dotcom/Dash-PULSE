@@ -21,7 +21,7 @@ import type {
   StepTier,
 } from "@/lib/pricing-types";
 import { parseRupiah } from "@/lib/format";
-import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn } from "./shared";
+import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel } from "./shared";
 import { Plus, Ruler, Package } from "lucide-react";
 
 // -------------------- State shapes (semua string, di-parse saat simpan) --------------------
@@ -468,7 +468,15 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="flex flex-col gap-1.5">
           <FieldLabel>Kolom pengelompokan</FieldLabel>
-          <TextInput value={value.group_by} onChange={(e) => patch({ group_by: e.target.value })} placeholder="Area" />
+          <select
+            value={value.group_by}
+            onChange={(e) => patch({ group_by: e.target.value })}
+            className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
+          >
+            {RESOLVABLE_COLUMN_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{resolvableColumnLabel(opt)}</option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-1.5">
           <FieldLabel>Default Threshold (kg)</FieldLabel>

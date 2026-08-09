@@ -5,6 +5,17 @@ import type { StepTier } from "@/lib/pricing-types";
 import { formatRupiah, parseRupiah } from "@/lib/format";
 import { Plus, Trash2 } from "lucide-react";
 
+// Kolom yang BENERAN dipahami resolveField() di pricing-calc.ts (dipakai buat
+// match_column/group_by di mana pun) — ketik bebas selain 3 ini (mis. contoh
+// placeholder lama "sender_name") diam-diam fallback ke Area/district tanpa
+// warning apa pun. Dropdown, bukan text bebas, biar gak ke-ulang lagi.
+export const RESOLVABLE_COLUMN_OPTIONS = ["Area", "Service Type", "Delivery Type"] as const;
+export function resolvableColumnLabel(opt: string): string {
+  if (opt === "Service Type") return "Tipe Layanan (Service Type)";
+  if (opt === "Delivery Type") return "Tipe Antar/Kembali (Delivery Type)";
+  return "Area / Kota (District)";
+}
+
 // -------------------- StepTier: state form <-> envelope --------------------
 export interface StepTierState {
   base_fee: string;

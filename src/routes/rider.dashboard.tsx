@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { RiderLayout } from "@/components/rider-layout";
 import { supabase } from "@/integrations/supabase/client";
 import { useRiderSelf } from "@/lib/use-rider-self";
 import { formatRupiah, formatTanggal } from "@/lib/format";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleDollarSign, ReceiptText, WalletCards } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/rider/dashboard")({ component: DashboardPage });
@@ -89,40 +89,46 @@ function DashboardPage() {
 
   return (
     <RiderLayout title={t("nav.beranda")}>
-      <div className="rounded-xl bg-primary text-primary-foreground p-5 mb-4">
-        <div className="text-xs opacity-80">{t("rider.latestPayslip")}</div>
-        <div className="text-2xl font-semibold mt-1">{formatRupiah(latest?.net_pay ?? 0)}</div>
-        <div className="text-[11px] opacity-80 mt-1">
-          {latest ? runName ?? "" : t("rider.noPayslip")}
-        </div>
+      <div className="rider-enter relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-[#5b21b6] via-primary to-[#312e81] text-primary-foreground p-6 mb-4 shadow-xl shadow-primary/25">
+        <div className="absolute -right-10 -top-14 h-44 w-44 rounded-full bg-white/20 blur-2xl" />
+        <div className="rider-orb absolute -left-14 -bottom-16 h-40 w-40 rounded-full bg-fuchsia-300/25 blur-2xl" />
+        <div className="rider-pulse-line absolute left-0 right-0 bottom-14 h-px opacity-70" />
+        <div className="relative"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold tracking-[.16em] uppercase text-primary-foreground/70">{t("rider.latestPayslip")}</div><span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold">PULSE</span></div>
+        <div className="text-3xl font-bold tracking-tight mt-3">{formatRupiah(latest?.net_pay ?? 0)}</div>
+        <div className="text-[11px] text-primary-foreground/75 mt-1">{latest ? runName ?? "" : t("rider.noPayslip")}</div>
+        <Link to="/rider/payslips" className="mt-5 inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[11px] font-semibold hover:bg-white/20 transition-colors">Lihat rincian slip <ChevronRight className="w-3.5 h-3.5" /></Link></div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-border bg-card p-3">
-          <div className="text-[11px] text-muted-foreground">{t("rider.grossFee")}</div>
-          <div className="text-sm font-semibold mt-0.5">{latest ? formatRupiah(latest.gross_earning) : "—"}</div>
+      <div className="rider-enter rider-enter-delay-1 rounded-2xl border border-border bg-card/75 p-4 shadow-sm dark:bg-white/[.035] mb-4">
+        <div className="flex items-center justify-between mb-3"><p className="text-[10px] font-semibold tracking-[.14em] text-primary uppercase">Alur penghasilan</p><p className="text-[10px] text-muted-foreground">Periode terbaru</p></div>
+        <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 text-center"><div><p className="text-[10px] text-muted-foreground">Fee kotor</p><b className="mt-1 block text-xs tabular-nums">{latest ? formatRupiah(latest.gross_earning) : "—"}</b></div><span className="text-primary/60">−</span><div><p className="text-[10px] text-muted-foreground">Potongan</p><b className="mt-1 block text-xs tabular-nums text-warning">{latest ? formatRupiah(latest.total_deduction) : "—"}</b></div><span className="text-primary/60">=</span><div><p className="text-[10px] text-muted-foreground">Bersih</p><b className="mt-1 block text-xs tabular-nums text-primary">{formatRupiah(latest?.net_pay ?? 0)}</b></div></div>
+      </div>
+      <div className="rider-enter rider-enter-delay-2 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:bg-white/[.035]">
+          <CircleDollarSign className="w-4 h-4 text-primary mb-3" /><div className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">{t("rider.grossFee")}</div>
+          <div className="text-sm font-bold mt-1">{latest ? formatRupiah(latest.gross_earning) : "—"}</div>
         </div>
-        <div className="rounded-lg border border-border bg-card p-3">
-          <div className="text-[11px] text-muted-foreground">{t("rider.totalDeduction")}</div>
-          <div className="text-sm font-semibold mt-0.5">{latest ? formatRupiah(latest.total_deduction) : "—"}</div>
+        <div className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:bg-white/[.035]">
+          <ReceiptText className="w-4 h-4 text-warning mb-3" /><div className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">{t("rider.totalDeduction")}</div>
+          <div className="text-sm font-bold mt-1">{latest ? formatRupiah(latest.total_deduction) : "—"}</div>
         </div>
       </div>
       {installmentTotal > 0 && (
-        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 mt-3">
+        <div className="rider-enter rider-enter-delay-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 mt-3">
           <div className="text-[11px] text-warning">{t("rider.activeInstallment")}</div>
           <div className="text-sm font-semibold mt-0.5 text-warning">{formatRupiah(installmentTotal)}</div>
         </div>
       )}
       {dedTypes.length > 0 && (
         <div className="mt-5">
-          <div className="text-sm font-semibold mb-2">{t("rider.recentDeductions")}</div>
+          <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2 text-sm font-semibold"><WalletCards className="w-4 h-4 text-primary" />{t("rider.recentDeductions")}</div><span className="text-[10px] text-muted-foreground">Tap untuk detail</span></div>
           <div className="space-y-2">
             {dedTypes.map((d) => {
               const isOpen = dedExpanded.has(d.typeName);
               return (
-                <div key={d.typeName} className="rounded-lg border border-border bg-card overflow-hidden">
+                <div key={d.typeName} className="rounded-2xl border border-border bg-card/80 overflow-hidden shadow-sm transition-colors hover:border-primary/35 dark:bg-white/[.035]">
                   <button
                     onClick={() => setDedExpanded((prev) => { const n = new Set(prev); n.has(d.typeName) ? n.delete(d.typeName) : n.add(d.typeName); return n; })}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+                    className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-primary-soft/30 transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}

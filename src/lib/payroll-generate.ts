@@ -50,6 +50,15 @@ export function computeInstallmentAdvance(
 // closedCyclesByInst di atas — murni derive dari histori (bukan state yang
 // di-mutate), dan aman diulang: begitu satu baris lunas penuh, unpaid-nya 0,
 // gak nempel lagi ke periode berikutnya.
+//
+// byRiderType di-key PER CLIENT (bukan cuma rider+jenis) — auto-recurring
+// "every_payroll_run" (mis. Biaya Admin) kepotong di SETIAP client, jadi 1
+// rider bisa punya 2 tunggakan Biaya Admin yang KEBETULAN period_end-nya
+// sama persis (2 client beda). Kalau di-key cuma rider+jenis, salah satunya
+// bakal ketimpa "latest" yang lain dan HILANG (bukan ke-tagih lagi di mana
+// pun). Per-client jaga dua-duanya tetap ke-tagih terpisah, dan tunggakan
+// client A cuma diambil alih run client A berikutnya — gak bisa nyasar
+// ketagih dobel di client B.
 async function getCarriedArrears(
   installmentIds: string[],
   autoTypeIds: string[],
@@ -80,9 +89,9 @@ async function getCarriedArrears(
 
   const detailIds = [...new Set(rows.map((r) => r.detail_id))];
   const { data: details } = await (client as any).from("payroll_details")
-    .select("id, run_id, rider_id").in("id", detailIds);
-  const detailInfo = new Map<string, { id: string; run_id: string; rider_id: string }>(
-    (details ?? []).map((d: { id: string; run_id: string; rider_id: string }) => [d.id, d]),
+    .select("id, run_id, rider_id, client_id").in("id", detailIds);
+  const detailInfo = new Map<string, { id: string; run_id: string; rider_id: string; client_id: string | null }>(
+    (details ?? []).map((d: { id: string; run_id: string; rider_id: string; client_id: string | null }) => [d.id, d]),
   );
   const runIds = [...new Set([...detailInfo.values()].map((d) => d.run_id))].filter((id) => id !== excludeRunId);
   const { data: runs } = await (client as any).from("payroll_runs").select("id, period_end").in("id", runIds);
@@ -102,7 +111,7 @@ async function getCarriedArrears(
       const cur = latestByInstallment.get(r.installment_id);
       if (!cur || periodEnd > cur.periodEnd) latestByInstallment.set(r.installment_id, { periodEnd, unpaid });
     } else {
-      const key = `${info.rider_id}|${r.deduction_type_id}`;
+      const key = `${info.rider_id}|${r.deduction_type_id}|${info.client_id ?? ""}`;
       const cur = latestByRiderType.get(key);
       if (!cur || periodEnd > cur.periodEnd) latestByRiderType.set(key, { periodEnd, unpaid });
     }
@@ -466,8 +475,12 @@ export async function generatePayrollDetails(
         !(t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)) &&
         (t.applies_to_all || enrolledSet.has(`${t.id}|${rider.id}`)),
     );
+    // Key arrears sama persis cara detail-nya nanti disimpen (client_id run
+    // ini, fallback ke client rumah rider) — biar tunggakan client A cuma
+    // pernah keambil sama run client A lagi, gak nyasar ke client B.
+    const detailClientId = run.client_id ?? rider.client_id;
     const autoItems = autoApplicable.map((t) => {
-      const arrears = arrearsByRiderType.get(`${rider.id}|${t.id}`) ?? 0;
+      const arrears = arrearsByRiderType.get(`${rider.id}|${t.id}|${detailClientId ?? ""}`) ?? 0;
       return { t, amount: (Number(t.recurring_amount) || 0) + arrears, arrears };
     });
     const autoTotal = autoItems.reduce((s: number, x) => s + x.amount, 0);

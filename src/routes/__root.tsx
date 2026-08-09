@@ -47,12 +47,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
-  const { t } = useT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold">{t("error.generic")}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t("error.tryReload")}</p>
+        {/* Error components render outside RootComponent, therefore outside I18nProvider. */}
+        <h1 className="text-xl font-semibold">Terjadi kesalahan</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Coba muat ulang halaman.</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -61,11 +61,35 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
-            {t("error.retry")}
+            Coba lagi
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function AnalyticsProvider({ children }: { children: ReactNode }) {
+  const apiKey = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
+
+  // PostHog emits warnings and can fall back to a global instance when its
+  // project token is absent in an environment. Do not mount that fallback:
+  // analytics is optional, whereas navigating the payroll system is not.
+  if (!apiKey) return <>{children}</>;
+
+  return (
+    <PostHogProvider
+      apiKey={apiKey}
+      options={{
+        api_host: "/ingest",
+        ui_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.posthog.com",
+        defaults: "2025-05-24",
+        capture_exceptions: true,
+        debug: import.meta.env.DEV,
+      }}
+    >
+      {children}
+    </PostHogProvider>
   );
 }
 
@@ -114,18 +138,9 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <PostHogProvider
-          apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN!}
-          options={{
-            api_host: "/ingest",
-            ui_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.posthog.com",
-            defaults: "2025-05-24",
-            capture_exceptions: true,
-            debug: import.meta.env.DEV,
-          }}
-        >
+        <AnalyticsProvider>
           {children}
-        </PostHogProvider>
+        </AnalyticsProvider>
         <Scripts />
       </body>
     </html>

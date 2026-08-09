@@ -77,7 +77,7 @@ function PayslipsPage() {
 
   return (
     <RiderLayout title={t("slip.title")}>
-      <EarningsChecker riderId={rider?.id ?? ""} riderReady={!riderLoading && !!rider} />
+      <EarningsChecker riderId={rider?.id ?? ""} riderReady={!riderLoading && !!rider} riderName={rider?.full_name ?? ""} employeeId={rider?.employee_id ?? ""} />
       {busy ? (
         <div className="flex justify-center py-10">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatRupiah } from "@/lib/format";
-import { BadgeCheck, FileText, Loader2, Search } from "lucide-react";
+import { BadgeCheck, Download, FileText, Loader2, Search } from "lucide-react";
+import { EarningsRecapPrint } from "@/components/earnings-recap-print";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -9,7 +10,7 @@ const sb = supabase as any;
 type Row = { client_id: string; client_name: string; count: number; total: number };
 type PublishedSummary = { slips: number; orders: number; gross: number; deduction: number; net: number };
 
-export function EarningsChecker({ riderId, riderReady }: { riderId: string; riderReady: boolean }) {
+export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: { riderId: string; riderReady: boolean; riderName: string; employeeId: string }) {
   const today = new Date();
   const y = today.getFullYear();
   const m = String(today.getMonth() + 1).padStart(2, "0");
@@ -19,6 +20,7 @@ export function EarningsChecker({ riderId, riderReady }: { riderId: string; ride
   const [published, setPublished] = useState<PublishedSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showRecapPrint, setShowRecapPrint] = useState(false);
 
   async function check() {
     if (!riderReady || !from || !to) return;
@@ -119,11 +121,15 @@ export function EarningsChecker({ riderId, riderReady }: { riderId: string; ride
             <div className="rounded-2xl border border-success/25 bg-success/10 p-4">
               <div className="flex items-start gap-2"><BadgeCheck className="w-4 h-4 text-success mt-0.5 flex-shrink-0" /><div><p className="text-[10px] font-semibold tracking-[.13em] uppercase text-success">Rekap payslip terbit</p><p className="text-[11px] text-muted-foreground mt-1">{published.slips} payslip resmi · {published.orders} order · dasar pengajuan cicilan</p></div></div>
               <div className="grid grid-cols-3 gap-2 mt-4 border-t border-success/20 pt-3 text-center"><div><span className="block text-[10px] text-muted-foreground">Gross</span><b className="block mt-1 text-[11px] tabular-nums">{formatRupiah(published.gross)}</b></div><div><span className="block text-[10px] text-muted-foreground">Potongan</span><b className="block mt-1 text-[11px] text-warning tabular-nums">{formatRupiah(published.deduction)}</b></div><div><span className="block text-[10px] text-muted-foreground">Bersih</span><b className="block mt-1 text-[11px] text-success tabular-nums">{formatRupiah(published.net)}</b></div></div>
+              <button onClick={() => setShowRecapPrint(true)} className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-success px-3 py-2.5 text-xs font-semibold text-success-foreground shadow-sm"><Download className="w-4 h-4" />Unduh Rekap Pendapatan</button>
             </div>
           ) : (
             <div className="flex gap-2 rounded-xl bg-muted/60 p-3 text-[11px] text-muted-foreground"><FileText className="w-4 h-4 flex-shrink-0" />Belum ada payslip terbit penuh dalam periode ini. Akumulasi fee di atas masih pendapatan berjalan, bukan bukti penghasilan final.</div>
           )}
         </div>
+      )}
+      {showRecapPrint && rows !== null && published !== null && (
+        <EarningsRecapPrint from={from} to={to} riderName={riderName} employeeId={employeeId} clients={rows} completedOrders={grandCount} completedFee={grand} published={published} onClose={() => setShowRecapPrint(false)} />
       )}
     </div>
   );

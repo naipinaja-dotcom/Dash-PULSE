@@ -156,3 +156,76 @@
     color: var(--color-muted-foreground);
   }
 }
+
+@layer components {
+  .rider-shell {
+    background:
+      radial-gradient(ellipse 95% 34% at 50% -10%, color-mix(in oklch, var(--color-primary) 20%, transparent), transparent 72%),
+      var(--color-background);
+  }
+
+  .rider-pulse-line {
+    background-image: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 70%, transparent), transparent);
+  }
+
+  .rider-enter { animation: rider-enter .42s cubic-bezier(.22, 1, .36, 1) both; }
+  .rider-enter-delay-1 { animation-delay: .06s; }
+  .rider-enter-delay-2 { animation-delay: .12s; }
+  .rider-enter-delay-3 { animation-delay: .18s; }
+  .rider-orb { animation: rider-orb 13s ease-in-out infinite alternate; }
+
+  .rider-stars, .rider-meteor { display: none; }
+  .dark .rider-stars {
+    display: block;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: .62;
+    background-image:
+      radial-gradient(circle at 14% 18%, rgba(255,255,255,.9) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 78% 12%, rgba(182,156,255,.95) 0 1px, transparent 1.7px),
+      radial-gradient(circle at 36% 41%, rgba(104,229,255,.65) 0 .8px, transparent 1.5px),
+      radial-gradient(circle at 88% 57%, rgba(255,255,255,.7) 0 .8px, transparent 1.5px),
+      radial-gradient(circle at 18% 76%, rgba(182,156,255,.8) 0 1px, transparent 1.7px),
+      radial-gradient(circle at 62% 85%, rgba(255,255,255,.6) 0 .8px, transparent 1.5px);
+    background-size: 183px 151px, 241px 197px, 169px 223px, 277px 193px, 213px 263px, 311px 229px;
+    mask-image: linear-gradient(to bottom, black, transparent 78%);
+  }
+  .dark .rider-meteor {
+    display: block;
+    position: fixed;
+    top: 12%;
+    left: -26%;
+    width: 124px;
+    height: 2px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transform: rotate(-27deg);
+    background: linear-gradient(90deg, transparent, rgba(104,229,255,.45), rgba(255,255,255,.95));
+    box-shadow: 0 0 9px rgba(182,156,255,.85), 0 0 26px rgba(124,58,237,.45);
+    animation: rider-meteor 12s cubic-bezier(.2,.6,.4,1) infinite;
+  }
+  .dark .rider-meteor-b { top: 39%; left: -38%; width: 88px; animation-delay: 5.8s; animation-duration: 15s; opacity: 0; }
+}
+
+@keyframes rider-enter {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes rider-orb {
+  to { transform: translate(10px, 12px) scale(1.13); }
+}
+
+@keyframes rider-meteor {
+  0%, 72% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-27deg); }
+  74% { opacity: .92; }
+  82% { opacity: .2; transform: translate3d(145vw, 46vh, 0) rotate(-27deg); }
+  83%, 100% { opacity: 0; transform: translate3d(145vw, 46vh, 0) rotate(-27deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rider-enter, .rider-orb, .rider-meteor { animation: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

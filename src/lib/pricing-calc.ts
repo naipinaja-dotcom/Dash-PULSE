@@ -277,11 +277,21 @@ export function calcTierComponent(rows: DeliveryRow[], cfg: any, accumulate: "da
     for (const [, drows] of byDay) {
       const sumKm = drows.reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
       const sumKg = drows.reduce((s, r) => s + (Number(r.weight_kg) || 0), 0);
-      const dayFee = (cfg.distance ? stepTierFee(cfg.distance, sumKm) : 0) + (cfg.weight ? stepTierFee(cfg.weight, sumKg) : 0);
-      // alokasi ke tiap baris hari itu (proporsional jarak, fallback berat, fallback rata)
-      const weights = drows.map((r) => (cfg.distance ? Number(r.distance_km) || 0 : Number(r.weight_kg) || 0));
-      const parts = allocInt(dayFee, weights);
-      drows.forEach((r, i) => (out[idxOf.get(r)!] = parts[i]));
+      const distFee = cfg.distance ? stepTierFee(cfg.distance, sumKm) : 0;
+      const weightFee = cfg.weight ? stepTierFee(cfg.weight, sumKg) : 0;
+      // Distance & Weight dialokasikan TERPISAH, masing-masing proporsional ke
+      // dimensinya sendiri, baru dijumlah per baris — bukan 1 vector bobot
+      // gabungan. Sebelumnya kalau Distance+Weight dua-duanya aktif, bobot
+      // alokasi cuma pakai jarak (weight diabaikan total buat nentuin porsi
+      // tiap baris) — total harian rider tetap benar, tapi fee PER BARIS
+      // (delivery_records.fee) salah alokasi, bikin laporan per-order gak akurat.
+      const distParts = cfg.distance
+        ? allocInt(distFee, drows.map((r) => Number(r.distance_km) || 0))
+        : drows.map(() => 0);
+      const weightParts = cfg.weight
+        ? allocInt(weightFee, drows.map((r) => Number(r.weight_kg) || 0))
+        : drows.map(() => 0);
+      drows.forEach((r, i) => (out[idxOf.get(r)!] = distParts[i] + weightParts[i]));
     }
   }
   return out;
@@ -716,7 +726,11 @@ export function calcAttendanceComponent(logs: AttendanceLogRow[], cfg: any): Att
     const effFullFee = shift ? (Number(shift.full_fee) || 0) : fullFee;
     const effStandardMin = shift ? (Number(shift.standard_minutes) || 0) : standardMin;
 
-    const proportion = effStandardMin > 0 ? Math.min(1, actualMin / effStandardMin) : (actualMin > 0 ? 1 : 0);
+    // Clamp ke [0,1] — duration_minutes negatif (data absen rusak, mis. jam
+    // keluar ke-input sebelum jam masuk) bisa bikin proportion negatif tanpa
+    // batas bawah ini, dan daily_base di bawah jadi ANGKA MINUS (rider
+    // ke-charge-balik), bukan cuma Rp0.
+    const proportion = effStandardMin > 0 ? Math.max(0, Math.min(1, actualMin / effStandardMin)) : (actualMin > 0 ? 1 : 0);
     const daily_base = Math.round(effFullFee * proportion);
 
     let overtime = 0;

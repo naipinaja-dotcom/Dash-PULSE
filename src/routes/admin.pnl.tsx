@@ -132,7 +132,9 @@ function PnlPage() {
                                 <div className={"h-full " + (loss ? "bg-destructive" : thin ? "bg-warning" : "bg-success")}
                                   style={{ width: Math.max(3, Math.min(100, (Math.abs(r.margin ?? 0) / maxMargin) * 100)) + "%" }} />
                               </div>
-                              <span className={"text-xs " + color}>{r.marginPct!.toFixed(1)}%</span>
+                              <span className={"text-xs " + color}>
+                                {r.marginPct === null ? "—" : `${r.marginPct.toFixed(1)}%`}
+                              </span>
                             </div>
                           )}
                         </td>

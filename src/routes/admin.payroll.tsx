@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { usePostHog } from "@posthog/react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
@@ -129,6 +129,12 @@ function PayrollPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editTypeId, setEditTypeId] = useState<string | null>(null);
   const [savingDeduction, setSavingDeduction] = useState(false);
+  // Lock sinkron (bukan cuma state `savingDeduction`) — dobel-klik cepat di
+  // "Tambah"/"Simpan" bisa nembus sebelum re-render pertama nyampein disabled
+  // ke tombol, karena setState gak langsung keliatan di render yang sama.
+  // Ref di sini keupdate LANGSUNG (gak nunggu re-render), jadi klik ke-2
+  // dalam sepersekian detik ke-tolak jelas, bukan diam-diam bikin baris dobel.
+  const savingDeductionLock = useRef(false);
   const [addingDedForDetail, setAddingDedForDetail] = useState<string | null>(null);
   const [newDedTypeId, setNewDedTypeId] = useState<string | null>(null);
   const [newDedDescription, setNewDedDescription] = useState("");
@@ -222,7 +228,12 @@ function PayrollPage() {
   // Cuma nyentuh run berstatus draft (never finalized/published) biar gak
   // ganggu run yang udah settel.
   const checkNettingCandidates = async (run: Run) => {
-    const shortfallRows = details.filter((d) => d.total_deduction > d.gross_earning);
+    // total_deduction/gross_earning numeric dari Supabase balik sebagai STRING
+    // — `>` mentah di string itu perbandingan leksikografik (per-karakter),
+    // bukan angka (mis. "9000" dianggap "lebih besar" dari "15000" karena '9'
+    // > '1' di karakter pertama). Number() wajib sebelum dibandingkan/dikurangi
+    // di seluruh fungsi ini biar netting nunjuk rider yang bener.
+    const shortfallRows = details.filter((d) => Number(d.total_deduction) > Number(d.gross_earning));
     if (!shortfallRows.length) return setNettingCandidates([]);
     const riderIds = shortfallRows.map((d) => d.rider_id);
 
@@ -240,11 +251,13 @@ function PayrollPage() {
 
     const candidates: NettingCandidate[] = [];
     for (const d of shortfallRows) {
-      const shortfall = d.total_deduction - d.gross_earning;
+      const shortfall = Number(d.total_deduction) - Number(d.gross_earning);
       const sib = (siblingDetails as any[])
-        .filter((s) => s.rider_id === d.rider_id && s.gross_earning - s.total_deduction > 0)
+        .filter((s) => s.rider_id === d.rider_id && Number(s.gross_earning) - Number(s.total_deduction) > 0)
         .sort(
-          (a, b) => b.gross_earning - b.total_deduction - (a.gross_earning - a.total_deduction),
+          (a, b) =>
+            (Number(b.gross_earning) - Number(b.total_deduction)) -
+            (Number(a.gross_earning) - Number(a.total_deduction)),
         )[0];
       if (!sib) continue;
       candidates.push({
@@ -256,7 +269,7 @@ function PayrollPage() {
         siblingRunId: sib.run_id,
         siblingRunName: sib.payroll_runs.name,
         siblingDetailId: sib.id,
-        headroom: sib.gross_earning - sib.total_deduction,
+        headroom: Number(sib.gross_earning) - Number(sib.total_deduction),
       });
     }
     setNettingCandidates(candidates);
@@ -410,6 +423,8 @@ function PayrollPage() {
   // makanya di-warning eksplisit di toast, bukan diam-diam ketimpa nanti.
   const saveDeductionEdit = async (d: Deduction) => {
     if (!activeRun) return;
+    if (savingDeductionLock.current) return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
+    savingDeductionLock.current = true;
     setSavingDeduction(true);
     try {
       const { error: e1 } = await supabase
@@ -446,6 +461,7 @@ function PayrollPage() {
       toast.error((e as Error).message);
     } finally {
       setSavingDeduction(false);
+      savingDeductionLock.current = false;
     }
   };
 
@@ -455,8 +471,10 @@ function PayrollPage() {
   // masih draft (sama kayak edit potongan lain di atas) biar gak numpuk sama
   // risiko Generate Ulang/publish yang udah di-warning di tempat lain.
   const addDeduction = async (detailId: string) => {
+    if (savingDeductionLock.current) return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
     if (!newDedDescription.trim()) return toast.error("Keterangan wajib diisi");
     if (newDedAmount <= 0) return toast.error("Jumlah harus lebih dari 0");
+    savingDeductionLock.current = true;
     setSavingDeduction(true);
     try {
       const { data, error: e1 } = await supabase
@@ -486,6 +504,7 @@ function PayrollPage() {
       toast.error((e as Error).message);
     } finally {
       setSavingDeduction(false);
+      savingDeductionLock.current = false;
     }
   };
 

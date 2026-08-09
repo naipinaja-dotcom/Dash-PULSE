@@ -29,9 +29,25 @@ export async function upsertLiveDeliveries(
   feeByDashId?: Map<string, number>, // fee hasil hitung per dash_delivery_id
   client: typeof supabase = supabase,
 ): Promise<SyncResult> {
-  const usable = rows.filter((r) =>
-    ALLOWED_STATUSES.has(String(r.status ?? "").trim().toUpperCase()),
+  // Record tanpa ID upstream stabil tidak boleh disimpan: ia tidak bisa
+  // di-refresh/dedup pada sync berikutnya. Dash ID diprioritaskan, lalu
+  // provider order ID sebagai fallback.
+  const eligible = rows.filter(
+    (r) =>
+      ALLOWED_STATUSES.has(
+        String(r.status ?? "")
+          .trim()
+          .toUpperCase(),
+      ) && !!(r.dash_delivery_id?.trim() || r.provider_order_id?.trim()),
   );
+  const byExternalId = new Map<string, LiveDeliveryRow>();
+  for (const row of eligible) {
+    const key = row.dash_delivery_id?.trim()
+      ? `dash:${row.dash_delivery_id.trim()}`
+      : `provider:${row.provider_order_id!.trim()}`;
+    byExternalId.set(key, row);
+  }
+  const usable = [...byExternalId.values()];
   const dropped = rows.length - usable.length;
   const result: SyncResult = {
     total: rows.length,
@@ -88,25 +104,18 @@ export async function upsertLiveDeliveries(
     fee: (r.dash_delivery_id && feeByDashId?.get(r.dash_delivery_id)) || 0,
   }));
 
-  // 4. TIMPA: hapus baris lama dengan Dash ID sama (refresh), lalu insert.
-  const dashIds = payloads.map((p) => p.dash_delivery_id).filter((v): v is string => !!v);
-  for (let i = 0; i < dashIds.length; i += 200) {
-    const chunk = dashIds.slice(i, i + 200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error, count } = await (client as any)
-      .from("delivery_records")
-      .delete({ count: "exact" })
-      .in("dash_delivery_id", chunk);
-    if (error) throw error;
-    result.overwritten += count ?? 0;
-  }
-  for (let i = 0; i < payloads.length; i += 200) {
-    const chunk = payloads.slice(i, i + 200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (client as any).from("delivery_records").insert(chunk);
-    if (error) throw error;
-    result.inserted += chunk.length;
-  }
+  // Delete + insert dijalankan sebagai SATU transaksi di Postgres. Kalau
+  // jaringan/insert gagal, data sync sebelumnya tetap utuh; retry kemudian
+  // menggantikannya, tidak menambahkan baris kedua.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (client as any).rpc("replace_live_deliveries", {
+    p_client_id: clientId,
+    p_rows: payloads,
+  });
+  if (error) throw error;
+  const counts = Array.isArray(data) ? data[0] : data;
+  result.overwritten = Number(counts?.overwritten) || 0;
+  result.inserted = Number(counts?.inserted) || 0;
 
   return result;
 }

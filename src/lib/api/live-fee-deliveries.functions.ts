@@ -23,7 +23,11 @@ const STATUSES =
 const PAGE_SIZE = 500;
 const MAX_WORKERS = 6;
 const MAX_PAGES = 40; // pengaman (~20k baris) — 1 businessUnit/7hari biasanya < 10 halaman
-const CREATED_BUFFER_DAYS = 7; // mundur tarikan createdAt biar nangkap order yg dibuat sebelum periode tapi selesai di dalam periode
+// ponytail: 14 hari = 2x gap terlama yang pernah keliatan di data historis (0-11
+// hari, mayoritas 0-2 hari) — kalau ada order yang siklusnya lebih panjang dari
+// ini, dia bakal kelewat lagi diam-diam. Upgrade: kalau muncul lagi, cek ulang
+// distribusi gap_days (lihat query di session 2026-08-09) & naikin lagi angkanya.
+const CREATED_BUFFER_DAYS = 14; // mundur tarikan createdAt biar nangkap order yg dibuat sebelum periode tapi selesai di dalam periode
 const RETRIES = 3;
 const JKT_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Jakarta = UTC+7
 

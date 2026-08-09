@@ -43,6 +43,28 @@ interface RawAttendance {
   client_name?: string;
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function deliveryKeys(row: Pick<RawDelivery, "dash_delivery_id" | "provider_order_id">): string[] {
+  const keys: string[] = [];
+  const dashId = row.dash_delivery_id?.trim();
+  const providerId = row.provider_order_id?.trim();
+  if (dashId) keys.push(`dash:${dashId}`);
+  if (providerId) keys.push(`provider:${providerId}`);
+  return keys;
+}
+
+function attendanceKey(
+  row: Pick<RawAttendance, "client_name" | "driver_code" | "log_date" | "clock_in">,
+  clientId?: string | null,
+): string {
+  // Satu rider boleh punya lebih dari satu shift pada tanggal yang sama.
+  // client + clock-in membedakan shift tersebut; client_name dipakai sebagai
+  // fallback bila nama client dari sumber belum terdaftar di Dash PULSE.
+  const client = clientId ?? row.client_name?.trim() ?? "";
+  return `${client}|${row.driver_code?.trim() ?? ""}|${row.log_date}|${row.clock_in ?? ""}`;
+}
+
 export interface ImportResult {
   deliveries: { fetched: number; inserted: number; skipped: number };
   attendance: { fetched: number; inserted: number; skipped: number };
@@ -90,14 +112,18 @@ async function fetchFromRestApi<T>(source: ImportSource, dateParam?: string): Pr
   return Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
 }
 
-async function fetchFromDatabase<T>(source: ImportSource, query: string): Promise<T[]> {
+async function fetchFromDatabase<T>(
+  source: ImportSource,
+  query: string,
+  values: unknown[] = [],
+): Promise<T[]> {
   // Dynamic import — pg is only needed when source type is "database".
   // It must be installed on the server: `npm i pg` (not bundled for client).
   const { default: pg } = await import("pg");
   const client = new pg.Client({ connectionString: source.url });
   await client.connect();
   try {
-    const result = await client.query(query);
+    const result = await client.query(query, values);
     return result.rows as T[];
   } finally {
     await client.end();
@@ -171,6 +197,7 @@ export async function runDailyImport(targetDate?: string): Promise<ImportResult>
   // Default: yesterday (WIB = UTC+7)
   const date =
     targetDate ?? new Date(Date.now() + 7 * 3600_000 - 86400_000).toISOString().slice(0, 10);
+  if (!DATE_RE.test(date)) throw new Error("Tanggal import harus berformat YYYY-MM-DD");
 
   // ── 1. Delivery records ────────────────────────────────────────
   if (config.delivery) {
@@ -181,7 +208,8 @@ export async function runDailyImport(targetDate?: string): Promise<ImportResult>
       } else {
         rows = await fetchFromDatabase<RawDelivery>(
           config.delivery,
-          `SELECT * FROM deliveries WHERE delivery_date = '${date}'`,
+          "SELECT * FROM deliveries WHERE delivery_date = $1",
+          [date],
         );
       }
       result.deliveries.fetched = rows.length;
@@ -200,19 +228,16 @@ export async function runDailyImport(targetDate?: string): Promise<ImportResult>
           .single();
         const batchId = batch?.id;
 
-        // Check existing (dedup by dash_delivery_id + provider_order_id)
+        // Check existing by either stable upstream ID. AWB is optional and
+        // never determines whether an order can be deduplicated.
         const existingKeys = new Set<string>();
-        const awbs = rows.map((r) => r.awb).filter(Boolean) as string[];
-        if (awbs.length > 0) {
-          const { data: existing } = await (sb as any)
-            .from("delivery_records")
-            .select("dash_delivery_id, provider_order_id")
-            .eq("delivery_date", date);
-          (existing ?? []).forEach((e: any) => {
-            if (e.dash_delivery_id || e.provider_order_id)
-              existingKeys.add(`${e.dash_delivery_id}|${e.provider_order_id}`);
-          });
-        }
+        const { data: existing } = await (sb as any)
+          .from("delivery_records")
+          .select("dash_delivery_id, provider_order_id")
+          .eq("delivery_date", date);
+        (existing ?? []).forEach((e: RawDelivery) =>
+          deliveryKeys(e).forEach((key) => existingKeys.add(key)),
+        );
 
         // Insert in chunks. Cuma COMPLETED & FAILED yang berguna buat payroll/
         // analytics — status transien kayak PENDING_PICKUP dibuang di sini
@@ -231,11 +256,17 @@ export async function runDailyImport(targetDate?: string): Promise<ImportResult>
               result.deliveries.skipped++;
               return false;
             }
-            const key = `${r.dash_delivery_id ?? ""}|${r.provider_order_id ?? ""}`;
-            if (key !== "|" && existingKeys.has(key)) {
+            const keys = deliveryKeys(r);
+            if (keys.length === 0) {
               result.deliveries.skipped++;
               return false;
             }
+            if (keys.some((key) => existingKeys.has(key))) {
+              result.deliveries.skipped++;
+              return false;
+            }
+            // Also protects against duplicate rows inside a single source response.
+            keys.forEach((key) => existingKeys.add(key));
             return true;
           })
           .map((r) => ({
@@ -280,7 +311,8 @@ export async function runDailyImport(targetDate?: string): Promise<ImportResult>
       } else {
         rows = await fetchFromDatabase<RawAttendance>(
           config.attendance,
-          `SELECT * FROM attendance WHERE log_date = '${date}'`,
+          "SELECT * FROM attendance WHERE log_date = $1",
+          [date],
         );
       }
       result.attendance.fetched = rows.length;
@@ -297,23 +329,24 @@ export async function runDailyImport(targetDate?: string): Promise<ImportResult>
           .single();
         const batchId = batch?.id;
 
-        // Dedup: driver_code + log_date
+        // Dedup per shift, not per day: multi-shift is a valid business case.
         const existingKeys = new Set<string>();
         const { data: existing } = await (sb as any)
           .from("attendance_logs")
-          .select("driver_code, log_date")
+          .select("client_id, client_name, driver_code, log_date, clock_in")
           .eq("log_date", date);
         (existing ?? []).forEach((e: any) => {
-          existingKeys.add(`${e.driver_code}|${e.log_date}`);
+          existingKeys.add(attendanceKey(e, e.client_id));
         });
 
         const toInsert = rows
           .filter((r) => {
-            const key = `${r.driver_code}|${r.log_date}`;
+            const key = attendanceKey(r, clientMap.get(r.client_name ?? "") ?? null);
             if (existingKeys.has(key)) {
               result.attendance.skipped++;
               return false;
             }
+            existingKeys.add(key);
             return true;
           })
           .map((r) => ({

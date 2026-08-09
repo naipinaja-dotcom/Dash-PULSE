@@ -57,9 +57,14 @@ function PayslipsPage() {
   const [openSlip, setOpenSlip] = useState<PayslipRow | null>(null);
 
   useEffect(() => {
-    if (!rider) { setLoading(false); return; }
+    if (!rider) {
+      setLoading(false);
+      return;
+    }
     sb.from("payslips")
-      .select("id, detail_id, run_id, published_at, data, payroll_runs(name, period_start, period_end)")
+      .select(
+        "id, detail_id, run_id, published_at, data, payroll_runs(name, period_start, period_end)",
+      )
       .eq("rider_id", rider.id)
       .order("published_at", { ascending: false })
       .then(({ data }: { data: PayslipRow[] | null }) => {
@@ -80,9 +85,7 @@ function PayslipsPage() {
       ) : slips.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
           <div className="text-sm font-medium">{t("slip.empty")}</div>
-          <p className="text-xs text-muted-foreground mt-1">
-            {t("slip.emptyDesc")}
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{t("slip.emptyDesc")}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -99,7 +102,9 @@ function PayslipsPage() {
               className="w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-3 text-left hover:bg-muted/40"
             >
               <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{s.payroll_runs?.name ?? "Payroll"}</div>
+                <div className="text-sm font-medium truncate">
+                  {s.payroll_runs?.name ?? "Payroll"}
+                </div>
                 <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
                   {s.payroll_runs
                     ? `${formatTanggal(s.payroll_runs.period_start)} – ${formatTanggal(s.payroll_runs.period_end)}`
@@ -107,7 +112,9 @@ function PayslipsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-sm font-semibold whitespace-nowrap">{formatRupiah(s.data?.net_pay)}</span>
+                <span className="text-sm font-semibold whitespace-nowrap">
+                  {formatRupiah(s.data?.net_pay)}
+                </span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </div>
             </button>
@@ -128,7 +135,11 @@ function PayslipsPage() {
 }
 
 function PayslipDetailModal({
-  slip, riderId, riderName, employeeId, onClose,
+  slip,
+  riderId,
+  riderName,
+  employeeId,
+  onClose,
 }: {
   slip: PayslipRow;
   riderId: string;
@@ -142,6 +153,8 @@ function PayslipDetailModal({
   const [clients, setClients] = useState<ClientSummary[]>([]);
   const [loadingDed, setLoadingDed] = useState(true);
   const [loadingInc, setLoadingInc] = useState(true);
+  const [dedError, setDedError] = useState<string | null>(null);
+  const [incError, setIncError] = useState<string | null>(null);
   const [loadingClients, setLoadingClients] = useState(true);
   const [showPrint, setShowPrint] = useState(false);
 
@@ -149,44 +162,101 @@ function PayslipDetailModal({
     sb.from("payroll_deductions")
       .select("amount, description, deduction_types(name)")
       .eq("detail_id", slip.detail_id)
-      .then(({ data }: { data: { amount: number; description: string | null; deduction_types: { name: string } | null }[] | null }) => {
-        setDed((data ?? []).map((d) => {
-          const type = d.deduction_types?.name ?? "Potongan";
-          return { name: d.description ? `${type} — ${d.description}` : type, amount: Number(d.amount) };
-        }));
-        setLoadingDed(false);
-      });
+      .then(
+        ({
+          data,
+          error,
+        }: {
+          data:
+            | {
+                amount: number;
+                description: string | null;
+                deduction_types: { name: string } | null;
+              }[]
+            | null;
+          error: { message: string } | null;
+        }) => {
+          if (error) {
+            console.error("[rider-payslip] gagal memuat potongan:", error.message);
+            setDedError("Rincian potongan belum bisa dimuat. Coba lagi sebentar.");
+          }
+          setDed(
+            (data ?? []).map((d) => {
+              const type = d.deduction_types?.name ?? "Potongan";
+              return {
+                name: d.description ? `${type} — ${d.description}` : type,
+                amount: Number(d.amount),
+              };
+            }),
+          );
+          setLoadingDed(false);
+        },
+      );
 
     sb.from("payroll_incentives")
       .select("amount, description")
       .eq("detail_id", slip.detail_id)
-      .then(({ data }: { data: { amount: number; description: string | null }[] | null }) => {
-        setInc((data ?? []).map((d) => ({ name: d.description ?? "Insentif", amount: Number(d.amount) })));
-        setLoadingInc(false);
-      });
+      .then(
+        ({
+          data,
+          error,
+        }: {
+          data: { amount: number; description: string | null }[] | null;
+          error: { message: string } | null;
+        }) => {
+          if (error) {
+            console.error("[rider-payslip] gagal memuat insentif:", error.message);
+            setIncError("Rincian insentif belum bisa dimuat. Coba lagi sebentar.");
+          }
+          setInc(
+            (data ?? []).map((d) => ({
+              name: d.description ?? "Insentif",
+              amount: Number(d.amount),
+            })),
+          );
+          setLoadingInc(false);
+        },
+      );
 
     sb.from("payroll_details")
       .select("id, client_id, delivery_count, gross_earning, clients(name)")
       .eq("run_id", slip.run_id)
       .eq("rider_id", riderId)
-      .then(({ data }: { data: { id: string; client_id: string; delivery_count: number; gross_earning: number; clients: { name: string } | null }[] | null }) => {
-        setClients(
-          (data ?? []).map((d) => ({
-            detail_id: d.id,
-            client_id: d.client_id,
-            client_name: d.clients?.name ?? "Client",
-            delivery_count: d.delivery_count,
-            gross_earning: Number(d.gross_earning),
-          }))
-        );
-        setLoadingClients(false);
-      });
+      .then(
+        ({
+          data,
+        }: {
+          data:
+            | {
+                id: string;
+                client_id: string;
+                delivery_count: number;
+                gross_earning: number;
+                clients: { name: string } | null;
+              }[]
+            | null;
+        }) => {
+          setClients(
+            (data ?? []).map((d) => ({
+              detail_id: d.id,
+              client_id: d.client_id,
+              client_name: d.clients?.name ?? "Client",
+              delivery_count: d.delivery_count,
+              gross_earning: Number(d.gross_earning),
+            })),
+          );
+          setLoadingClients(false);
+        },
+      );
   }, [slip.detail_id, slip.run_id, riderId]);
 
   const period = slip.payroll_runs;
 
   return (
-    <div className="fixed inset-0 bg-black/50 grid place-items-end sm:place-items-center z-50" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/50 grid place-items-end sm:place-items-center z-50"
+      onClick={onClose}
+    >
       <div
         className="bg-card rounded-t-2xl sm:rounded-lg w-full sm:max-w-sm max-h-[85vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
@@ -195,7 +265,9 @@ function PayslipDetailModal({
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border sticky top-0 bg-card">
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">{period?.name ?? "Payroll"}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{riderName} · {employeeId}</div>
+            <div className="text-[11px] text-muted-foreground truncate">
+              {riderName} · {employeeId}
+            </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             <button
@@ -251,7 +323,9 @@ function PayslipDetailModal({
               {t("slip.incentives")}
             </p>
             <div className="border-t border-border pt-2">
-              {loadingInc ? (
+              {incError ? (
+                <p className="text-xs text-destructive py-1">{incError}</p>
+              ) : loadingInc ? (
                 <div className="flex justify-center py-3">
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 </div>
@@ -271,7 +345,9 @@ function PayslipDetailModal({
               {t("slip.deductions")}
             </p>
             <div className="border-t border-border pt-2">
-              {loadingDed ? (
+              {dedError ? (
+                <p className="text-xs text-destructive py-1">{dedError}</p>
+              ) : loadingDed ? (
                 <div className="flex justify-center py-3">
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 </div>
@@ -287,8 +363,12 @@ function PayslipDetailModal({
 
           {/* take-home */}
           <div className="border-t border-border pt-1 flex items-baseline justify-between gap-3">
-            <span className="text-xs text-muted-foreground flex-shrink-0">{t("slip.takeHome")}</span>
-            <span className="text-xl font-semibold text-primary whitespace-nowrap">{formatRupiah(slip.data?.net_pay)}</span>
+            <span className="text-xs text-muted-foreground flex-shrink-0">
+              {t("slip.takeHome")}
+            </span>
+            <span className="text-xl font-semibold text-primary whitespace-nowrap">
+              {formatRupiah(slip.data?.net_pay)}
+            </span>
           </div>
         </div>
       </div>
@@ -309,7 +389,10 @@ function PayslipDetailModal({
 }
 
 function ClientCard({
-  client, riderId, periodStart, periodEnd,
+  client,
+  riderId,
+  periodStart,
+  periodEnd,
 }: {
   client: ClientSummary;
   riderId: string;
@@ -327,7 +410,9 @@ function ClientCard({
     if (!fetched) {
       setLoading(true);
       sb.from("delivery_records")
-        .select("id, delivery_date, awb, dash_delivery_id, delivery_type, service_type, distance_km, weight_kg, district, receiver_name, destination_address, fee, status")
+        .select(
+          "id, delivery_date, awb, dash_delivery_id, delivery_type, service_type, distance_km, weight_kg, district, receiver_name, destination_address, fee, status",
+        )
         .eq("rider_id", riderId)
         .eq("client_id", client.client_id)
         .gte("delivery_date", periodStart)
@@ -360,10 +445,11 @@ function ClientCard({
         <div className="text-right flex-shrink-0 mr-1">
           <div className="text-xs font-semibold">{formatRupiah(client.gross_earning)}</div>
         </div>
-        {open
-          ? <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-          : <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        }
+        {open ? (
+          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        )}
       </button>
 
       {open && (
@@ -387,53 +473,63 @@ function ClientCard({
                   addrDayCount.set(key, (addrDayCount.get(key) ?? 0) + 1);
                 }
                 return deliveries.map((d) => {
-                const orderId = d.awb ?? d.dash_delivery_id ?? d.id.slice(0, 8).toUpperCase();
-                const meta = [
-                  d.service_type ?? d.delivery_type,
-                  d.distance_km != null && `${d.distance_km} km`,
-                  d.weight_kg != null && `${d.weight_kg} kg`,
-                ].filter(Boolean).join(" · ");
-                const dest = d.district ?? d.receiver_name;
-                const addrKey = `${d.delivery_date}|${(d.destination_address ?? "").trim().toLowerCase()}`;
-                const isDupZero =
-                  d.fee === 0 &&
-                  d.status?.toUpperCase() === "COMPLETED" &&
-                  d.destination_address &&
-                  (addrDayCount.get(addrKey) ?? 0) > 1;
-                return (
-                  <div key={d.id} className="px-3 py-2.5 border-b border-border last:border-0">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 text-center flex-shrink-0 pt-0.5">
-                        <div className="text-sm font-bold leading-none">
-                          {new Date(d.delivery_date).getDate()}
-                        </div>
-                        <div className="text-[9px] text-muted-foreground uppercase">
-                          {new Date(d.delivery_date).toLocaleString("id", { month: "short" })}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-mono text-muted-foreground truncate">{orderId}</span>
-                          <span className="text-xs font-semibold flex-shrink-0">{formatRupiah(d.fee)}</span>
-                        </div>
-                        <div className="text-[11px] text-foreground/80 mt-0.5 truncate">{meta || "—"}</div>
-                        {dest && (
-                          <div className="text-[10px] text-muted-foreground truncate mt-0.5">{dest}</div>
-                        )}
-                        {d.status && (
-                          <div className="text-[9px] font-semibold uppercase tracking-wide mt-1 text-muted-foreground">
-                            {d.status}
+                  const orderId = d.awb ?? d.dash_delivery_id ?? d.id.slice(0, 8).toUpperCase();
+                  const meta = [
+                    d.service_type ?? d.delivery_type,
+                    d.distance_km != null && `${d.distance_km} km`,
+                    d.weight_kg != null && `${d.weight_kg} kg`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                  const dest = d.district ?? d.receiver_name;
+                  const addrKey = `${d.delivery_date}|${(d.destination_address ?? "").trim().toLowerCase()}`;
+                  const isDupZero =
+                    d.fee === 0 &&
+                    d.status?.toUpperCase() === "COMPLETED" &&
+                    d.destination_address &&
+                    (addrDayCount.get(addrKey) ?? 0) > 1;
+                  return (
+                    <div key={d.id} className="px-3 py-2.5 border-b border-border last:border-0">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 text-center flex-shrink-0 pt-0.5">
+                          <div className="text-sm font-bold leading-none">
+                            {new Date(d.delivery_date).getDate()}
                           </div>
-                        )}
-                        {isDupZero && (
-                          <div className="text-[10px] text-muted-foreground italic mt-1">
-                            {t("slip.dupAddressNote")}
+                          <div className="text-[9px] text-muted-foreground uppercase">
+                            {new Date(d.delivery_date).toLocaleString("id", { month: "short" })}
                           </div>
-                        )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-mono text-muted-foreground truncate">
+                              {orderId}
+                            </span>
+                            <span className="text-xs font-semibold flex-shrink-0">
+                              {formatRupiah(d.fee)}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-foreground/80 mt-0.5 truncate">
+                            {meta || "—"}
+                          </div>
+                          {dest && (
+                            <div className="text-[10px] text-muted-foreground truncate mt-0.5">
+                              {dest}
+                            </div>
+                          )}
+                          {d.status && (
+                            <div className="text-[9px] font-semibold uppercase tracking-wide mt-1 text-muted-foreground">
+                              {d.status}
+                            </div>
+                          )}
+                          {isDupZero && (
+                            <div className="text-[10px] text-muted-foreground italic mt-1">
+                              {t("slip.dupAddressNote")}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
+                  );
                 });
               })()}
               {deliveries.length === 20 && client.delivery_count > 20 && (
@@ -449,11 +545,25 @@ function ClientCard({
   );
 }
 
-function Row({ label, value, muted, positive }: { label: string; value: string; muted?: boolean; positive?: boolean }) {
+function Row({
+  label,
+  value,
+  muted,
+  positive,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  positive?: boolean;
+}) {
   return (
     <div className="flex items-start justify-between gap-3 py-1">
       <span className="text-xs text-muted-foreground min-w-0 break-words">{label}</span>
-      <span className={`text-xs flex-shrink-0 whitespace-nowrap ${positive ? "text-success" : muted ? "text-warning" : "text-foreground"}`}>{value}</span>
+      <span
+        className={`text-xs flex-shrink-0 whitespace-nowrap ${positive ? "text-success" : muted ? "text-warning" : "text-foreground"}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

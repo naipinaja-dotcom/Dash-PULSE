@@ -77,7 +77,7 @@ function PayslipsPage() {
 
   return (
     <RiderLayout title={t("slip.title")}>
-      <EarningsChecker riderId={rider?.id ?? ""} riderReady={!riderLoading && !!rider} />
+      <EarningsChecker riderId={rider?.id ?? ""} riderReady={!riderLoading && !!rider} riderName={rider?.full_name ?? ""} employeeId={rider?.employee_id ?? ""} />
       {busy ? (
         <div className="flex justify-center py-10">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -103,19 +103,19 @@ function PayslipsPage() {
               style={{ animationDelay: `${Math.min(index, 5) * 45}ms` }}
             >
               <span className="absolute inset-y-0 left-0 w-1 bg-primary opacity-0 transition-opacity group-hover:opacity-100" />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 pr-1">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary mb-1">
                   {index === 0 ? "Payslip terbaru" : "Payslip"}
                 </div>
-                <div className="text-sm font-semibold truncate">
+                <div className="text-sm font-semibold leading-snug line-clamp-2 break-words">
                   {s.payroll_runs?.name ?? "Payroll"}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                <div className="text-[11px] leading-relaxed text-muted-foreground mt-1 line-clamp-2 break-words">
                   {s.payroll_runs ? `${formatTanggal(s.payroll_runs.period_start)} – ${formatTanggal(s.payroll_runs.period_end)}` : ""}
                   {s.data?.delivery_count != null && ` · ${s.data.delivery_count} order`}
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1.5 flex-shrink-0 self-center">
                 <div className="text-right"><span className="block text-[9px] font-semibold tracking-wider text-success uppercase mb-1">Published</span><span className="text-sm font-bold text-primary whitespace-nowrap">{formatRupiah(s.data?.net_pay)}</span></div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </div>

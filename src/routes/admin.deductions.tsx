@@ -7,13 +7,14 @@ import { ActiveTab } from "@/components/deductions/active-tab";
 import { RecapTab } from "@/components/deductions/recap-tab";
 import { MolisTypesTab } from "@/components/deductions/molis-types-tab";
 import { RecipientsTab } from "@/components/deductions/recipients-tab";
+import { KasbonSettlementTab, KasbonLunasTab } from "@/components/deductions/kasbon-recap-tabs";
 import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/admin/deductions")({ component: DeductionsPage });
 
 function DeductionsPage() {
   const { t } = useT();
-  const [tab, setTab] = useState<"types" | "molis" | "add" | "active" | "recap" | "recipients">("types");
+  const [tab, setTab] = useState<"types" | "molis" | "add" | "active" | "recap" | "recipients" | "settlement" | "lunas">("types");
   return (
     <AdminLayout title={t("ded.title")} subtitle={t("ded.subtitle")}>
       <div className="flex gap-1 p-1 bg-muted rounded-md w-fit mb-5">
@@ -25,6 +26,8 @@ function DeductionsPage() {
             ["active", t("ded.tabActive")],
             ["recap", t("ded.tabRecap")],
             ["recipients", "Penerima Kasbon"],
+            ["settlement", "Settlement Kasbon"],
+            ["lunas", "Kasbon Lunas"],
           ] as [string, string][]
         ).map(([k, l]) => (
           <button
@@ -42,6 +45,8 @@ function DeductionsPage() {
       {tab === "active" && <ActiveTab />}
       {tab === "recap" && <RecapTab />}
       {tab === "recipients" && <RecipientsTab />}
+      {tab === "settlement" && <KasbonSettlementTab />}
+      {tab === "lunas" && <KasbonLunasTab />}
     </AdminLayout>
   );
 }

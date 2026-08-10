@@ -241,7 +241,7 @@ function DashboardPage() {
           return (
             <div
               key={s.label}
-              className="group p-4 hover:bg-muted/40 transition-colors cursor-pointer"
+              className="admin-stat-card group p-4 hover:bg-muted/40 transition-colors cursor-pointer"
             >
               <div className="flex items-start justify-between mb-2">
                 <span data-eyebrow>{s.label}</span>
@@ -251,7 +251,7 @@ function DashboardPage() {
                   <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
                 </div>
               </div>
-              <div className="text-2xl font-bold tracking-tight tabular-nums font-mono">
+              <div className="admin-metric-value text-[26px] font-bold tracking-tight tabular-nums font-mono">
                 {s.value}
               </div>
               <div className="flex items-center justify-between mt-1.5">
@@ -274,7 +274,7 @@ function DashboardPage() {
       {/* ── Main content grid ─── */}
       <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-4 mb-4">
         {/* Chart */}
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="admin-chart-card rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[13px] font-semibold">{t("dash.weeklyChart")}</h3>
             <Link to="/admin/shipment-analytics" className="text-[10px] text-primary font-medium hover:underline">
@@ -300,10 +300,10 @@ function DashboardPage() {
                       </div>
                     )}
                     <div className="flex gap-1 items-end w-full justify-center">
-                      <div className="flex-1 max-w-5 rounded-t-md transition-all duration-300"
-                        style={{ height: Math.max(hDel, 4), background: active ? "var(--primary)" : "linear-gradient(to top, hsl(var(--primary)), hsl(var(--primary) / 0.7))", opacity: active ? 1 : 0.85 }} />
-                      <div className="flex-1 max-w-5 rounded-t-md transition-all duration-300"
-                        style={{ height: Math.max(hFee, 4), background: active ? "hsl(var(--primary) / 0.45)" : "linear-gradient(to top, hsl(var(--primary) / 0.35), hsl(var(--primary) / 0.15))", opacity: active ? 1 : 0.85 }} />
+                      <div className="flex-1 max-w-5 rounded-t-md transition-[height,opacity,background] duration-300"
+                        style={{ height: Math.max(hDel, 4), background: active ? "var(--color-primary)" : "linear-gradient(to top, color-mix(in oklch, var(--color-primary) 92%, #68e5ff), color-mix(in oklch, var(--color-primary) 62%, transparent))", opacity: active ? 1 : 0.85 }} />
+                      <div className="flex-1 max-w-5 rounded-t-md transition-[height,opacity,background] duration-300"
+                        style={{ height: Math.max(hFee, 4), background: active ? "color-mix(in oklch, var(--color-primary) 45%, transparent)" : "linear-gradient(to top, color-mix(in oklch, var(--color-primary) 35%, transparent), color-mix(in oklch, var(--color-primary) 15%, transparent))", opacity: active ? 1 : 0.85 }} />
                     </div>
                     <span className={`text-[9px] font-medium font-mono transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}>{w.label}</span>
                   </div>

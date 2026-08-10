@@ -171,7 +171,7 @@ export function AdminLayout({
     <>
       {/* Brand */}
       <div
-        className={`flex items-center gap-3 border-b border-border ${collapsed && !mobile ? "px-4 py-[18px] justify-center" : "px-5 py-[18px]"}`}
+        className={`admin-brand flex items-center gap-3 border-b border-border ${collapsed && !mobile ? "px-4 py-[18px] justify-center" : "px-5 py-[18px]"}`}
       >
         <img src="/dash-icon.png" alt="DASH" className="w-9 h-9 flex-shrink-0 object-contain" />
         {(!collapsed || mobile) && (
@@ -192,7 +192,7 @@ export function AdminLayout({
       {/* Mode toggle */}
       {!collapsed || mobile ? (
         <div className="px-3 pt-3">
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted">
+          <div className="admin-mode-switch grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted">
             {(
               [
                 ["payroll", "Payroll"],
@@ -206,7 +206,7 @@ export function AdminLayout({
                 className={
                   "text-[12px] font-semibold py-1.5 rounded-md transition-all duration-200 " +
                   (mode === m
-                    ? "bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(124,92,252,0.3)]"
+                    ? "admin-mode-active bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(124,92,252,0.3)]"
                     : "text-muted-foreground hover:text-foreground")
                 }
               >
@@ -242,11 +242,11 @@ export function AdminLayout({
       )}
 
       {/* Nav */}
-      <nav className="flex-1 px-2.5 py-3 overflow-y-auto space-y-3">
+      <nav className="admin-nav flex-1 px-2.5 py-3 overflow-y-auto space-y-3">
         {navGroups.map(({ sectionKey, items }) => (
           <div key={sectionKey}>
             {(!collapsed || mobile) && (
-              <div className="px-3 pb-1 pt-0.5 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+              <div className="admin-section-label px-3 pb-1 pt-0.5 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
                 {t(sectionKey as any)}
               </div>
             )}
@@ -261,13 +261,13 @@ export function AdminLayout({
                     onClick={() => setMobileOpen(false)}
                     title={collapsed && !mobile ? t(it.labelKey as any) : undefined}
                     className={
-                      "flex items-center rounded-md text-[13px] transition-all duration-150 " +
+                      "admin-nav-item flex items-center rounded-md text-[13px] transition-all duration-150 " +
                       (collapsed && !mobile
                         ? "justify-center px-0 py-2.5"
                         : "gap-2.5 px-3 py-[7px]") +
                       " " +
                       (active
-                        ? "bg-primary-soft text-primary-soft-foreground font-semibold"
+                        ? "admin-nav-active bg-primary-soft text-primary-soft-foreground font-semibold"
                         : "text-foreground/65 hover:bg-muted/80 hover:text-foreground")
                     }
                   >
@@ -284,10 +284,10 @@ export function AdminLayout({
       </nav>
 
       {/* User footer */}
-      <div className="border-t border-border p-3">
+      <div className="admin-sidebar-footer border-t border-border p-3">
         {!collapsed || mobile ? (
           <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/60 transition-colors">
-            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground grid place-items-center text-[11px] font-bold flex-shrink-0">
+            <div className="admin-avatar-orb w-7 h-7 rounded-full bg-primary text-primary-foreground grid place-items-center text-[11px] font-bold flex-shrink-0">
               {user?.fullName?.charAt(0) ?? "A"}
             </div>
             <div className="flex-1 min-w-0">
@@ -320,10 +320,15 @@ export function AdminLayout({
   );
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
+    <div className="admin-shell flex min-h-screen w-full bg-background">
+      <div className="admin-ambient" aria-hidden="true">
+        <span className="admin-ambient-orb admin-ambient-orb-a" />
+        <span className="admin-ambient-orb admin-ambient-orb-b" />
+        <span className="admin-ambient-grid" />
+      </div>
       {/* Desktop sidebar */}
       <aside
-        className={`hidden lg:flex flex-col border-r border-border bg-sidebar shadow-[1px_0_0_0_var(--color-border)] flex-shrink-0 transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? "w-[72px]" : "w-60"}`}
+        className={`admin-sidebar hidden lg:flex flex-col border-r border-border bg-sidebar shadow-[1px_0_0_0_var(--color-border)] flex-shrink-0 transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? "w-[72px]" : "w-60"}`}
       >
         <SidebarContent />
       </aside>
@@ -332,7 +337,7 @@ export function AdminLayout({
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-foreground/40" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-sidebar border-r border-border flex flex-col">
+          <aside className="admin-sidebar absolute left-0 top-0 bottom-0 w-64 bg-sidebar border-r border-border flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <span className="text-sm font-semibold">Dash PULSE</span>
               <button onClick={() => setMobileOpen(false)} className="p-1" aria-label={t("btn.closeMenu")}>
@@ -345,8 +350,8 @@ export function AdminLayout({
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-10 h-14 border-b border-border bg-card/85 backdrop-blur-md flex items-center px-4 lg:px-6 gap-3">
+      <div className="admin-main flex-1 flex flex-col min-w-0">
+        <header className="admin-header sticky top-0 z-10 h-14 border-b border-border bg-card/85 backdrop-blur-md flex items-center px-4 lg:px-6 gap-3">
           {/* Mobile hamburger */}
           <button
             className="lg:hidden p-1.5 -ml-1 rounded-md hover:bg-muted"
@@ -367,14 +372,19 @@ export function AdminLayout({
 
           <div className="min-w-0 flex-1">
             <h1
-              className="text-[15px] font-bold leading-tight truncate tracking-tight"
-              style={{ fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+              className="admin-page-title text-[16px] font-bold leading-tight truncate tracking-tight"
+              style={{ fontFamily: "'Bahnschrift','Sora','Segoe UI',sans-serif" }}
             >
               {title}
             </h1>
             {subtitle && (
-              <p className="text-[11px] text-muted-foreground truncate mt-0.5">{subtitle}</p>
+              <p className="admin-page-subtitle text-[11px] text-muted-foreground truncate mt-0.5">{subtitle}</p>
             )}
+          </div>
+
+          <div className="admin-header-context hidden xl:flex items-center gap-2" aria-label="DASH operations">
+            <span className="admin-live-dot" />
+            <span>DASH OPERATIONS</span>
           </div>
 
           {/* Payroll overdue badge — cuma relevan di mode Payroll, gak nyambung sama sekali di mode PnL/Intelligence */}
@@ -403,7 +413,7 @@ export function AdminLayout({
           </button>
         </header>
 
-        <main className="flex-1 px-4 lg:px-8 py-6 overflow-x-hidden">{children}</main>
+        <main className="admin-content flex-1 px-4 lg:px-8 py-6 overflow-x-hidden">{children}</main>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { formatRupiah } from "@/lib/format";
+import { fetchAllRows } from "@/lib/fetch-all";
 import {
   Users,
   DollarSign,
@@ -24,6 +25,8 @@ export const Route = createFileRoute("/admin/dashboard")({ component: DashboardP
 const fmtNum = (v: number | null) => (v === null ? "…" : v.toLocaleString("id-ID"));
 const fmtMoney = (v: number | null, suffix = "jt") =>
   v === null ? "…" : `${(v / 1_000_000).toFixed(1)}${suffix}`;
+const dateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 /* ── types ────────────────────────────────── */
 interface TopRider {
@@ -126,8 +129,8 @@ function DashboardPage() {
       icon: Users,
       iconBg: "bg-primary-soft",
       iconColor: "text-primary",
-      change: "+3",
-      changeUp: true,
+      change: null,
+      changeUp: false,
     },
     {
       label: t("dash.totalFee"),
@@ -135,8 +138,8 @@ function DashboardPage() {
       icon: DollarSign,
       iconBg: "bg-success/10",
       iconColor: "text-success",
-      change: "+6.8%",
-      changeUp: true,
+      change: null,
+      changeUp: false,
     },
     {
       label: t("dash.tunggakanActive"),
@@ -144,7 +147,7 @@ function DashboardPage() {
       icon: AlertTriangle,
       iconBg: "bg-destructive/10",
       iconColor: "text-destructive",
-      change: tunggakanCount !== null && tunggakanCount > 0 ? `${tunggakanCount}` : "0",
+      change: null,
       changeUp: false,
     },
     {
@@ -153,30 +156,49 @@ function DashboardPage() {
       icon: Truck,
       iconBg: "bg-warning/10",
       iconColor: "text-warning",
-      change: "+12%",
-      changeUp: true,
+      change: null,
+      changeUp: false,
     },
   ];
 
-  /* ── chart data (real weekly from delivery_records) ── */
+  /* ── KPI + chart data (completed delivery_records only) ── */
   type WeekBucket = { label: string; deliveries: number; fee: number };
   const [weeklyData, setWeeklyData] = useState<WeekBucket[]>([]);
   const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConnected) return;
+
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const pad = (d: Date) => d.toISOString().slice(0, 10);
-    supabase
-      .from("delivery_records")
-      .select("delivery_date, fee")
-      .gte("delivery_date", pad(start))
-      .lte("delivery_date", pad(end))
-      .then(({ data }) => {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday
+    const from = dateKey(weekStart < monthStart ? weekStart : monthStart);
+    const today = dateKey(now);
+    const monthStartKey = dateKey(monthStart);
+    const weekStartKey = dateKey(weekStart);
+    let active = true;
+
+    fetchAllRows<{ id: string; delivery_date: string; fee: number | null }>(
+      (client, fromRow, toRow) =>
+        client
+          .from("delivery_records")
+          .select("id, delivery_date, fee")
+          .ilike("status", "completed")
+          .gte("delivery_date", from)
+          .lte("delivery_date", today)
+          .range(fromRow, toRow),
+    )
+      .then((rows) => {
+        if (!active) return;
+        const monthRows = rows.filter((row) => row.delivery_date >= monthStartKey);
+        const weekRows = rows.filter((row) => row.delivery_date >= weekStartKey);
+        setTotalFee(monthRows.reduce((sum, row) => sum + Number(row.fee ?? 0), 0));
+        setDeliveries(weekRows.length);
+
         const weeks = new Map<number, { deliveries: number; fee: number }>();
-        for (const r of data ?? []) {
+        for (const r of monthRows) {
           const day = new Date(r.delivery_date).getDate();
           const w = Math.ceil(day / 7);
           const cur = weeks.get(w) ?? { deliveries: 0, fee: 0 };
@@ -184,14 +206,24 @@ function DashboardPage() {
           cur.fee += Number(r.fee ?? 0);
           weeks.set(w, cur);
         }
-        const totalWeeks = Math.ceil(end.getDate() / 7);
+        const totalWeeks = Math.ceil(now.getDate() / 7);
         const result: WeekBucket[] = [];
         for (let i = 1; i <= totalWeeks; i++) {
           const d = weeks.get(i) ?? { deliveries: 0, fee: 0 };
           result.push({ label: `W${i}`, ...d });
         }
         setWeeklyData(result);
+      })
+      .catch(() => {
+        if (!active) return;
+        setTotalFee(null);
+        setDeliveries(null);
+        setWeeklyData([]);
       });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const maxDel = useMemo(() => Math.max(...weeklyData.map((w) => w.deliveries), 1), [weeklyData]);
@@ -254,18 +286,16 @@ function DashboardPage() {
               <div className="admin-metric-value text-[26px] font-bold tracking-tight tabular-nums font-mono">
                 {s.value}
               </div>
-              <div className="flex items-center justify-between mt-1.5">
-                <span
-                  className={`text-[10px] font-semibold inline-flex items-center gap-0.5 ${s.changeUp ? "text-success" : "text-destructive"}`}
-                >
-                  {s.changeUp ? (
-                    <TrendingUp className="w-3 h-3" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3" />
-                  )}
-                  {s.change}
-                </span>
-              </div>
+              {s.change && (
+                <div className="flex items-center justify-between mt-1.5">
+                  <span
+                    className={`text-[10px] font-semibold inline-flex items-center gap-0.5 ${s.changeUp ? "text-success" : "text-destructive"}`}
+                  >
+                    {s.changeUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    {s.change}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}

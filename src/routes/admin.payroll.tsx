@@ -38,6 +38,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/admin/payroll")({ component: PayrollPage });
 
@@ -79,6 +87,18 @@ type Detail = {
   net_pay: number;
   riders?: { full_name: string; employee_id: string };
 };
+type PaymentHold = {
+  id: string;
+  detail_id: string;
+  status: "held" | "released";
+  reason: string;
+  payroll_follow_up_payments?: {
+    id: string;
+    amount: number;
+    status: "ready" | "exported";
+    exported_at: string | null;
+  }[];
+};
 type Deduction = {
   id: string;
   detail_id: string;
@@ -110,6 +130,11 @@ function PayrollPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [details, setDetails] = useState<Detail[]>([]);
+  const [paymentHolds, setPaymentHolds] = useState<Record<string, PaymentHold>>({});
+  const [paymentHoldBusyId, setPaymentHoldBusyId] = useState<string | null>(null);
+  const [exportingFollowUp, setExportingFollowUp] = useState(false);
+  const [holdDetail, setHoldDetail] = useState<Detail | null>(null);
+  const [holdReason, setHoldReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [finalizing, setFinalizing] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -190,11 +215,35 @@ function PayrollPage() {
       .eq("run_id", runId)
       .order("net_pay", { ascending: false });
     if (error) toast.error(error.message);
-    else setDetails((data ?? []) as any);
+    else {
+      const rows = (data ?? []) as Detail[];
+      setDetails(rows);
+      await loadPaymentHolds(rows.map((detail) => detail.id));
+    }
     // Detail lama ke-generate ulang dengan id baru tiap Generate Ulang —
     // cache expand/deduction lama jadi basi, bersihin biar gak nunjuk ke detail_id yg udah gak ada.
     setExpandedDetailId(null);
     setDeductionsByDetail({});
+  };
+
+  const loadPaymentHolds = async (detailIds: string[]) => {
+    if (detailIds.length === 0) {
+      setPaymentHolds({});
+      return;
+    }
+    const { data, error } = await (supabase as any)
+      .from("payroll_payment_holds")
+      .select("id, detail_id, status, reason, payroll_follow_up_payments(id, amount, status, exported_at)")
+      .in("detail_id", detailIds);
+    if (error) {
+      // Migration belum dipasang tidak boleh membuat tabel payroll lama rusak.
+      if (error.code !== "42P01") toast.error(`Gagal memuat status pembayaran: ${error.message}`);
+      setPaymentHolds({});
+      return;
+    }
+    setPaymentHolds(
+      Object.fromEntries(((data ?? []) as PaymentHold[]).map((hold) => [hold.detail_id, hold])),
+    );
   };
 
   // Riwayat "Hitung Fee" (commit dari admin.calculate.tsx) yang periodenya
@@ -615,6 +664,11 @@ function PayrollPage() {
       .eq("id", activeRun.id);
     setFinalizing(false);
     if (error) return toast.error(error.message);
+    setActiveRun((current) =>
+      current?.id === activeRun.id
+        ? { ...current, status: "finalized" }
+        : current,
+    );
     posthog.capture("payroll_run_finalized", {
       run_id: activeRun.id,
       client_id: activeRun.client_id,
@@ -690,6 +744,11 @@ function PayrollPage() {
         .update({ status: "published", published_at: new Date().toISOString() })
         .eq("id", activeRun.id);
       if (e2) return toast.error(e2.message);
+      setActiveRun((current) =>
+        current?.id === activeRun.id
+          ? { ...current, status: "published" }
+          : current,
+      );
       posthog.capture("payroll_run_published", {
         run_id: activeRun.id,
         client_id: activeRun.client_id,
@@ -820,7 +879,14 @@ function PayrollPage() {
       return toast.error("Belum ada detail payroll untuk run ini");
     setExportingBulk(true);
     try {
-      const riderIds = [...new Set(details.map((d) => d.rider_id))];
+      // Rider yang pernah di-hold tetap selalu keluar dari bulk reguler,
+      // termasuk setelah release. Release membuat payout susulan sendiri,
+      // jadi tidak mungkin terbayar dua kali dari file reguler.
+      const payableDetails = details.filter((detail) => !paymentHolds[detail.id]);
+      const heldCount = details.length - payableDetails.length;
+      if (payableDetails.length === 0)
+        return toast.error("Semua rider pada run ini sedang/sempat ditahan. Gunakan pembayaran susulan setelah hold dilepas.");
+      const riderIds = [...new Set(payableDetails.map((d) => d.rider_id))];
       const { data: bankData, error } = await (supabase as any)
         .from("riders")
         .select("id, full_name, bank_name, bank_account, bank_account_holder")
@@ -830,7 +896,7 @@ function PayrollPage() {
 
       // Gabung per rider (jaga-jaga kalau 1 rider punya >1 baris detail di run yang sama)
       const byRider = new Map<string, number>();
-      for (const d of details)
+      for (const d of payableDetails)
         byRider.set(d.rider_id, (byRider.get(d.rider_id) ?? 0) + Number(d.net_pay || 0));
 
       const rows: BulkPaymentRow[] = [];
@@ -868,11 +934,132 @@ function PayrollPage() {
       const filename = `Bulk Payment - ${activeRun.name} - ${activeRun.period_end}`;
       if (format === "csv") downloadBulkPaymentCSV(filename, rows);
       else downloadBulkPaymentXLS(filename, rows);
-      toast.success(`Bulk payment ${rows.length} rider berhasil di-generate`);
+      toast.success(
+        `Bulk payment ${rows.length} rider berhasil di-generate` +
+          (heldCount ? `; ${heldCount} detail hold dikeluarkan dari file reguler.` : ""),
+      );
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setExportingBulk(false);
+    }
+  };
+
+  const holdPayment = async (detail: Detail, reason: string) => {
+    if (!activeRun || activeRun.status === "draft") {
+      toast.error("Finalize payroll dulu sebelum menahan pembayaran.");
+      return;
+    }
+    if (!reason.trim()) return toast.error("Alasan hold wajib diisi.");
+
+    setPaymentHoldBusyId(detail.id);
+    try {
+      const { error } = await (supabase as any).from("payroll_payment_holds").insert({
+        detail_id: detail.id,
+        rider_id: detail.rider_id,
+        reason: reason.trim(),
+      });
+      if (error) throw error;
+      posthog.capture("payroll_payment_held", { run_id: activeRun.id, detail_id: detail.id });
+      toast.success("Pembayaran ditahan. Rider tidak akan masuk bulk payment reguler.");
+      setHoldDetail(null);
+      setHoldReason("");
+      await loadPaymentHolds(details.map((row) => row.id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPaymentHoldBusyId(null);
+    }
+  };
+
+  const releasePaymentHold = async (hold: PaymentHold) => {
+    if (!activeRun) return;
+    if (
+      !(await confirmDialog({
+        title: "Lepaskan hold pembayaran?",
+        description:
+          "Sistem akan membuat antrean pembayaran susulan sebesar net pay pada payroll asli. Rider tetap tidak masuk bulk payment reguler.",
+        confirmText: "Buat Pembayaran Susulan",
+        danger: false,
+      }))
+    )
+      return;
+    setPaymentHoldBusyId(hold.detail_id);
+    try {
+      const { error } = await (supabase as any).rpc("release_held_payroll_payment", {
+        p_hold_id: hold.id,
+      });
+      if (error) throw error;
+      posthog.capture("payroll_payment_hold_released", {
+        run_id: activeRun.id,
+        detail_id: hold.detail_id,
+      });
+      toast.success("Hold dilepas. Pembayaran susulan siap diexport.");
+      await loadPaymentHolds(details.map((row) => row.id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPaymentHoldBusyId(null);
+    }
+  };
+
+  const exportFollowUpPayment = async (format: "csv" | "xls") => {
+    if (!activeRun) return;
+    const readyPayments = Object.values(paymentHolds).flatMap((hold) =>
+      (hold.payroll_follow_up_payments ?? [])
+        .filter((payment) => payment.status === "ready")
+        .map((payment) => ({ ...payment, riderId: details.find((detail) => detail.id === hold.detail_id)?.rider_id })),
+    ).filter((payment): payment is { id: string; amount: number; status: "ready"; exported_at: string | null; riderId: string } => !!payment.riderId);
+
+    if (readyPayments.length === 0)
+      return toast.message("Belum ada pembayaran susulan yang siap diexport untuk payroll ini.");
+
+    setExportingFollowUp(true);
+    try {
+      const riderIds = [...new Set(readyPayments.map((payment) => payment.riderId))];
+      const { data: bankData, error } = await (supabase as any)
+        .from("riders")
+        .select("id, full_name, bank_name, bank_account, bank_account_holder")
+        .in("id", riderIds);
+      if (error) throw error;
+      const bankOf = new Map((bankData ?? []).map((r: any) => [r.id, r]));
+      const rows: BulkPaymentRow[] = [];
+      const exportIds: string[] = [];
+      const missingBank: string[] = [];
+      for (const payment of readyPayments) {
+        const rider = bankOf.get(payment.riderId) as any;
+        if (!rider?.bank_name || !rider?.bank_account) {
+          missingBank.push(rider?.full_name ?? payment.riderId);
+          continue;
+        }
+        rows.push({
+          bankName: rider.bank_name,
+          accountNumber: rider.bank_account,
+          receiverName: rider.bank_account_holder || rider.full_name || "",
+          amount: Number(payment.amount),
+        });
+        exportIds.push(payment.id);
+      }
+      if (missingBank.length) {
+        toast.warning(`${missingBank.length} rider susulan dilewati karena data bank belum lengkap.`);
+      }
+      if (rows.length === 0) return toast.error("Tidak ada pembayaran susulan dengan data bank lengkap.");
+
+      const filename = `Pembayaran Susulan - ${activeRun.name} - ${activeRun.period_end}`;
+      if (format === "csv") downloadBulkPaymentCSV(filename, rows);
+      else downloadBulkPaymentXLS(filename, rows);
+
+      const { error: markError } = await (supabase as any)
+        .from("payroll_follow_up_payments")
+        .update({ status: "exported", exported_at: new Date().toISOString() })
+        .in("id", exportIds);
+      if (markError) throw markError;
+      toast.success(`Pembayaran susulan ${rows.length} rider berhasil diexport.`);
+      await loadPaymentHolds(details.map((row) => row.id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setExportingFollowUp(false);
     }
   };
 
@@ -1174,6 +1361,28 @@ function PayrollPage() {
                             Format Excel, sama isinya dengan CSV
                           </span>
                         </DropdownMenuItem>
+                        <div className="my-1 border-t border-border" />
+                        <DropdownMenuItem
+                          onClick={() => exportFollowUpPayment("csv")}
+                          disabled={exportingFollowUp}
+                          className="flex-col items-start gap-0.5 py-2"
+                        >
+                          <span className="flex items-center gap-2 font-medium">
+                            {exportingFollowUp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Pembayaran Susulan (CSV)
+                          </span>
+                          <span className="text-xs text-muted-foreground pl-5">
+                            Khusus rider yang hold-nya sudah dilepas
+                          </span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => exportFollowUpPayment("xls")}
+                          disabled={exportingFollowUp}
+                          className="flex-col items-start gap-0.5 py-2"
+                        >
+                          <span className="flex items-center gap-2 font-medium">
+                            <Download className="w-3.5 h-3.5" /> Pembayaran Susulan (XLS)
+                          </span>
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                     {/* Hapus run — cuma kalau masih draft (belum Finalize) */}
@@ -1353,12 +1562,15 @@ function PayrollPage() {
                       <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
                         Net Pay
                       </th>
+                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                        Pembayaran
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {details.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-muted-foreground text-sm">
+                        <td colSpan={10} className="p-8 text-center text-muted-foreground text-sm">
                           Belum ada detail — klik "Hitung Fee" untuk generate
                         </td>
                       </tr>
@@ -1405,10 +1617,52 @@ function PayrollPage() {
                             <td className="px-2 py-2.5 text-[13px] tabular-nums font-semibold">
                               Rp{Number(d.net_pay).toLocaleString("id-ID")}
                             </td>
+                            <td className="px-2 py-2.5 text-[12px]">
+                              {paymentHolds[d.id]?.status === "held" ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex rounded-full bg-warning/15 px-2 py-0.5 font-medium text-warning">
+                                    Ditahan
+                                  </span>
+                                  <p className="max-w-36 truncate text-[10px] text-muted-foreground" title={paymentHolds[d.id].reason}>
+                                    {paymentHolds[d.id].reason}
+                                  </p>
+                                  <button
+                                    onClick={() => releasePaymentHold(paymentHolds[d.id])}
+                                    disabled={paymentHoldBusyId === d.id}
+                                    className="text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
+                                  >
+                                    {paymentHoldBusyId === d.id ? "Memproses…" : "Lepaskan hold"}
+                                  </button>
+                                </div>
+                              ) : paymentHolds[d.id]?.status === "released" ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex rounded-full bg-success/15 px-2 py-0.5 font-medium text-success">
+                                    Susulan
+                                  </span>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {paymentHolds[d.id].payroll_follow_up_payments?.[0]?.status === "exported" ? "Sudah diexport" : "Siap diexport"}
+                                  </p>
+                                </div>
+                              ) : activeRun.status === "draft" ? (
+                                <span className="text-[11px] text-muted-foreground">Finalize dulu</span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setHoldDetail(d);
+                                    setHoldReason("");
+                                  }}
+                                  disabled={paymentHoldBusyId === d.id || Number(d.net_pay) <= 0}
+                                  title={Number(d.net_pay) <= 0 ? "Net pay harus lebih dari Rp0" : "Tahan dari bulk payment reguler"}
+                                  className="rounded-md border border-warning/40 px-2 py-1 text-[11px] font-medium text-warning hover:bg-warning/10 disabled:opacity-50"
+                                >
+                                  {paymentHoldBusyId === d.id ? "Memproses…" : "Hold payment"}
+                                </button>
+                              )}
+                            </td>
                           </tr>
                           {expandedDetailId === d.id && (
                             <tr className="border-t border-border/60 bg-muted/20">
-                              <td colSpan={9} className="px-4 py-3">
+                              <td colSpan={10} className="px-4 py-3">
                                 {loadingDeductions ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
@@ -1600,6 +1854,80 @@ function PayrollPage() {
           )}
         </section>
       </div>
+      <Dialog
+        open={!!holdDetail}
+        onOpenChange={(open) => {
+          if (!open && !paymentHoldBusyId) {
+            setHoldDetail(null);
+            setHoldReason("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border bg-card p-0 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-warning via-primary to-primary" />
+          <div className="p-6">
+            <DialogHeader>
+              <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-warning/15 text-warning">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <DialogTitle className="text-xl">Tahan pembayaran rider</DialogTitle>
+              <DialogDescription className="leading-relaxed">
+                {holdDetail?.riders?.full_name ?? "Rider"} tidak akan masuk file Bulk Payment reguler. Nominal gaji dan payslip tetap tersimpan.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-5 space-y-3">
+              <label htmlFor="payment-hold-reason" className="text-sm font-medium">
+                Alasan hold <span className="text-destructive">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {["Verifikasi data", "Kasus operasional", "Menunggu persetujuan", "Dokumen belum lengkap"].map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setHoldReason(reason)}
+                    className={`rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${holdReason === reason ? "border-warning bg-warning/10 text-warning" : "border-border text-muted-foreground hover:border-warning/50 hover:text-foreground"}`}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                id="payment-hold-reason"
+                value={holdReason}
+                onChange={(event) => setHoldReason(event.target.value)}
+                placeholder="Tulis alasan atau pilih alasan cepat di atas"
+                rows={3}
+                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-warning focus:ring-2 focus:ring-warning/20"
+              />
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Saat hold dilepas, sistem membuat pembayaran susulan terpisah sebesar net pay asli.
+              </p>
+            </div>
+            <DialogFooter className="mt-6 gap-2 sm:gap-2">
+              <button
+                type="button"
+                disabled={!!paymentHoldBusyId}
+                onClick={() => {
+                  setHoldDetail(null);
+                  setHoldReason("");
+                }}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={!holdDetail || !holdReason.trim() || !!paymentHoldBusyId}
+                onClick={() => holdDetail && holdPayment(holdDetail, holdReason)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-warning px-4 py-2 text-sm font-semibold text-warning-foreground hover:bg-warning/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {paymentHoldBusyId ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                Tahan pembayaran
+              </button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

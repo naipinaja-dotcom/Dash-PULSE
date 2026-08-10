@@ -32,6 +32,8 @@ type ClientSummary = {
   gross_earning: number;
 };
 
+type PaymentHoldStatus = "held" | "released";
+
 type DeliveryRow = {
   id: string;
   delivery_date: string;
@@ -53,6 +55,7 @@ function PayslipsPage() {
   const posthog = usePostHog();
   const { rider, loading: riderLoading } = useRiderSelf();
   const [slips, setSlips] = useState<PayslipRow[]>([]);
+  const [paymentHolds, setPaymentHolds] = useState<Record<string, PaymentHoldStatus>>({});
   const [loading, setLoading] = useState(true);
   const [openSlip, setOpenSlip] = useState<PayslipRow | null>(null);
 
@@ -67,8 +70,23 @@ function PayslipsPage() {
       )
       .eq("rider_id", rider.id)
       .order("published_at", { ascending: false })
-      .then(({ data }: { data: PayslipRow[] | null }) => {
-        setSlips(data ?? []);
+      .then(async ({ data }: { data: PayslipRow[] | null }) => {
+        const rows = data ?? [];
+        setSlips(rows);
+        if (rows.length) {
+          const { data: holds } = await sb
+            .from("payroll_payment_holds")
+            .select("detail_id, status")
+            .in("detail_id", rows.map((slip) => slip.detail_id));
+          setPaymentHolds(
+            Object.fromEntries(
+              ((holds ?? []) as { detail_id: string; status: PaymentHoldStatus }[]).map((hold) => [
+                hold.detail_id,
+                hold.status,
+              ]),
+            ),
+          );
+        } else setPaymentHolds({});
         setLoading(false);
       });
   }, [rider]);
@@ -114,6 +132,16 @@ function PayslipsPage() {
                   {s.payroll_runs ? `${formatTanggal(s.payroll_runs.period_start)} – ${formatTanggal(s.payroll_runs.period_end)}` : ""}
                   {s.data?.delivery_count != null && ` · ${s.data.delivery_count} order`}
                 </div>
+                {paymentHolds[s.detail_id] === "held" && (
+                  <span className="mt-2 inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
+                    Pembayaran ditahan
+                  </span>
+                )}
+                {paymentHolds[s.detail_id] === "released" && (
+                  <span className="mt-2 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    Pembayaran susulan diproses
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0 self-center">
                 <div className="text-right"><span className="block text-[9px] font-semibold tracking-wider text-success uppercase mb-1">Published</span><span className="text-sm font-bold text-primary whitespace-nowrap">{formatRupiah(s.data?.net_pay)}</span></div>

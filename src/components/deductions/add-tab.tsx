@@ -8,6 +8,7 @@ export function AddTab() {
   const [riders, setRiders] = useState<Rider[]>([]);
   const [types, setTypes] = useState<DType[]>([]);
   const [molisTypes, setMolisTypes] = useState<MolisType[]>([]);
+  const [recipients, setRecipients] = useState<{ id: string; name: string; bank_name: string; account_number: string; account_holder: string }[]>([]);
   const [f, setF] = useState({
     rider_ids: [] as string[],
     deduction_type_id: "",
@@ -21,6 +22,7 @@ export function AddTab() {
     installment: false,
     installment_count: 1,
     notes: "",
+    kasbon_recipient_id: "",
   });
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -56,6 +58,8 @@ export function AddTab() {
       .eq("active", true)
       .order("name")
       .then(({ data }: any) => setMolisTypes(data ?? []));
+    (supabase as any).from("kasbon_recipients").select("id, name, bank_name, account_number, account_holder").eq("active", true).order("name")
+      .then(({ data }: any) => setRecipients(data ?? []));
   }, []);
 
   const save = async () => {
@@ -64,6 +68,9 @@ export function AddTab() {
     if ((f.mode === "daily" || f.mode === "monthly") && !f.daily_rate)
       return toast.error("Isi tarif per hari");
     if (f.mode === "fixed" && !f.total_amount) return toast.error("Isi nominal total");
+    const selectedType = types.find((type) => type.id === f.deduction_type_id);
+    if (selectedType?.code === "KASBON" && !f.kasbon_recipient_id)
+      return toast.error("Pilih pemberi kasbon dan rekening penerima");
     setSaving(true);
     const count = f.installment ? Math.max(1, f.installment_count) : 1;
     const per = +(f.total_amount / count).toFixed(2);
@@ -82,6 +89,7 @@ export function AddTab() {
       start_date: f.start_date,
       next_deduction_date: f.start_date,
       notes: f.notes || null,
+      kasbon_recipient_id: selectedType?.code === "KASBON" ? f.kasbon_recipient_id : null,
     }));
     const { error } = await supabase.from("rider_installments").insert(rows);
     setSaving(false);
@@ -96,6 +104,7 @@ export function AddTab() {
       molis_type_id: "",
       charge_target: "rider",
       notes: "",
+      kasbon_recipient_id: "",
     });
     setSearch("");
   };
@@ -167,6 +176,7 @@ export function AddTab() {
               ...f,
               deduction_type_id: id,
               installment: t?.installmentable ? f.installment : false,
+              kasbon_recipient_id: "",
             });
           }}
           className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
@@ -179,6 +189,19 @@ export function AddTab() {
           ))}
         </select>
       </div>
+      {types.find((type) => type.id === f.deduction_type_id)?.code === "KASBON" && (
+        <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2">
+          <div>
+            <label className="font-medium">Pemberi Kasbon</label>
+            <select value={f.kasbon_recipient_id} onChange={(e) => setF({ ...f, kasbon_recipient_id: e.target.value })} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2">
+              <option value="">— pilih penerima transfer —</option>
+              {recipients.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.bank_name} · {r.account_number}</option>)}
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">Dana yang benar-benar tertagih akan masuk settlement ke rekening ini.</p>
+          </div>
+          <p className="text-xs text-muted-foreground">Belum ada penerima? Tambahkan dari menu master Penerima Kasbon terlebih dahulu.</p>
+        </div>
+      )}
       <div className="rounded-md border border-border p-3">
         <label className="font-medium text-xs">Mode Potongan</label>
         <div className="mt-1.5 grid grid-cols-3 gap-2">

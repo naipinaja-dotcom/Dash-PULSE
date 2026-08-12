@@ -21,7 +21,7 @@ import type {
   StepTier,
 } from "@/lib/pricing-types";
 import { parseRupiah } from "@/lib/format";
-import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel } from "./shared";
+import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel } from "./shared";
 import { Plus, Ruler, Package } from "lucide-react";
 
 // -------------------- State shapes (semua string, di-parse saat simpan) --------------------
@@ -52,6 +52,12 @@ export interface WeightRangeState extends RangeDimensionState {
   threshold: ThresholdGroupState;
 }
 
+export interface WeightSurchargeState {
+  enabled: boolean;
+  threshold_kg: string;
+  multiplier: string;
+}
+
 export interface ModularDeliveryState {
   distance: RangeDimensionState;
   weight: WeightRangeState;
@@ -60,6 +66,7 @@ export interface ModularDeliveryState {
   rates: { key: string; rate: string }[];
   default_rate: string;
   unit_basis: "awb" | "unique_address";
+  weight_surcharge: WeightSurchargeState;
 }
 
 // Alias dipakai pricing-form.tsx (bentuk state delivery keseluruhan)
@@ -94,6 +101,7 @@ export function emptyDeliveryState(): ModularDeliveryState {
     rates: [],
     default_rate: "0",
     unit_basis: "awb",
+    weight_surcharge: { enabled: false, threshold_kg: "20", multiplier: "2" },
   };
 }
 
@@ -156,6 +164,16 @@ export function buildDeliveryConfig(subtype: unknown, d: ModularDeliveryState): 
     default_rate: parseRupiah(d.default_rate),
     unit_basis: d.unit_basis,
     _dims: { distance: !!dims.distance, weight: !!dims.weight },
+    // Cuma masuk akal kalau Distance aktif (dia yang kena kali) — checkbox-nya
+    // juga disembunyiin di UI kalau Distance mati (lihat DeliveryFields).
+    weight_surcharge:
+      dims.distance && d.weight_surcharge.enabled
+        ? {
+            enabled: true,
+            threshold_kg: Number(d.weight_surcharge.threshold_kg) || 0,
+            multiplier: Number(d.weight_surcharge.multiplier) || 1,
+          }
+        : null,
   };
 }
 
@@ -239,6 +257,13 @@ export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType
     state.rates = (c.rates ?? []).map((r: any) => ({ key: r.key, rate: String(r.rate) }));
     state.default_rate = String(c.default_rate ?? "0");
     state.unit_basis = c.unit_basis ?? "awb";
+    if (c.weight_surcharge) {
+      state.weight_surcharge = {
+        enabled: !!c.weight_surcharge.enabled,
+        threshold_kg: String(c.weight_surcharge.threshold_kg ?? "20"),
+        multiplier: String(c.weight_surcharge.multiplier ?? "2"),
+      };
+    }
     return state;
   }
 
@@ -553,6 +578,8 @@ export function DeliveryFields({
 
   const patchDistance = (p: Partial<RangeDimensionState>) => onChange({ ...value, distance: { ...value.distance, ...p } });
   const patchWeight = (p: Partial<WeightRangeState>) => onChange({ ...value, weight: { ...value.weight, ...p } });
+  const patchWeightSurcharge = (p: Partial<WeightSurchargeState>) =>
+    onChange({ ...value, weight_surcharge: { ...value.weight_surcharge, ...p } });
 
   return (
     <div className="space-y-5">
@@ -577,6 +604,32 @@ export function DeliveryFields({
             </div>
           )}
           <RangeTableEditor rows={value.distance.rows} onChange={(rows) => patchDistance({ rows })} unit="km" />
+
+          <ToggleBlock
+            label="Surcharge Berat → Distance"
+            hint="Berat kiriman lewat batas ini → fee Distance (di atas) baris itu dikali N. Weight (kalau aktif di bawah) tetap dihitung normal terpisah, gak ikut kena kali — berat di sini cuma pemicu."
+            on={value.weight_surcharge.enabled}
+            onToggle={(on) => patchWeightSurcharge({ enabled: on })}
+          >
+            <div className="grid grid-cols-2 gap-3 max-w-sm">
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Batas Berat (kg)</FieldLabel>
+                <TextInput
+                  value={value.weight_surcharge.threshold_kg}
+                  inputMode="decimal"
+                  onChange={(e) => patchWeightSurcharge({ threshold_kg: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Kali (mis. 2 = 2×)</FieldLabel>
+                <TextInput
+                  value={value.weight_surcharge.multiplier}
+                  inputMode="decimal"
+                  onChange={(e) => patchWeightSurcharge({ multiplier: e.target.value })}
+                />
+              </div>
+            </div>
+          </ToggleBlock>
         </div>
       )}
 

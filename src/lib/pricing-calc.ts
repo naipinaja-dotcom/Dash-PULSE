@@ -408,20 +408,33 @@ export function calcModularDeliveryComponent(
           return hit ? Number(hit.rate) || 0 : null;
         });
   const overrideUsed = new Array(rows.length).fill(false);
-  const applyDim = (dimCfg: RangeDimensionConfig, valueOf: (r: DeliveryRow) => number) => {
+  const applyDim = (dimCfg: RangeDimensionConfig, valueOf: (r: DeliveryRow) => number, target: number[]) => {
     calcRangeComponent(rows, dimCfg, valueOf).forEach((f, i) => {
       if (dimCfg.accumulate === "per_order" && rowOverride[i] != null) {
         if (!overrideUsed[i]) {
-          out[i] += rowOverride[i]!;
+          target[i] += rowOverride[i]!;
           overrideUsed[i] = true;
         }
         return;
       }
-      out[i] += f;
+      target[i] += f;
     });
   };
 
-  if (cfg.distance?.enabled) applyDim(cfg.distance, (r) => Number(r.distance_km) || 0);
+  if (cfg.distance?.enabled) {
+    const distanceOut = new Array(rows.length).fill(0);
+    applyDim(cfg.distance, (r) => Number(r.distance_km) || 0, distanceOut);
+    // Berat lewat batas -> fee Distance baris itu dikali N (Weight, kalau
+    // aktif, tetap dihitung normal terpisah di bawah — berat di sini cuma
+    // pemicu, bukan komponen yang ikut kena kali).
+    const ws = cfg.weight_surcharge;
+    if (ws?.enabled) {
+      rows.forEach((r, i) => {
+        if ((Number(r.weight_kg) || 0) >= ws.threshold_kg) distanceOut[i] *= ws.multiplier;
+      });
+    }
+    distanceOut.forEach((f, i) => (out[i] += f));
+  }
 
   if (cfg.weight?.enabled) {
     if (cfg.weight.mode === "threshold_group" && cfg.weight.threshold) {
@@ -434,7 +447,7 @@ export function calcModularDeliveryComponent(
       };
       calcThresholdComponent(rows, thCfg).forEach((f, i) => (out[i] += f));
     } else {
-      applyDim(cfg.weight, (r) => Number(r.weight_kg) || 0);
+      applyDim(cfg.weight, (r) => Number(r.weight_kg) || 0, out);
     }
   }
 

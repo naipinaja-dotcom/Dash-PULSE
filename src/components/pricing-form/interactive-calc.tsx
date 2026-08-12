@@ -98,9 +98,16 @@ function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExa
       const km = Number(inp.distance) || 0;
       const { fee: bandFee, band } = bandLookupFee(numericRows(p.delivery.distance.rows), km);
       const overrideFee = consumeOverride();
-      const fee = overrideFee ?? bandFee;
+      let fee = overrideFee ?? bandFee;
+      // Surcharge berat → Distance: berat (dari input Weight kalau dimensi itu
+      // aktif juga, atau dari input khusus di bawah kalau enggak) lewat batas
+      // → fee Distance ini dikali N. Sama kayak calcModularDeliveryComponent.
+      const ws = p.delivery.weight_surcharge;
+      const wKg = Number(inp.weight || inp.totalKg) || 0;
+      const surcharged = ws?.enabled && wKg >= (Number(ws.threshold_kg) || 0);
+      if (surcharged) fee *= Number(ws.multiplier) || 1;
       steps.push({
-        text: `Distance: ${km} km → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}`,
+        text: `Distance: ${km} km → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}${surcharged ? ` × ${ws!.multiplier} (berat ${wKg}kg ≥ ${ws!.threshold_kg}kg)` : ""}`,
         amount: fee,
       });
       total += fee;
@@ -211,6 +218,13 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
               {dims.weight && props.delivery.weight.mode === "range" && (
                 <div className="flex flex-col gap-1">
                   <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? "Total berat hari ini (kg)" : "Berat (kg)"}</span>
+                  <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => p({ weight: e.target.value })}
+                    className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+                </div>
+              )}
+              {!dims.weight && props.delivery.weight_surcharge?.enabled && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground">Berat (kg) — pemicu surcharge Distance</span>
                   <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => p({ weight: e.target.value })}
                     className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
                 </div>

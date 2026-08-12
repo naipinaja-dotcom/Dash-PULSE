@@ -250,11 +250,17 @@ export async function generatePayrollDetails(
   // rider yang ada penghasilan kayak default-nya.
   const restrictedTypeIds = ((autoTypes ?? []) as any[]).filter((t) => !t.applies_to_all).map((t) => t.id);
   const enrolledSet = new Set<string>();
+  // Client prioritas per enrollment (mis. BPJS JKK rider X ditanggung client A
+  // spesifik) — null = fallback ke client rumah rider, sama kayak sebelum ada
+  // kolom ini (lihat matchesClient di loop rider bawah).
+  const enrolledClient = new Map<string, string | null>();
   if (restrictedTypeIds.length > 0) {
     const { data: enrolled } = await (client as any).from("deduction_type_riders")
-      .select("deduction_type_id, rider_id").in("deduction_type_id", restrictedTypeIds);
-    for (const e of (enrolled ?? []) as { deduction_type_id: string; rider_id: string }[]) {
-      enrolledSet.add(`${e.deduction_type_id}|${e.rider_id}`);
+      .select("deduction_type_id, rider_id, client_id").in("deduction_type_id", restrictedTypeIds);
+    for (const e of (enrolled ?? []) as { deduction_type_id: string; rider_id: string; client_id: string | null }[]) {
+      const key = `${e.deduction_type_id}|${e.rider_id}`;
+      enrolledSet.add(key);
+      enrolledClient.set(key, e.client_id);
     }
   }
 
@@ -406,21 +412,29 @@ export async function generatePayrollDetails(
     const deliveryCount = rDelivs.length;
     const attendanceFee = rAttend.reduce((s, a) => s + Number(a.fee || 0), 0);
 
+    // Client prioritas per potongan (rider_installments.client_id) menang atas
+    // client rumah rider (riders.client_id) — null di keduanya berarti run
+    // "Semua Client" (run.client_id null) selalu match, biar tetep ada
+    // fallback lama buat baris yang belum diisi client prioritasnya.
+    const matchesClient = (targetClientId: string | null | undefined) =>
+      run.client_id === null || run.client_id === (targetClientId ?? rider.client_id);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rInstall = (installments ?? []).filter((i: any) => i.rider_id === rider.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rInstallForRun = rInstall.filter((i: any) => matchesClient(i.client_id));
+
     // Rider yang gak ada kerja sama sekali periode ini TETAP dibikinin baris
     // payroll kalau dia punya cicilan mode='daily' aktif (sewa jalan terus
-    // walau rider libur) — asal client run ini emang "rumah"-nya rider itu
-    // (atau run "Semua Client"), biar gak dobel-tagih di run client lain.
-    const hasDailyCharge =
-      dailyChargeRiderIds.has(rider.id) && (run.client_id === null || run.client_id === rider.client_id);
+    // walau rider libur) — asal client-nya (prioritas atau rumah rider) match
+    // run ini (atau run "Semua Client"), biar gak dobel-tagih di run client lain.
+    const hasDailyCharge = rInstallForRun.some((i: any) => i.mode === "daily");
     // mode='monthly' cuma butuh baris kalau siklusnya BENERAN nutup di run
     // ini (monthlyDueDays > 0) — beda dari 'daily' yang selalu >0, run lain
     // dalam siklus yang sama harusnya gak bikin baris kosong percuma.
-    const homeMatch = run.client_id === null || run.client_id === rider.client_id;
-    const hasMonthlyChargeDue =
-      homeMatch &&
-      monthlyInsts.some(
-        (i) => i.rider_id === rider.id && monthlyDueDays(i, run.period_end, closedCyclesByInst) > 0,
-      );
+    const hasMonthlyChargeDue = rInstallForRun.some(
+      (i: any) => i.mode === "monthly" && monthlyDueDays(i, run.period_end, closedCyclesByInst) > 0,
+    );
     if (deliveryCount === 0 && attendanceFee === 0 && !hasDailyCharge && !hasMonthlyChargeDue) continue;
 
     const incentiveTotal = 0;
@@ -428,9 +442,7 @@ export async function generatePayrollDetails(
     const gross = deliveryFee + attendanceFee + incentiveTotal - penalty;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rInstall = (installments ?? []).filter((i: any) => i.rider_id === rider.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const dedItems = rInstall.map((i: any) => {
+    const dedItems = rInstallForRun.map((i: any) => {
       const arrears = arrearsByInstallment.get(i.id) ?? 0;
       if (i.mode === "daily") {
         const rate = Number(i.daily_rate || 0);
@@ -459,7 +471,7 @@ export async function generatePayrollDetails(
     // P&L client lewat molis-cost.ts, bukan di sini. Baris deduction tetap
     // dicatat di bawah (audit trail), cuma gak masuk ke installTotal.
     const installTotal = dedItems.reduce(
-      (s, d, idx) => s + ((rInstall[idx] as any).charge_target === "client_revenue" ? 0 : d.amount),
+      (s, d, idx) => s + ((rInstallForRun[idx] as any).charge_target === "client_revenue" ? 0 : d.amount),
       0,
     );
 
@@ -469,12 +481,16 @@ export async function generatePayrollDetails(
     // periode ini) tetap kena, gak digantung nunggu ada gross. Shortfall yang
     // muncul (total_deduction > gross_earning) ditangani jalur netting yang
     // udah ada di admin.payroll.tsx, bukan di-skip diam-diam di sini.
+    // Restricted type (applies_to_all=false, mis. BPJS JKK) yang enrollment-nya
+    // punya client prioritas sendiri (deduction_type_riders.client_id) — cuma
+    // kepotong di run client itu, sama logikanya kayak matchesClient di atas.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const autoApplicable = ((autoTypes ?? []) as any[]).filter(
-      (t) =>
-        !(t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)) &&
-        (t.applies_to_all || enrolledSet.has(`${t.id}|${rider.id}`)),
-    );
+    const autoApplicable = ((autoTypes ?? []) as any[]).filter((t) => {
+      if (t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)) return false;
+      if (t.applies_to_all) return true;
+      const key = `${t.id}|${rider.id}`;
+      return enrolledSet.has(key) && matchesClient(enrolledClient.get(key));
+    });
     // Key arrears sama persis cara detail-nya nanti disimpen (client_id run
     // ini, fallback ke client rumah rider) — biar tunggakan client A cuma
     // pernah keambil sama run client A lagi, gak nyasar ke client B.
@@ -499,7 +515,7 @@ export async function generatePayrollDetails(
       gross_earning: gross, total_deduction: totalDed, net_pay: net,
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    rInstall.forEach((ins: any, idx: number) => {
+    rInstallForRun.forEach((ins: any, idx: number) => {
       const item = dedItems[idx];
       if (item.amount <= 0) return;
       const isClientRevenue =

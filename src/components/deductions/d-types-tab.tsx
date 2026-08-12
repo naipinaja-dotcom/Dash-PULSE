@@ -6,7 +6,7 @@ import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2, X, Users } from "lucide-react";
-import type { DType, Rider } from "./types";
+import type { Client, DType, Rider } from "./types";
 
 export function DTypesTab() {
   const [rows, setRows] = useState<DType[]>([]);
@@ -30,7 +30,11 @@ export function DTypesTab() {
   // applies_to_all=false (mis. BPJS cuma sebagian rider) — dibuka per baris.
   const [managingId, setManagingId] = useState<string | null>(null);
   const [riders, setRiders] = useState<Rider[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set());
+  // Client prioritas per rider yang terdaftar (mis. BPJS JKK ridernya kerja di
+  // 2 client — pilih client mana yang nanggung, null = client rumah rider).
+  const [enrolledClient, setEnrolledClientMap] = useState<Map<string, string | null>>(new Map());
   const [riderSearch, setRiderSearch] = useState("");
 
   const openManage = async (r: DType) => {
@@ -40,11 +44,18 @@ export function DTypesTab() {
       const { data } = await supabase.from("riders").select("id, employee_id, full_name").order("full_name");
       setRiders(data ?? []);
     }
+    if (clients.length === 0) {
+      const { data } = await (supabase as any).from("clients").select("id, name").order("name");
+      setClients(data ?? []);
+    }
     const { data: enrolled } = await (supabase as any)
       .from("deduction_type_riders")
-      .select("rider_id")
+      .select("rider_id, client_id")
       .eq("deduction_type_id", r.id);
     setEnrolledIds(new Set((enrolled ?? []).map((e: { rider_id: string }) => e.rider_id)));
+    setEnrolledClientMap(
+      new Map((enrolled ?? []).map((e: { rider_id: string; client_id: string | null }) => [e.rider_id, e.client_id])),
+    );
   };
 
   const toggleEnrolled = async (typeId: string, riderId: string) => {
@@ -59,6 +70,19 @@ export function DTypesTab() {
     if (error) {
       toast.error(error.message);
       setEnrolledIds(enrolledIds);
+    }
+  };
+
+  const setEnrolledClient = async (typeId: string, riderId: string, clientId: string) => {
+    const prev = enrolledClient.get(riderId) ?? null;
+    setEnrolledClientMap(new Map(enrolledClient).set(riderId, clientId || null));
+    const { error } = await (supabase as any)
+      .from("deduction_type_riders")
+      .update({ client_id: clientId || null })
+      .eq("deduction_type_id", typeId).eq("rider_id", riderId);
+    if (error) {
+      toast.error(error.message);
+      setEnrolledClientMap(new Map(enrolledClient).set(riderId, prev));
     }
   };
 
@@ -484,18 +508,35 @@ export function DTypesTab() {
                           <div className="px-3 py-2 text-muted-foreground text-xs">Ga ada rider cocok</div>
                         ) : (
                           filteredRiders.map((rd) => (
-                            <label
+                            <div
                               key={rd.id}
-                              className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted cursor-pointer text-sm"
+                              className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted text-sm"
                             >
-                              <input
-                                type="checkbox"
-                                checked={enrolledIds.has(rd.id)}
-                                onChange={() => toggleEnrolled(r.id, rd.id)}
-                              />
-                              <span className="font-mono text-xs text-muted-foreground">{rd.employee_id}</span>
-                              <span>{rd.full_name}</span>
-                            </label>
+                              <label className="flex items-center gap-2.5 flex-1 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={enrolledIds.has(rd.id)}
+                                  onChange={() => toggleEnrolled(r.id, rd.id)}
+                                />
+                                <span className="font-mono text-xs text-muted-foreground">{rd.employee_id}</span>
+                                <span>{rd.full_name}</span>
+                              </label>
+                              {enrolledIds.has(rd.id) && (
+                                <select
+                                  value={enrolledClient.get(rd.id) ?? ""}
+                                  onChange={(e) => setEnrolledClient(r.id, rd.id, e.target.value)}
+                                  className="rounded-md border border-border bg-background px-1.5 py-1 text-xs"
+                                  title="Client prioritas — null pakai client rumah rider"
+                                >
+                                  <option value="">— client rumah rider —</option>
+                                  {clients.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
                           ))
                         )}
                       </div>

@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
 import { toast } from "sonner";
-import type { DType, MolisType, Rider } from "./types";
+import type { Client, DType, MolisType, Rider } from "./types";
 
 export function AddTab() {
   const [riders, setRiders] = useState<Rider[]>([]);
   const [types, setTypes] = useState<DType[]>([]);
   const [molisTypes, setMolisTypes] = useState<MolisType[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [f, setF] = useState({
     rider_ids: [] as string[],
     deduction_type_id: "",
@@ -17,6 +18,7 @@ export function AddTab() {
     cycle_start_day: 25,
     molis_type_id: "",
     charge_target: "rider" as "rider" | "client_revenue",
+    client_id: "",
     start_date: new Date().toISOString().slice(0, 10),
     installment: false,
     installment_count: 1,
@@ -56,6 +58,11 @@ export function AddTab() {
       .eq("active", true)
       .order("name")
       .then(({ data }: any) => setMolisTypes(data ?? []));
+    (supabase as any)
+      .from("clients")
+      .select("id, name")
+      .order("name")
+      .then(({ data }: any) => setClients(data ?? []));
   }, []);
 
   const save = async () => {
@@ -79,6 +86,7 @@ export function AddTab() {
       cycle_start_day: f.mode === "monthly" ? f.cycle_start_day : null,
       molis_type_id: isMolisMode ? f.molis_type_id || null : null,
       charge_target: isMolisMode ? f.charge_target : "rider",
+      client_id: f.client_id || null,
       start_date: f.start_date,
       next_deduction_date: f.start_date,
       notes: f.notes || null,
@@ -95,6 +103,7 @@ export function AddTab() {
       cycle_start_day: 25,
       molis_type_id: "",
       charge_target: "rider",
+      client_id: "",
       notes: "",
     });
     setSearch("");
@@ -178,6 +187,28 @@ export function AddTab() {
             </option>
           ))}
         </select>
+      </div>
+      <div>
+        <label className="font-medium">
+          Client Prioritas <span className="font-normal text-muted-foreground">(opsional)</span>
+        </label>
+        <select
+          value={f.client_id}
+          onChange={(e) => setF({ ...f, client_id: e.target.value })}
+          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+        >
+          <option value="">— pakai client rumah rider —</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground mt-1">
+          Potongan ini cuma kepotong di payroll run client ini. Kalau fee rider di client ini gak
+          cukup, sisa kurangnya bisa "dititip" ke client lain lewat netting manual di Payroll Run
+          (butuh approve admin dulu, gak otomatis kepotong).
+        </p>
       </div>
       <div className="rounded-md border border-border p-3">
         <label className="font-medium text-xs">Mode Potongan</label>

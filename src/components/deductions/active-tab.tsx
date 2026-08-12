@@ -8,13 +8,14 @@ import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
 import { Loader2, Trash2, Pencil } from "lucide-react";
-import type { DType, Inst, Rider } from "./types";
+import type { Client, DType, Inst, Rider } from "./types";
 
 export function ActiveTab() {
-  const [rows, setRows] = useState<(Inst & { rider?: Rider; type?: DType })[]>([]);
+  const [rows, setRows] = useState<(Inst & { rider?: Rider; type?: DType; client?: Client })[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [types, setTypes] = useState<DType[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ef, setEf] = useState({
     deduction_type_id: "",
@@ -24,6 +25,7 @@ export function ActiveTab() {
     daily_rate: 0,
     cycle_start_day: 25,
     charge_target: "rider" as "rider" | "client_revenue",
+    client_id: "",
     next_deduction_date: "",
     notes: "",
   });
@@ -37,13 +39,15 @@ export function ActiveTab() {
     const { data, error } = await supabase
       .from("rider_installments")
       .select(
-        "*, riders(id, employee_id, full_name), deduction_types(id, code, name, description, installmentable, active)",
+        "*, riders(id, employee_id, full_name), deduction_types(id, code, name, description, installmentable, active), clients(id, name)",
       )
       .eq("active", true)
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);
     else
-      setRows((data ?? []).map((r: any) => ({ ...r, rider: r.riders, type: r.deduction_types })));
+      setRows(
+        (data ?? []).map((r: any) => ({ ...r, rider: r.riders, type: r.deduction_types, client: r.clients })),
+      );
     setLoading(false);
   };
   useEffect(() => {
@@ -57,9 +61,14 @@ export function ActiveTab() {
       .eq("active", true)
       .eq("auto_recurring", false)
       .then(({ data }: any) => setTypes(data ?? []));
+    (supabase as any)
+      .from("clients")
+      .select("id, name")
+      .order("name")
+      .then(({ data }: any) => setClients(data ?? []));
   }, []);
 
-  const startEdit = (r: Inst & { rider?: Rider; type?: DType }) => {
+  const startEdit = (r: Inst & { rider?: Rider; type?: DType; client?: Client }) => {
     setEditingId(r.id);
     setEf({
       deduction_type_id: r.deduction_type_id,
@@ -69,6 +78,7 @@ export function ActiveTab() {
       daily_rate: r.daily_rate ?? 0,
       cycle_start_day: r.cycle_start_day ?? 25,
       charge_target: r.charge_target ?? "rider",
+      client_id: r.client_id ?? "",
       next_deduction_date: r.next_deduction_date ?? "",
       notes: r.notes ?? "",
     });
@@ -94,6 +104,7 @@ export function ActiveTab() {
     const update: any = {
       deduction_type_id: ef.deduction_type_id,
       mode: ef.mode,
+      client_id: ef.client_id || null,
       next_deduction_date: ef.next_deduction_date || null,
       notes: ef.notes || null,
     };
@@ -312,7 +323,14 @@ export function ActiveTab() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-3 text-muted-foreground">{r.type?.name}</td>
+                    <td className="p-3 text-muted-foreground">
+                      {r.type?.name}
+                      {r.client && (
+                        <span className="block text-[10px] font-medium text-primary">
+                          Prioritas: {r.client.name}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3 text-muted-foreground">
                       {r.mode === "daily" || r.mode === "monthly" ? (
                         <div className="space-y-0.5">
@@ -383,6 +401,23 @@ export function ActiveTab() {
                               {types.map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">
+                              Client Prioritas
+                            </label>
+                            <select
+                              value={ef.client_id}
+                              onChange={(e) => setEf({ ...ef, client_id: e.target.value })}
+                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                            >
+                              <option value="">— pakai client rumah rider —</option>
+                              {clients.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
                                 </option>
                               ))}
                             </select>

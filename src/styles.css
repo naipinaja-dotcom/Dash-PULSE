@@ -156,3 +156,295 @@
     color: var(--color-muted-foreground);
   }
 }
+
+@layer components {
+  /* Admin operations cockpit: the same Pulse language as the rider payslip,
+     kept deliberately quiet behind data-dense screens. */
+  .admin-shell {
+    isolation: isolate;
+    position: relative;
+    /* Use the local fallbacks first so the redesign is visible in offline
+       localhost previews; web fonts remain available for other platforms. */
+    font-family: 'Segoe UI', 'Manrope', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    /* Keep long admin pages scrollable; the ambient layer owns its own clipping. */
+    overflow-x: clip;
+    overflow-y: visible;
+    background:
+      radial-gradient(ellipse 80% 45% at 74% -12%, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 72%),
+      radial-gradient(ellipse 65% 38% at 8% 105%, color-mix(in oklch, #68e5ff 5%, transparent), transparent 76%),
+      var(--color-background);
+  }
+
+  .admin-shell h1,
+  .admin-shell h2,
+  .admin-shell h3,
+  .admin-shell [data-display] {
+    font-family: 'Bahnschrift', 'Sora', 'Segoe UI', system-ui, sans-serif;
+    letter-spacing: -0.025em;
+  }
+
+  .admin-page-title { letter-spacing: -0.035em; }
+  .admin-page-subtitle { letter-spacing: .005em; }
+  .admin-metric-value { font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.02em; line-height: 1.15; }
+  .admin-stat-card, .admin-kpi-card { min-height: 124px; }
+  .admin-stat-card { position: relative; overflow: hidden; }
+  .admin-stat-card::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 46%, transparent), transparent);
+    opacity: 0;
+    transform: scaleX(.42);
+    transform-origin: center;
+    transition: opacity .22s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+  }
+  .admin-stat-card:hover::after { opacity: 1; transform: scaleX(1); }
+
+  .admin-chart-card {
+    border-radius: 1rem;
+    background: color-mix(in oklch, var(--color-card) 92%, transparent);
+    box-shadow: 0 14px 38px color-mix(in oklch, var(--color-primary) 7%, transparent), inset 0 1px 0 rgb(255 255 255 / .06);
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+
+  .admin-chart-card:hover {
+    border-color: color-mix(in oklch, var(--color-primary) 28%, var(--color-border));
+    box-shadow: 0 18px 44px color-mix(in oklch, var(--color-primary) 11%, transparent), inset 0 1px 0 rgb(255 255 255 / .08);
+  }
+
+  .admin-chart-card .recharts-cartesian-grid-horizontal line,
+  .admin-chart-card .recharts-cartesian-grid-vertical line {
+    stroke: var(--color-border);
+    opacity: .32;
+  }
+
+  .admin-chart-card .recharts-text { fill: var(--color-muted-foreground); }
+  .admin-chart-card h3 { font-size: .9375rem; line-height: 1.3; }
+  .admin-chart-card p { font-size: .75rem; line-height: 1.4; }
+  .admin-chart-card a { font-size: .75rem; font-weight: 600; }
+
+  .admin-ambient {
+    position: fixed;
+    z-index: 0;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .admin-ambient-orb {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(56px);
+    opacity: .14;
+    will-change: transform;
+  }
+
+  .admin-ambient-orb-a {
+    width: 26rem;
+    height: 26rem;
+    right: 9%;
+    top: -18rem;
+    background: color-mix(in oklch, var(--color-primary) 70%, #68e5ff);
+    animation: admin-ambient-drift 17s ease-in-out infinite alternate;
+  }
+
+  .admin-ambient-orb-b {
+    width: 20rem;
+    height: 20rem;
+    left: 18%;
+    bottom: -15rem;
+    background: color-mix(in oklch, var(--color-primary) 60%, #ff758f);
+    opacity: .08;
+    animation: admin-ambient-drift 21s ease-in-out -5s infinite alternate-reverse;
+  }
+
+  .admin-ambient-grid {
+    position: absolute;
+    inset: 0;
+    opacity: .13;
+    background-image: linear-gradient(color-mix(in oklch, var(--color-border) 55%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in oklch, var(--color-border) 55%, transparent) 1px, transparent 1px);
+    background-size: 52px 52px;
+    mask-image: radial-gradient(ellipse 90% 55% at 50% 0%, black, transparent 78%);
+  }
+
+  .admin-sidebar {
+    position: relative;
+    z-index: 1;
+    background: color-mix(in oklch, var(--color-sidebar) 86%, transparent);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+  }
+
+  .admin-brand {
+    position: relative;
+  }
+
+  .admin-brand::after {
+    content: "";
+    position: absolute;
+    left: 1.25rem;
+    right: 1.25rem;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 70%, transparent), transparent);
+    opacity: .8;
+  }
+
+  .admin-mode-switch {
+    border: 1px solid color-mix(in oklch, var(--color-border) 80%, transparent);
+    background: color-mix(in oklch, var(--color-muted) 68%, transparent);
+  }
+
+  .admin-mode-active { box-shadow: 0 5px 16px color-mix(in oklch, var(--color-primary) 26%, transparent), inset 0 1px 0 rgb(255 255 255 / .22); }
+
+  .admin-section-label { letter-spacing: .18em; opacity: .72; }
+
+  .admin-nav-item { position: relative; overflow: hidden; }
+  .admin-nav-item::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 72%);
+    opacity: 0;
+    transition: opacity .18s ease;
+  }
+  .admin-nav-item:hover::before, .admin-nav-active::before { opacity: 1; }
+  .admin-nav-active { box-shadow: inset 2px 0 0 var(--color-primary), 0 4px 16px color-mix(in oklch, var(--color-primary) 10%, transparent); }
+  .admin-nav-item > * { position: relative; z-index: 1; }
+
+  .admin-sidebar-footer { background: linear-gradient(180deg, transparent, color-mix(in oklch, var(--color-primary) 4%, transparent)); }
+  .admin-avatar-orb { box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 12%, transparent), 0 5px 15px color-mix(in oklch, var(--color-primary) 24%, transparent); }
+
+  .admin-header {
+    position: relative;
+    background: color-mix(in oklch, var(--color-card) 78%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .admin-header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 50%, transparent), transparent);
+    opacity: .55;
+  }
+  .admin-header-context { color: var(--color-muted-foreground); font: 600 9px/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .14em; }
+  .admin-live-dot { width: .38rem; height: .38rem; border-radius: 999px; background: var(--color-success); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-success) 17%, transparent), 0 0 10px color-mix(in oklch, var(--color-success) 65%, transparent); }
+  .admin-main { position: relative; z-index: 1; }
+  .admin-content { position: relative; z-index: 0; }
+
+  .admin-content > * { min-width: 0; }
+  .admin-nav-item { transition-property: color, background-color, box-shadow, opacity, transform; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Fade the page shell only; transforms stay on cards so dialogs/tooltips
+       are never trapped inside a transformed containing block. */
+    .admin-content { animation: admin-content-fade .34s ease-out both; }
+    .admin-chart-card { animation: admin-card-enter .42s cubic-bezier(.22, 1, .36, 1) both; }
+    .admin-chart-card:nth-of-type(2) { animation-delay: .06s; }
+    .admin-stat-card { animation: admin-card-enter .38s cubic-bezier(.22, 1, .36, 1) both; }
+    .admin-stat-card:nth-child(2) { animation-delay: .04s; }
+    .admin-stat-card:nth-child(3) { animation-delay: .08s; }
+    .admin-stat-card:nth-child(4) { animation-delay: .12s; }
+    .admin-nav-item:hover { transform: translateX(2px); }
+  }
+
+  @media (max-width: 640px) {
+    .admin-ambient-orb { opacity: .045; filter: blur(42px); }
+    .admin-ambient-grid { opacity: .07; }
+    .admin-page-title { font-size: 15px; }
+    .admin-metric-value { font-size: 24px; }
+  }
+
+  .rider-shell {
+    background:
+      radial-gradient(ellipse 95% 34% at 50% -10%, color-mix(in oklch, var(--color-primary) 20%, transparent), transparent 72%),
+      var(--color-background);
+  }
+
+  .rider-pulse-line {
+    background-image: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 70%, transparent), transparent);
+  }
+
+  .rider-enter { animation: rider-enter .42s cubic-bezier(.22, 1, .36, 1) both; }
+  .rider-enter-delay-1 { animation-delay: .06s; }
+  .rider-enter-delay-2 { animation-delay: .12s; }
+  .rider-enter-delay-3 { animation-delay: .18s; }
+  .rider-orb { animation: rider-orb 13s ease-in-out infinite alternate; }
+
+  .rider-stars, .rider-meteor { display: none; }
+  .dark .rider-stars {
+    display: block;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: .62;
+    background-image:
+      radial-gradient(circle at 14% 18%, rgba(255,255,255,.9) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 78% 12%, rgba(182,156,255,.95) 0 1px, transparent 1.7px),
+      radial-gradient(circle at 36% 41%, rgba(104,229,255,.65) 0 .8px, transparent 1.5px),
+      radial-gradient(circle at 88% 57%, rgba(255,255,255,.7) 0 .8px, transparent 1.5px),
+      radial-gradient(circle at 18% 76%, rgba(182,156,255,.8) 0 1px, transparent 1.7px),
+      radial-gradient(circle at 62% 85%, rgba(255,255,255,.6) 0 .8px, transparent 1.5px);
+    background-size: 183px 151px, 241px 197px, 169px 223px, 277px 193px, 213px 263px, 311px 229px;
+    mask-image: linear-gradient(to bottom, black, transparent 78%);
+  }
+  .dark .rider-meteor {
+    display: block;
+    position: fixed;
+    top: 12%;
+    left: -26%;
+    width: 124px;
+    height: 2px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transform: rotate(-27deg);
+    background: linear-gradient(90deg, transparent, rgba(104,229,255,.45), rgba(255,255,255,.95));
+    box-shadow: 0 0 9px rgba(182,156,255,.85), 0 0 26px rgba(124,58,237,.45);
+    animation: rider-meteor 12s cubic-bezier(.2,.6,.4,1) infinite;
+  }
+  .dark .rider-meteor-b { top: 39%; left: -38%; width: 88px; animation-delay: 5.8s; animation-duration: 15s; opacity: 0; }
+}
+
+@keyframes rider-enter {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes rider-orb {
+  to { transform: translate(10px, 12px) scale(1.13); }
+}
+
+@keyframes rider-meteor {
+  0%, 72% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-27deg); }
+  74% { opacity: .92; }
+  82% { opacity: .2; transform: translate3d(145vw, 46vh, 0) rotate(-27deg); }
+  83%, 100% { opacity: 0; transform: translate3d(145vw, 46vh, 0) rotate(-27deg); }
+}
+
+@keyframes admin-ambient-drift {
+  from { transform: translate3d(-8px, 0, 0) scale(.96); }
+  to { transform: translate3d(14px, 12px, 0) scale(1.08); }
+}
+
+@keyframes admin-content-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes admin-card-enter {
+  from { opacity: 0; transform: translateY(10px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rider-enter, .rider-orb, .rider-meteor, .admin-ambient-orb,
+  .admin-content, .admin-chart-card, .admin-stat-card, .animate-spin, .animate-pulse { animation: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

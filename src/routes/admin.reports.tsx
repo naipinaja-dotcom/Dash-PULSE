@@ -21,11 +21,13 @@ type Run = {
   status: string;
   client_id: string | null;
 };
+type ReportRunStatus = "finalized" | "published";
 
 function ReportsPage() {
   const { t } = useT();
   const [runs, setRuns] = useState<Run[]>([]);
   const [runId, setRunId] = useState("");
+  const [runStatus, setRunStatus] = useState<ReportRunStatus>("finalized");
   const [mode, setMode] = useState<"client" | "rider" | "deduction">("rider");
 
   useEffect(() => {
@@ -38,15 +40,55 @@ function ReportsPage() {
       .select("id, name, period_start, period_end, status, client_id")
       .order("created_at", { ascending: false })
       .then(({ data }: { data: Run[] | null }) => {
-        setRuns(data ?? []);
-        if (data?.length) setRunId(data[0].id);
+        const reportRuns = (data ?? []).filter(
+          (run) => run.status === "finalized" || run.status === "published",
+        );
+        setRuns(reportRuns);
+        const firstFinalized = reportRuns.find((run) => run.status === "finalized");
+        const firstPublished = reportRuns.find((run) => run.status === "published");
+        if (firstFinalized) {
+          setRunStatus("finalized");
+          setRunId(firstFinalized.id);
+        } else if (firstPublished) {
+          setRunStatus("published");
+          setRunId(firstPublished.id);
+        }
       });
   }, []);
 
-  const run = runs.find((r) => r.id === runId);
+  const visibleRuns = runs.filter((run) => run.status === runStatus);
+  const run = visibleRuns.find((r) => r.id === runId);
+
+  const selectRunStatus = (status: ReportRunStatus) => {
+    setRunStatus(status);
+    setRunId(runs.find((run) => run.status === status)?.id ?? "");
+  };
 
   return (
     <AdminLayout title={t("reports.title")} subtitle={t("reports.subtitle")}>
+      <div className="mb-4 rounded-xl border border-border bg-card p-3">
+        <div className="flex w-full max-w-md rounded-lg bg-muted p-1">
+          <button
+            onClick={() => selectRunStatus("finalized")}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Finalized
+            <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "finalized").length}</span>
+          </button>
+          <button
+            onClick={() => selectRunStatus("published")}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Published
+            <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "published").length}</span>
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {runStatus === "finalized"
+            ? "Payroll sudah terkunci dan siap diproses, tetapi belum menjadi riwayat payslip resmi."
+            : "Payroll sudah diterbitkan sebagai payslip resmi dan masuk riwayat."}
+        </p>
+      </div>
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="text-sm font-medium">Payroll Run</label>
@@ -55,7 +97,7 @@ function ReportsPage() {
             onChange={(e) => setRunId(e.target.value)}
             className="mt-1 block min-w-[280px] rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
-            {runs.map((r) => (
+            {visibleRuns.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name} ({r.period_start} → {r.period_end}) · {r.status}
               </option>
@@ -82,7 +124,9 @@ function ReportsPage() {
       </div>
       {!runId ? (
         <p className="text-sm text-muted-foreground">
-          Belum ada payroll run. Buat & generate dulu di menu Payroll.
+          {runStatus === "finalized"
+            ? "Belum ada payroll yang finalized. Finalize payroll di menu Payroll untuk menampilkannya di sini."
+            : "Belum ada payroll yang published. Publish payroll untuk menjadikannya riwayat resmi."}
         </p>
       ) : mode === "rider" ? (
         <FinanceWorksheet runId={runId} run={run} />

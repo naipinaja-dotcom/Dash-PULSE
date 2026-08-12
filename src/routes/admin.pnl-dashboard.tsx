@@ -262,7 +262,7 @@ function ExecutiveDashboard() {
       {/* ── Charts ── */}
       {perClient && (
         <div className="grid md:grid-cols-2 gap-4 mb-5">
-          <div className="rounded-xl border border-border bg-card shadow-sm p-5">
+          <div className="admin-chart-card rounded-xl border border-border bg-card shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold">Tren Revenue vs Cost</h3>
@@ -301,7 +301,7 @@ function ExecutiveDashboard() {
             )}
           </div>
 
-          <div className="rounded-xl border border-border bg-card shadow-sm p-5">
+          <div className="admin-chart-card rounded-xl border border-border bg-card shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold">Tren BCR (Margin %)</h3>
@@ -367,7 +367,7 @@ function ExecutiveDashboard() {
                         </div>
                         <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                           <div
-                            className={"h-full rounded-full transition-all duration-500 " + (loss ? "bg-destructive" : "bg-success")}
+                            className={"h-full rounded-full transition-[width,opacity] duration-500 " + (loss ? "bg-destructive" : "bg-success")}
                             style={{ width: pct + "%" }}
                           />
                         </div>
@@ -544,12 +544,12 @@ function Kpi({ label, value, icon, variant = "default" }: { label: string; value
     danger: "bg-destructive/15 text-destructive",
   };
   return (
-    <div className={"rounded-xl border p-4 shadow-sm " + styles[variant]}>
+    <div className={"admin-kpi-card rounded-xl border p-4 shadow-sm " + styles[variant]}>
       <div className="flex items-center justify-between mb-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
         {icon && <div className={"w-7 h-7 rounded-lg flex items-center justify-center " + iconStyles[variant]}>{icon}</div>}
       </div>
-      <div className={"text-xl font-bold font-mono tracking-tight " + valueStyles[variant]}>{value}</div>
+      <div className={"admin-metric-value text-[26px] font-bold font-mono tracking-tight " + valueStyles[variant]}>{value}</div>
     </div>
   );
 }

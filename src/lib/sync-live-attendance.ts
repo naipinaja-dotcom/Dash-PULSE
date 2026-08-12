@@ -49,17 +49,7 @@ export async function upsertLiveAttendance(
     .single();
   if (bErr) throw bErr;
 
-  // 3. OVERWRITE: hapus absensi lama client ini di periode [from,to].
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: delErr } = await (client as any)
-    .from("attendance_logs")
-    .delete()
-    .eq("client_id", clientId)
-    .gte("log_date", from)
-    .lte("log_date", to);
-  if (delErr) throw delErr;
-
-  // 4. Insert per-shift, dengan fee hasil hitung (kalau diberikan).
+  // 3. Insert per-shift, dengan fee hasil hitung (kalau diberikan).
   const payloads = rows.map((r, i) => ({
     batch_id: batch.id,
     client_id: clientId,
@@ -75,13 +65,18 @@ export async function upsertLiveAttendance(
     is_absent: r.is_absent,
     fee: Number(fees[i]) || 0,
   }));
-  for (let i = 0; i < payloads.length; i += 200) {
-    const chunk = payloads.slice(i, i + 200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (client as any).from("attendance_logs").insert(chunk);
-    if (error) throw error;
-    result.inserted += chunk.length;
-  }
+  // Penghapusan periode lama dan insert baru harus atomik. Ini juga
+  // mempertahankan semua multi-shift karena payload tidak didedup per hari.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (client as any).rpc("replace_live_attendance", {
+    p_client_id: clientId,
+    p_from: from,
+    p_to: to,
+    p_rows: payloads,
+  });
+  if (error) throw error;
+  const counts = Array.isArray(data) ? data[0] : data;
+  result.inserted = Number(counts?.inserted) || 0;
 
   return result;
 }

@@ -537,6 +537,7 @@ export async function generatePayrollDetails(
       deductionsToInsert.push({
         detail_id: detailId, deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,
+        kasbon_recipient_id: ins.kasbon_recipient_id ?? null,
         description,
         amount: isClientRevenue ? 0 : item.amount,
       });

@@ -16,6 +16,7 @@ export function ActiveTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [types, setTypes] = useState<DType[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [recipients, setRecipients] = useState<{ id: string; name: string; bank_name: string; account_number: string }[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ef, setEf] = useState({
     deduction_type_id: "",
@@ -28,6 +29,7 @@ export function ActiveTab() {
     client_id: "",
     next_deduction_date: "",
     notes: "",
+    kasbon_recipient_id: "",
   });
   const [saving, setSaving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -36,7 +38,7 @@ export function ActiveTab() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("rider_installments")
       .select(
         "*, riders(id, employee_id, full_name), deduction_types(id, code, name, description, installmentable, active), clients(id, name)",
@@ -66,6 +68,8 @@ export function ActiveTab() {
       .select("id, name")
       .order("name")
       .then(({ data }: any) => setClients(data ?? []));
+    (supabase as any).from("kasbon_recipients").select("id, name, bank_name, account_number").eq("active", true).order("name")
+      .then(({ data }: any) => setRecipients(data ?? []));
   }, []);
 
   const startEdit = (r: Inst & { rider?: Rider; type?: DType; client?: Client }) => {
@@ -81,6 +85,7 @@ export function ActiveTab() {
       client_id: r.client_id ?? "",
       next_deduction_date: r.next_deduction_date ?? "",
       notes: r.notes ?? "",
+      kasbon_recipient_id: (r as any).kasbon_recipient_id ?? "",
     });
   };
 
@@ -107,6 +112,7 @@ export function ActiveTab() {
       client_id: ef.client_id || null,
       next_deduction_date: ef.next_deduction_date || null,
       notes: ef.notes || null,
+      kasbon_recipient_id: r.type?.code === "KASBON" ? (ef as any).kasbon_recipient_id || null : null,
     };
     if (ef.mode === "daily") {
       update.daily_rate = ef.daily_rate;
@@ -270,6 +276,7 @@ export function ActiveTab() {
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
                 Progress
               </th>
+              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">Pemberi Kasbon</th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
                 Mulai
               </th>
@@ -350,6 +357,9 @@ export function ActiveTab() {
                         <span>Rp{Number(r.per_period_amount ?? 0).toLocaleString("id-ID")}/periode</span>
                       )}
                     </td>
+                    <td className="p-3">
+                      {r.type?.code === "KASBON" ? (recipients.find((x) => x.id === (r as any).kasbon_recipient_id)?.name ?? <span className="text-warning text-[11px]">Belum dipetakan</span>) : <span className="text-muted-foreground">—</span>}
+                    </td>
                     <td className="p-3 text-muted-foreground">
                       {r.mode === "daily" || r.mode === "monthly" ? (
                         <span className="text-[10px] uppercase tracking-wide">Ongoing</span>
@@ -382,7 +392,7 @@ export function ActiveTab() {
                   </tr>
                   {editingId === r.id && (
                     <tr className="border-b border-border/60 bg-muted/20">
-                      <td colSpan={7} className="p-3">
+                      <td colSpan={8} className="p-3">
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 items-end text-sm">
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
@@ -405,6 +415,15 @@ export function ActiveTab() {
                               ))}
                             </select>
                           </div>
+                          {r.type?.code === "KASBON" && (
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground">Pemberi Kasbon</label>
+                              <select value={(ef as any).kasbon_recipient_id} onChange={(e) => setEf({ ...ef, kasbon_recipient_id: e.target.value } as any)} className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm">
+                                <option value="">— belum dipetakan —</option>
+                                {recipients.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.bank_name} · {x.account_number}</option>)}
+                              </select>
+                            </div>
+                          )}
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
                               Client Prioritas

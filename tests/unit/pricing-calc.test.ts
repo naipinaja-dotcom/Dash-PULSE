@@ -575,6 +575,88 @@ describe("calcScheme — modular_v2 rate_by=delivery_type + Distance & Weight ak
 });
 
 // ==================================================================
+// modular_v2 — weight_surcharge: berat lewat batas -> fee Distance dikali N
+// ==================================================================
+describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau berat lewat batas)", () => {
+  const distanceOnlyEnv = (weight_surcharge: { enabled: boolean; threshold_kg: number; multiplier: number } | null) =>
+    env({
+      type: "modular_v2",
+      config: {
+        rate_by: "flat",
+        match_column: "Area",
+        rates: [],
+        unit_basis: "awb",
+        default_rate: 0,
+        weight_surcharge,
+        distance: {
+          enabled: true,
+          accumulate: "per_order",
+          rows: [{ type: "flat", from: 0, to: 1000, base_fee: 10000, step: 0, add_per_step: 0 }],
+        },
+        weight: null,
+      } as never,
+    });
+
+  it("berat di bawah batas: fee Distance normal, gak kena kali", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 15 })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
+  it("berat PAS di batas (>=) ikut kena kali", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 20 })]);
+    expect(res.perRow[0].fee).toBe(20000);
+  });
+
+  it("berat lewat batas: fee Distance dikali multiplier", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 25 })]);
+    expect(res.perRow[0].fee).toBe(20000);
+  });
+
+  it("mati (enabled:false): berat berapapun gak ngaruh ke fee Distance", () => {
+    const e = distanceOnlyEnv({ enabled: false, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 999 })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
+  it("weight_surcharge null (skema lama belum punya field ini): tetap jalan normal", () => {
+    const e = distanceOnlyEnv(null);
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 999 })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
+  it("Weight dimension aktif TERPISAH tetap dihitung normal, gak ikut kena kali — cuma pemicu", () => {
+    const e = env({
+      type: "modular_v2",
+      config: {
+        rate_by: "flat",
+        match_column: "Area",
+        rates: [],
+        unit_basis: "awb",
+        default_rate: 0,
+        weight_surcharge: { enabled: true, threshold_kg: 20, multiplier: 2 },
+        distance: {
+          enabled: true,
+          accumulate: "per_order",
+          rows: [{ type: "flat", from: 0, to: 1000, base_fee: 10000, step: 0, add_per_step: 0 }],
+        },
+        weight: {
+          mode: "range",
+          enabled: true,
+          accumulate: "per_order",
+          rows: [{ type: "flat", from: 0, to: 1000, base_fee: 5000, step: 0, add_per_step: 0 }],
+        },
+      } as never,
+    });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 25 })]);
+    // distance 10000*2 (kena kali, berat lewat batas) + weight 5000 (normal, gak ikut kali)
+    expect(res.perRow[0].fee).toBe(25000);
+  });
+});
+
+// ==================================================================
 // billing_addons — regression: calcAttendanceScheme/calcHybridScheme dulu
 // gak pernah nerapin billing_addons sama sekali (min_charge/admin_fee/ppn),
 // walau form ngasih toggle-nya buat scheme_for="client" di kategori manapun.

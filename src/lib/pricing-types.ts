@@ -56,6 +56,14 @@ export interface RangeDimensionConfig {
   rows: RangeRow[];
 }
 
+/** Berat lewat batas -> fee Distance (bukan Weight) baris itu dikali N. Weight
+ * (kalau aktif) tetap dihitung normal, gak ikut kali — cuma pemicu doang. */
+export interface WeightSurcharge {
+  enabled: boolean;
+  threshold_kg: number;
+  multiplier: number;
+}
+
 export interface ThresholdGroupConfig {
   group_by: string; // nama kolom buat grouping, cth "Area"
   default_threshold: number;
@@ -87,6 +95,8 @@ export interface ModularDeliveryConfig {
   // disimpan supaya `pricing-store.ts` bisa reconstruct `PricingScheme.subtype`
   // tanpa parsing config penuh (calcTypeToCategory cuma terima calc_type string).
   _dims: DeliveryDimensions;
+  // Opsional, cuma relevan kalau Distance aktif — lihat WeightSurcharge.
+  weight_surcharge?: WeightSurcharge | null;
 }
 
 export interface DeliveryDimensionOption {

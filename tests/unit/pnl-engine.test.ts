@@ -47,6 +47,19 @@ describe("pickPricingScheme", () => {
     const picked = pickPricingScheme([catchAll, specific], "goreca", "client");
     expect(picked?.id).toBe("specific");
   });
+
+  // Regression: audit — pickPricingScheme dulu SELALU filter ke "hari ini"
+  // (Date.now() di dalam fungsi), gak bisa dikasih tau lagi ngitung buat
+  // periode historis mana. Backfill/rerun laporan minggu lama jadi kepilih
+  // skema yang aktif HARI JOB-NYA DIJALANIN, bukan yang berlaku pas minggu itu.
+  it("asOfDate menentukan skema mana yang berlaku, BUKAN tanggal panggil fungsi (backfill regression)", () => {
+    const oldRate = scheme({ id: "old-rate", client_id: "goreca", effective_from: "2026-01-01", effective_to: "2026-06-30" });
+    const newRate = scheme({ id: "new-rate", client_id: "goreca", effective_from: "2026-07-01" });
+    // Backfill buat periode Maret 2026 — skema yang berlaku SAAT ITU adalah
+    // old-rate, walau new-rate udah aktif kalau dicek "hari ini" (default).
+    const picked = pickPricingScheme([oldRate, newRate], "goreca", "client", "2026-03-15");
+    expect(picked?.id).toBe("old-rate");
+  });
 });
 
 // ==================================================================

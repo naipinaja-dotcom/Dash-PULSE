@@ -1,35 +1,34 @@
 -- Payroll Workflow — pg_cron scheduling
 --
--- di-comment out karena butuh 2 nilai yang cuma diketahui pas deploy:
---   1. URL production project ini (mis. https://xxxx.vercel.app)
---   2. Isi env PAYROLL_WORKFLOW_SECRET yang sama persis dengan yang di-set di server
+-- STATUS: SUDAH AKTIF di production ('payroll-workflow-h1' & 'payroll-workflow-same-day'
+-- di cron.job) — dijalankan langsung lewat Supabase SQL Editor / execute_sql,
+-- BUKAN lewat migration runner otomatis. File ini didokumentasikan di sini biar
+-- gak dikira "belum pernah diaktifin" — SELALU cek `select * from cron.job;`
+-- langsung ke production buat status riil, jangan cuma percaya file ini
+-- di-comment atau enggak.
 --
--- Cara aktivasi (jalankan manual di Supabase SQL Editor):
---   1. Pastikan extension "pg_cron" & "pg_net" aktif (Database -> Extensions).
---   2. Copy blok SQL di bawah, ganti <PRODUCTION_URL> dan <PAYROLL_WORKFLOW_SECRET>.
---   3. Jalankan di SQL Editor.
---   4. Cek jadwal aktif: SELECT * FROM cron.job;
---   5. Cek histori run: SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
---
--- Jadwal: SETIAP HARI, 2 cron TERPISAH berdasarkan tipe tutup buku:
+-- Jadwal aktif: SETIAP HARI, 2 cron TERPISAH berdasarkan tipe tutup buku:
 --
 --   1. Jam 12:00 WIB (05:00 UTC) — hitung payroll client TUTUP H-1
---      (close_same_day = false). Data udah lengkap dari sync 00:50 WIB.
+--      (close_same_day = false). Data udah ditarik dari sync jam 06:00 WIB.
 --
---   2. Jam 17:00 WIB (10:00 UTC) — hitung payroll client TUTUP HARI SAMA
---      (close_same_day = true). Data baru di-sync jam 16:50 WIB.
+--   2. Jam 16:00 WIB (09:00 UTC, dipercepat dari 17:00 -> 16:00 pada 2026-08-13)
+--      — hitung payroll client TUTUP HARI SAMA (close_same_day = true, termasuk
+--      Otts and Jill). Data baru di-sync jam 15:50 WIB.
 --
--- Urutan harian:
---   00:50 WIB  live-fee-sync (tarik data)
+-- Urutan harian (lihat juga 20260730000001_live_fee_sync_cron.sql):
+--   06:00 WIB  live-fee-sync (tarik data KEMARIN)
 --   12:00 WIB  payroll-workflow H-1
---   16:50 WIB  live-fee-sync (tarik data)
---   17:00 WIB  payroll-workflow same-day
+--   15:50 WIB  live-fee-sync (tarik data HARI INI)
+--   16:00 WIB  payroll-workflow same-day
 --
--- TIDAK ada safety net jam 01:00 — keesokan harinya sudah pencairan.
---
--- STATUS: Perlu diupdate di Supabase SQL Editor. Hapus job lama dulu:
---   select cron.unschedule('payroll-workflow-daily');
--- Lalu jalankan 2 blok schedule baru di bawah.
+-- PENTING: tombol manual "Run Workflow Sekarang" (triggerPayrollWorkflow di
+-- payroll-workflow.functions.ts) TIDAK mengirim closeSameDayFilter — jadi dia
+-- memproses SEMUA periode yang jatuh tempo hari itu, TANPA peduli jam berapa
+-- sekarang atau apa datanya udah lengkap (lihat insiden Otts and Jill,
+-- 2026-08-13: diklik jam 12:54 & 14:30 WIB, prematur karena data hari itu
+-- belum ke-sync). Ini bukan bug — tombol itu emang buat override manual/testing
+-- — tapi jangan diklik buat client close_same_day=true sebelum jam tutup datanya.
 
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
@@ -50,10 +49,10 @@
 --   $$
 -- );
 --
--- -- Cron 2: Jam 17:00 WIB — client tutup hari sama
+-- -- Cron 2: Jam 16:00 WIB — client tutup hari sama
 -- select cron.schedule(
 --   'payroll-workflow-same-day',
---   '0 10 * * *', -- tiap hari jam 10:00 UTC (17:00 WIB)
+--   '0 9 * * *', -- tiap hari jam 09:00 UTC (16:00 WIB)
 --   $$
 --   select net.http_post(
 --     url := '<PRODUCTION_URL>/api/payroll-workflow',

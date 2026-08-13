@@ -92,6 +92,20 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           }
         }
 
+        // Payment hold (lihat payroll_payment_holds di admin.payroll.tsx) —
+        // rider yang di-hold gak ikut Bulk Payment reguler, jadi worksheet ini
+        // harus nunjukkin itu juga (badge + di-exclude dari GRAND TOTAL),
+        // bukan diem-diem nampilin kayak rider normal yang bakal dibayar.
+        const holdByDetail = new Map<string, { status: string; reason: string }>();
+        {
+          const { data: holds, error: eHold } = await sb
+            .from("payroll_payment_holds")
+            .select("detail_id, status, reason")
+            .in("detail_id", detailIds);
+          if (eHold && eHold.code !== "42P01") throw eHold;
+          for (const h of holds ?? []) holdByDetail.set(h.detail_id, h);
+        }
+
         // detail mentah periode ini (buat drill-down + active dates)
         const [delivs, atts] = await Promise.all([
           // Cuma COMPLETED yang beneran dihitung fee-nya (calcScheme filter isCompleted)
@@ -189,6 +203,8 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           remarks: d.remarks ?? "",
           deliv: (delivByRider.get(d.rider_id) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
           att: (attByRider.get(d.rider_id) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
+          held: holdByDetail.get(d.id)?.status === "held",
+          holdReason: holdByDetail.get(d.id)?.status === "held" ? holdByDetail.get(d.id)!.reason : null,
         })).sort((a: RiderRow, b: RiderRow) => b.total - a.total);
 
         setDedTypes([...typeSet].sort());
@@ -210,7 +226,11 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     if (error) toast.error("Gagal simpan remarks: " + error.message);
   };
 
-  const t = useMemo(() => rows.reduce((s, r) => ({
+  // Rider yang di-hold di-exclude dari GRAND TOTAL — dia gak ikut Bulk
+  // Payment reguler, jadi total di sini harus nyambung sama yang beneran
+  // ditransfer, bukan ikut ngitung duit yang masih ditahan.
+  const heldRows = useMemo(() => rows.filter((r) => r.held), [rows]);
+  const t = useMemo(() => rows.filter((r) => !r.held).reduce((s, r) => ({
     order: s.order + r.orderCount, fee: s.fee + r.feeRider, total: s.total + r.total,
     ded: dedTypes.reduce((m, ty) => ({ ...m, [ty]: (m[ty] ?? 0) + (r.ded[ty] ?? 0) }), s.ded),
   }), { order: 0, fee: 0, total: 0, ded: {} as Record<string, number> }), [rows, dedTypes]);
@@ -231,7 +251,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     if (c.has("remarks")) header.push("Remarks");
 
     const body: Cell[][] = rows.map((r) => {
-      const row: Cell[] = [r.name];
+      const row: Cell[] = [r.held ? `${r.name} (DITAHAN)` : r.name];
       if (c.has("employee_id")) row.push(r.employeeId);
       if (c.has("client")) row.push(r.clientName);
       if (c.has("order_count")) row.push(r.orderCount);
@@ -239,7 +259,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       if (c.has("active_date")) row.push(r.activeDates);
       if (c.has("deductions")) row.push(...dedTypes.map((ty) => r.ded[ty] ?? 0));
       if (c.has("total_fee")) row.push(r.total);
-      if (c.has("remarks")) row.push(r.remarks);
+      if (c.has("remarks")) row.push(r.held ? `[DITAHAN: ${r.holdReason}] ${r.remarks}` : r.remarks);
       return row;
     });
 
@@ -391,13 +411,20 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
             {rows.length === 0 ? <tr><td colSpan={visibleColCount} className="p-6 text-center text-muted-foreground">Tidak ada data — pastikan payroll run ini sudah di-Generate.</td></tr> :
               paged.map((r) => (
                 <Fragment key={r.detailId}>
-                  <tr className="border-t border-border">
+                  <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : ""}`}>
                     <td className="p-2 sticky left-0 bg-background">
                       <button onClick={() => setExpanded(expanded === r.detailId ? null : r.detailId)} className="flex items-center gap-1.5 text-left hover:text-primary">
                         <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded === r.detailId ? "rotate-90" : ""}`} />
                         <span>
-                          <span className="font-medium block">{r.name}</span>
-                          <span className="text-xs text-muted-foreground">{r.employeeId}</span>
+                          <span className="font-medium flex items-center gap-1.5">
+                            {r.name}
+                            {r.held && (
+                              <span title={r.holdReason ?? ""} className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive/15 text-destructive">
+                                Ditahan
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-muted-foreground block">{r.employeeId}</span>
                         </span>
                       </button>
                     </td>
@@ -446,6 +473,11 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       <p className="text-xs text-muted-foreground mt-2">
         Klik nama rider buat lihat rincian per order/hari (bukti angkanya). Remarks ke-simpan otomatis pas pindah kolom. Excel isi 3 sheet: Rate Card, Detail, Ringkasan. GRAND TOTAL menghitung SEMUA rider, bukan cuma yang tampil di halaman ini.
       </p>
+      {heldRows.length > 0 && (
+        <p className="text-xs text-destructive mt-1">
+          {heldRows.length} rider ditandai "Ditahan" (pembayarannya di-hold) — total fee-nya ({rp(heldRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL di atas, karena gak ditransfer di Bulk Payment reguler.
+        </p>
+      )}
     </>
   );
 }

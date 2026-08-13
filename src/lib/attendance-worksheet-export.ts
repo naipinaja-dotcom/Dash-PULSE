@@ -50,6 +50,12 @@ export type RiderRow = {
   remarks: string;
   deliv: DelivDetail[];
   att: AttDetail[];
+  // Payment hold (lihat payroll_payment_holds di admin.payroll.tsx) — rider
+  // ini gak ikut ditransfer di Bulk Payment reguler, jadi jangan ikut kehitung
+  // di GRAND TOTAL worksheet juga (biar total di sini nyambung sama yang
+  // beneran di-transfer). holdReason cuma diisi kalau statusnya masih "held".
+  held: boolean;
+  holdReason: string | null;
 };
 
 export const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");

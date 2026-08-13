@@ -13,6 +13,7 @@ import {
   isAttendanceOnlyRun, attendanceDetailRows, attendanceSummaryRows,
 } from "@/lib/attendance-worksheet-export";
 import { getClientExportTemplate, ALL_EXPORT_COLUMN_KEYS } from "@/lib/export-template";
+import { allocateKasbonByRecipient, type KasbonDeductionRow } from "@/lib/kasbon-allocation";
 import { toast } from "sonner";
 import { Download, Loader2, ChevronRight, FileSpreadsheet, ChevronDown } from "lucide-react";
 import {
@@ -78,10 +79,15 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         const detailIds = (details ?? []).map((d: { id: string }) => d.id);
         const dedByDetail = new Map<string, Record<string, number>>();
         const typeSet = new Set<string>();
+        // Dikumpulin sekalian dari query yang sama (bukan query terpisah) buat
+        // allocateKasbonByRecipient() di bawah — recipient mana yang kebagian
+        // berapa dari kasbon rider ini (lihat lib/kasbon-allocation.ts).
+        const kasbonDeductionRows: KasbonDeductionRow[] = [];
         for (let i = 0; i < detailIds.length; i += 200) {
           const chunk = detailIds.slice(i, i + 200);
           const { data: deds, error: e2 } = await sb.from("payroll_deductions")
-            .select("detail_id, amount, deduction_types(name)").in("detail_id", chunk);
+            .select("detail_id, amount, deduction_types(name, code), kasbon_recipient_id, kasbon_recipients(name, bank_name, account_number, account_holder, no_transfer_needed)")
+            .in("detail_id", chunk);
           if (e2) throw e2;
           for (const d of deds ?? []) {
             const name = d.deduction_types?.name ?? "Potongan";
@@ -89,8 +95,14 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
             const m = dedByDetail.get(d.detail_id) ?? {};
             m[name] = (m[name] ?? 0) + Number(d.amount || 0);
             dedByDetail.set(d.detail_id, m);
+            kasbonDeductionRows.push(d);
           }
         }
+        const grossByDetail = new Map((details ?? []).map((d: { id: string; gross_earning: number }) => [d.id, Number(d.gross_earning)]));
+        const riderNameByDetail = new Map(
+          (details ?? []).map((d: { id: string; rider_name?: string | null }) => [d.id, d.rider_name ?? "(tanpa nama)"]),
+        );
+        const kasbonAllocations = allocateKasbonByRecipient(grossByDetail, kasbonDeductionRows, riderNameByDetail);
 
         // Payment hold (lihat payroll_payment_holds di admin.payroll.tsx) —
         // rider yang di-hold gak ikut Bulk Payment reguler, jadi worksheet ini
@@ -205,10 +217,41 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           att: (attByRider.get(d.rider_id) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
           held: holdByDetail.get(d.id)?.status === "held",
           holdReason: holdByDetail.get(d.id)?.status === "held" ? holdByDetail.get(d.id)!.reason : null,
-        })).sort((a: RiderRow, b: RiderRow) => b.total - a.total);
+          isKasbonRow: false,
+          kasbonNoTransfer: false,
+        }));
+
+        // Kasbon ke penerima pihak ke-3 motong net_pay rider, tapi duitnya
+        // harus BENERAN ditransfer ke rekening penerima itu — jadi ikut
+        // ditampilin sebagai baris sendiri di Ringkasan (bukan cuma raib jadi
+        // potongan), dengan GRAND TOTAL yang ikut nambah (net_pay rider SUDAH
+        // net dari kasbon, jadi kasbon transfer itu tambahan terpisah, bukan
+        // dobel-hitung). Penerima no_transfer_needed (rekening internal
+        // perusahaan) tetap ditampilin buat transparansi, tapi TIDAK ikut
+        // GRAND TOTAL (gak ada transfer keluar beneran).
+        const kasbonRows: RiderRow[] = kasbonAllocations.map((a) => ({
+          detailId: `kasbon-${a.recipientId}`,
+          rider_id: a.recipientId,
+          name: a.recipientName,
+          employeeId: "",
+          clientName: built[0]?.clientName ?? "",
+          orderCount: 0,
+          feeRider: 0,
+          activeDates: 0,
+          ded: {},
+          incentive: 0,
+          total: a.amount,
+          remarks: `Kasbon dari ${a.riderNames.join(", ")}` + (a.noTransferNeeded ? " — rekening internal, gak perlu transfer" : ""),
+          deliv: [],
+          att: [],
+          held: false,
+          holdReason: null,
+          isKasbonRow: true,
+          kasbonNoTransfer: a.noTransferNeeded,
+        }));
 
         setDedTypes([...typeSet].sort());
-        setRows(built);
+        setRows([...built, ...kasbonRows].sort((a, b) => b.total - a.total));
 
         // Rate card: schemes udah di-fetch di atas (riderSchemes) — reuse, gak query lagi.
         setRateCards(riderSchemes.map(describeScheme));
@@ -228,9 +271,12 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
 
   // Rider yang di-hold di-exclude dari GRAND TOTAL — dia gak ikut Bulk
   // Payment reguler, jadi total di sini harus nyambung sama yang beneran
-  // ditransfer, bukan ikut ngitung duit yang masih ditahan.
+  // ditransfer, bukan ikut ngitung duit yang masih ditahan. Baris penerima
+  // kasbon dengan rekening internal (kasbonNoTransfer) di-exclude juga —
+  // gak ada transfer keluar beneran buat itu.
   const heldRows = useMemo(() => rows.filter((r) => r.held), [rows]);
-  const t = useMemo(() => rows.filter((r) => !r.held).reduce((s, r) => ({
+  const internalKasbonRows = useMemo(() => rows.filter((r) => r.isKasbonRow && r.kasbonNoTransfer), [rows]);
+  const t = useMemo(() => rows.filter((r) => !r.held && !r.kasbonNoTransfer).reduce((s, r) => ({
     order: s.order + r.orderCount, fee: s.fee + r.feeRider, total: s.total + r.total,
     ded: dedTypes.reduce((m, ty) => ({ ...m, [ty]: (m[ty] ?? 0) + (r.ded[ty] ?? 0) }), s.ded),
   }), { order: 0, fee: 0, total: 0, ded: {} as Record<string, number> }), [rows, dedTypes]);
@@ -251,13 +297,16 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     if (c.has("remarks")) header.push("Remarks");
 
     const body: Cell[][] = rows.map((r) => {
-      const row: Cell[] = [r.held ? `${r.name} (DITAHAN)` : r.name];
+      const label = r.isKasbonRow
+        ? `→ ${r.name} (Penerima Kasbon${r.kasbonNoTransfer ? ", internal" : ""})`
+        : r.held ? `${r.name} (DITAHAN)` : r.name;
+      const row: Cell[] = [label];
       if (c.has("employee_id")) row.push(r.employeeId);
       if (c.has("client")) row.push(r.clientName);
-      if (c.has("order_count")) row.push(r.orderCount);
-      if (c.has("fee_rider")) row.push(r.feeRider);
-      if (c.has("active_date")) row.push(r.activeDates);
-      if (c.has("deductions")) row.push(...dedTypes.map((ty) => r.ded[ty] ?? 0));
+      if (c.has("order_count")) row.push(r.isKasbonRow ? "" : r.orderCount);
+      if (c.has("fee_rider")) row.push(r.isKasbonRow ? "" : r.feeRider);
+      if (c.has("active_date")) row.push(r.isKasbonRow ? "" : r.activeDates);
+      if (c.has("deductions")) row.push(...dedTypes.map((ty) => (r.isKasbonRow ? "" : (r.ded[ty] ?? 0))));
       if (c.has("total_fee")) row.push(r.total);
       if (c.has("remarks")) row.push(r.held ? `[DITAHAN: ${r.holdReason}] ${r.remarks}` : r.remarks);
       return row;
@@ -278,7 +327,9 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
   const detailRows = (): Cell[][] => {
     const header: Cell[] = ["Driver Name", "Kode Mitra", "Client", "Tanggal", "Jenis", "Jarak (km)", "Berat (kg)", "District", "OTP / Status", "Fee"];
     const out: Cell[][] = [header];
-    for (const r of rows) {
+    // Baris penerima kasbon gak punya kiriman/absensi mentah buat di-itemize
+    // di sheet Detail — cukup muncul di Ringkasan (summaryRows).
+    for (const r of rows.filter((row) => !row.isKasbonRow)) {
       for (const d of r.deliv) out.push([r.name, r.employeeId, r.clientName, d.date, "Kiriman", d.km ?? "", d.kg ?? "", d.district ?? "", d.type ?? "", d.fee]);
       for (const a of r.att) out.push([r.name, r.employeeId, r.clientName, a.date, "Absensi", "", "", "", otpLabel(a), a.fee]);
       const sub = r.deliv.reduce((s, d) => s + d.fee, 0) + r.att.reduce((s, a) => s + a.fee, 0);
@@ -411,35 +462,44 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
             {rows.length === 0 ? <tr><td colSpan={visibleColCount} className="p-6 text-center text-muted-foreground">Tidak ada data — pastikan payroll run ini sudah di-Generate.</td></tr> :
               paged.map((r) => (
                 <Fragment key={r.detailId}>
-                  <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : ""}`}>
+                  <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : r.isKasbonRow ? "bg-primary-soft/30" : ""}`}>
                     <td className="p-2 sticky left-0 bg-background">
-                      <button onClick={() => setExpanded(expanded === r.detailId ? null : r.detailId)} className="flex items-center gap-1.5 text-left hover:text-primary">
-                        <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded === r.detailId ? "rotate-90" : ""}`} />
+                      <button onClick={() => !r.isKasbonRow && setExpanded(expanded === r.detailId ? null : r.detailId)} className={`flex items-center gap-1.5 text-left ${r.isKasbonRow ? "cursor-default" : "hover:text-primary"}`}>
+                        {!r.isKasbonRow && <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded === r.detailId ? "rotate-90" : ""}`} />}
                         <span>
                           <span className="font-medium flex items-center gap-1.5">
-                            {r.name}
+                            {r.isKasbonRow ? `→ ${r.name}` : r.name}
                             {r.held && (
                               <span title={r.holdReason ?? ""} className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive/15 text-destructive">
                                 Ditahan
                               </span>
                             )}
+                            {r.isKasbonRow && (
+                              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-primary-soft text-primary-soft-foreground">
+                                {r.kasbonNoTransfer ? "Kasbon · Internal" : "Kasbon · Transfer"}
+                              </span>
+                            )}
                           </span>
-                          <span className="text-xs text-muted-foreground block">{r.employeeId}</span>
+                          <span className="text-xs text-muted-foreground block">{r.isKasbonRow ? r.remarks : r.employeeId}</span>
                         </span>
                       </button>
                     </td>
                     {enabledCols.has("client") && <td className="px-3 text-[13px] text-muted-foreground">{r.clientName}</td>}
-                    {enabledCols.has("order_count") && <td className="text-right px-3 tabular-nums">{r.orderCount}</td>}
-                    {enabledCols.has("fee_rider") && <td className="text-right px-3 tabular-nums">{rp(r.feeRider)}</td>}
-                    {enabledCols.has("active_date") && <td className="text-right px-3 tabular-nums">{r.activeDates}</td>}
+                    {enabledCols.has("order_count") && <td className="text-right px-3 tabular-nums">{r.isKasbonRow ? "—" : r.orderCount}</td>}
+                    {enabledCols.has("fee_rider") && <td className="text-right px-3 tabular-nums">{r.isKasbonRow ? "—" : rp(r.feeRider)}</td>}
+                    {enabledCols.has("active_date") && <td className="text-right px-3 tabular-nums">{r.isKasbonRow ? "—" : r.activeDates}</td>}
                     {enabledCols.has("deductions") && dedTypes.map((ty) => (
-                      <td key={ty} className="text-right px-3 tabular-nums text-destructive">{r.ded[ty] ? rp(r.ded[ty]) : "—"}</td>
+                      <td key={ty} className="text-right px-3 tabular-nums text-destructive">{r.isKasbonRow ? "—" : r.ded[ty] ? rp(r.ded[ty]) : "—"}</td>
                     ))}
                     {enabledCols.has("total_fee") && <td className="text-right px-3 font-semibold tabular-nums">{rp(r.total)}</td>}
                     {enabledCols.has("remarks") && (
                       <td className="px-2">
-                        <input defaultValue={r.remarks} onBlur={(e) => { if (e.target.value !== r.remarks) saveRemark(r.detailId, e.target.value); }}
-                          placeholder="catatan…" className="w-full min-w-[160px] rounded border border-border bg-background px-2 py-1 text-xs" />
+                        {r.isKasbonRow ? (
+                          <span className="text-xs text-muted-foreground">{r.remarks}</span>
+                        ) : (
+                          <input defaultValue={r.remarks} onBlur={(e) => { if (e.target.value !== r.remarks) saveRemark(r.detailId, e.target.value); }}
+                            placeholder="catatan…" className="w-full min-w-[160px] rounded border border-border bg-background px-2 py-1 text-xs" />
+                        )}
                       </td>
                     )}
                   </tr>
@@ -476,6 +536,16 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       {heldRows.length > 0 && (
         <p className="text-xs text-destructive mt-1">
           {heldRows.length} rider ditandai "Ditahan" (pembayarannya di-hold) — total fee-nya ({rp(heldRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL di atas, karena gak ditransfer di Bulk Payment reguler.
+        </p>
+      )}
+      {rows.some((r) => r.isKasbonRow && !r.kasbonNoTransfer) && (
+        <p className="text-xs text-muted-foreground mt-1">
+          GRAND TOTAL sudah termasuk transfer kasbon ke penerima pihak ke-3 (baris "→ Penerima" berlabel "Kasbon · Transfer") — bukan cuma net_pay rider, karena kasbon itu juga ditransfer terpisah di Bulk Payment.
+        </p>
+      )}
+      {internalKasbonRows.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-1">
+          {internalKasbonRows.length} penerima kasbon ditandai "Internal" (rekening perusahaan sendiri) — nominalnya ({rp(internalKasbonRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL, karena gak ada transfer keluar beneran.
         </p>
       )}
     </>

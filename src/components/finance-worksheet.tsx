@@ -98,15 +98,26 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           // — FAILED/PENDING_PICKUP dkk selalu fee=0 di sini, cuma numpuk baris
           // Rp0 di worksheet finance tanpa guna. Tetap kesimpen apa adanya di
           // delivery_records buat BCR Analytics, cuma di-exclude dari view ini.
+          // client_id di-filter kalau run ini scoped ke 1 client — kalau enggak,
+          // rider yang narik buat >1 client di periode sama ikut kebawa kiriman
+          // client LAIN ke drill-down "Kiriman" run ini (lihat RiderDetail).
           fetchAllRows<{ rider_id: string | null; delivery_date: string; distance_km: number | null; weight_kg: number | null; delivery_type: string | null; district: string | null; fee: number }>(
-            (c, from, to) => c.from("delivery_records" as any)
-              .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
-              .ilike("status", "completed")
-              .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end).range(from, to)),
+            (c, from, to) => {
+              let q = c.from("delivery_records" as any)
+                .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
+                .ilike("status", "completed")
+                .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end);
+              if (run.client_id) q = q.eq("client_id", run.client_id);
+              return q.range(from, to);
+            }),
           fetchAllRows<{ rider_id: string | null; client_id: string | null; pitstop_name: string | null; log_date: string; clock_in: string | null; clock_out: string | null; duration_minutes: number | null; is_late: boolean; is_absent: boolean; fee: number }>(
-            (c, from, to) => (c as any).from("attendance_logs")
-              .select("rider_id, client_id, pitstop_name, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee")
-              .gte("log_date", run.period_start).lte("log_date", run.period_end).range(from, to)),
+            (c, from, to) => {
+              let q = (c as any).from("attendance_logs")
+                .select("rider_id, client_id, pitstop_name, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee")
+                .gte("log_date", run.period_start).lte("log_date", run.period_end);
+              if (run.client_id) q = q.eq("client_id", run.client_id);
+              return q.range(from, to);
+            }),
         ]);
 
         // Replay base/overtime/insentif-ontime per baris pakai config skema

@@ -126,26 +126,45 @@ type NettingCandidate = {
 
 // Kasbon dengan penerima pihak ke-3 (kasbon_recipients, lihat add-tab.tsx)
 // motong net_pay rider tapi duitnya harus BENERAN ditransfer ke rekening
-// penerima itu, bukan cuma raib dari file bulk payment. Pakai paid_amount
-// (bukan `amount` nominal deduction) biar konsisten sama yang beneran
-// kepotong kalau gross gak cukup nutup semua potongan (lihat generate() —
-// paid_amount diisi pas Publish). Gabung per-recipient kalau >1 rider di run
-// yang sama motong ke penerima yang sama.
-async function fetchKasbonRecipientRows(detailIds: string[]): Promise<BulkPaymentRow[]> {
+// penerima itu, bukan cuma raib dari file bulk payment. Bulk Payment sudah
+// bisa di-generate dari status "finalized" (SEBELUM Publish) — paid_amount
+// baru keisi PAS Publish (lihat publish() di atas), jadi gak bisa dipakai di
+// sini. Sebagai gantinya, alokasi prioritas yang sama persis (Admin > BPJS >
+// Kerusakan Barang > Kasbon > Sewa Molis > Pinjaman Kuota, dari gross_earning)
+// direplikasi LIVE tanpa nulis apa-apa ke DB — murni preview "kalau di-publish
+// sekarang, penerima ini bakal kebagian berapa". Gabung per-recipient kalau
+// >1 rider di run yang sama motong ke penerima yang sama.
+async function fetchKasbonRecipientRows(payableDetails: Detail[]): Promise<BulkPaymentRow[]> {
+  const detailIds = payableDetails.map((d) => d.id);
   if (detailIds.length === 0) return [];
+  const grossByDetail = new Map(payableDetails.map((d) => [d.id, Number(d.gross_earning)]));
   const { data, error } = await (supabase as any)
     .from("payroll_deductions")
-    .select("paid_amount, kasbon_recipient_id, kasbon_recipients(name, bank_name, account_number, account_holder)")
-    .in("detail_id", detailIds)
-    .not("kasbon_recipient_id", "is", null);
+    .select("detail_id, amount, kasbon_recipient_id, deduction_types(code), kasbon_recipients(name, bank_name, account_number, account_holder)")
+    .in("detail_id", detailIds);
   if (error) throw error;
-  const byRecipient = new Map<string, { recipient: any; amount: number }>();
+
+  const byDetail = new Map<string, any[]>();
   for (const d of data ?? []) {
-    const paid = Number(d.paid_amount) || 0;
-    if (paid <= 0) continue;
-    const entry = byRecipient.get(d.kasbon_recipient_id) ?? { recipient: d.kasbon_recipients, amount: 0 };
-    entry.amount += paid;
-    byRecipient.set(d.kasbon_recipient_id, entry);
+    const arr = byDetail.get(d.detail_id) ?? [];
+    arr.push(d);
+    byDetail.set(d.detail_id, arr);
+  }
+  const byRecipient = new Map<string, { recipient: any; amount: number }>();
+  for (const [detailId, rows] of byDetail) {
+    let remaining = grossByDetail.get(detailId) ?? 0;
+    const sorted = [...rows].sort(
+      (a, b) => (DEDUCTION_PRIORITY[a.deduction_types?.code] ?? 99) - (DEDUCTION_PRIORITY[b.deduction_types?.code] ?? 99),
+    );
+    for (const row of sorted) {
+      const amount = Number(row.amount) || 0;
+      const paid = Math.max(0, Math.min(remaining, amount));
+      remaining -= paid;
+      if (!row.kasbon_recipient_id || paid <= 0) continue;
+      const entry = byRecipient.get(row.kasbon_recipient_id) ?? { recipient: row.kasbon_recipients, amount: 0 };
+      entry.amount += paid;
+      byRecipient.set(row.kasbon_recipient_id, entry);
+    }
   }
   return [...byRecipient.values()].map(({ recipient, amount }) => ({
     bankName: recipient?.bank_name ?? null,
@@ -984,7 +1003,7 @@ function PayrollPage() {
         );
       }
 
-      const kasbonRows = await fetchKasbonRecipientRows(payableDetails.map((d) => d.id));
+      const kasbonRows = await fetchKasbonRecipientRows(payableDetails);
       rows.push(...kasbonRows);
 
       if (rows.length === 0)
@@ -1110,7 +1129,7 @@ function PayrollPage() {
       const readyDetailIds = Object.values(paymentHolds)
         .filter((hold) => (hold.payroll_follow_up_payments ?? []).some((p) => p.status === "ready"))
         .map((hold) => hold.detail_id);
-      const kasbonRows = await fetchKasbonRecipientRows(readyDetailIds);
+      const kasbonRows = await fetchKasbonRecipientRows(details.filter((d) => readyDetailIds.includes(d.id)));
       rows.push(...kasbonRows);
 
       if (rows.length === 0) return toast.error("Tidak ada pembayaran susulan dengan data bank lengkap.");

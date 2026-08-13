@@ -56,6 +56,13 @@ export type RiderRow = {
   // beneran di-transfer). holdReason cuma diisi kalau statusnya masih "held".
   held: boolean;
   holdReason: string | null;
+  // Baris sintetis (bukan rider beneran) yang mewakili 1 penerima kasbon
+  // pihak ke-3 (lihat allocateKasbonByRecipient di lib/kasbon-allocation.ts)
+  // — muncul di Ringkasan biar Finance liat siapa yang kebagian kasbon dan
+  // berapa, tanpa harus buka file terpisah. kasbonNoTransfer=true (rekening
+  // internal perusahaan) di-exclude dari GRAND TOTAL, tapi tetap ditampilin.
+  isKasbonRow: boolean;
+  kasbonNoTransfer: boolean;
 };
 
 export const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");

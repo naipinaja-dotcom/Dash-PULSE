@@ -604,6 +604,30 @@ function PayrollPage() {
     }
   };
 
+  // Hapus baris riwayat — CUMA catatan auditnya yang kehapus, gak nyentuh fee
+  // yang udah tersimpan (itu urusan Reject di atas). Buat beresin tampilan
+  // yang numpuk (dobel-submit lama, percobaan periode yang salah, dll).
+  const deleteAuditEntry = async (entry: FeeAuditEntry) => {
+    if (
+      !(await confirmDialog({
+        title: "Hapus riwayat Hitung Fee ini?",
+        description: entry.rejected_at
+          ? "Baris yang udah di-reject ini cuma dihapus dari tampilan riwayat — fee yang udah di-reset ke 0 tetap aman. Gak bisa dibatalkan."
+          : "Cuma catatan riwayatnya yang kehapus — fee yang udah tersimpan TIDAK ikut ke-reset (kalau mau itu, pakai Reject dulu, baru hapus). Gak bisa dibatalkan.",
+        confirmText: "Hapus",
+        danger: true,
+      }))
+    )
+      return;
+    const { error } = await (supabase as any)
+      .from("fee_calculation_audit_log")
+      .delete()
+      .eq("id", entry.id);
+    if (error) return toast.error(error.message);
+    toast.success("Riwayat dihapus");
+    if (activeRun) loadFeeAuditLog(activeRun);
+  };
+
   // "Generate Ulang" manual — dipakai kalau ada data yang berubah setelah run
   // ke-generate (mis. upload attendance baru, deduction ditambah) dan admin
   // mau recompute tanpa lewat Hitung Fee lagi. Pembuatan run itu sendiri
@@ -1475,7 +1499,7 @@ function PayrollPage() {
                         <th className="px-2 py-2 font-medium text-[12px] text-muted-foreground">
                           Kapan
                         </th>
-                        <th className="px-2 py-2 w-16" />
+                        <th className="px-2 py-2 w-36" />
                       </tr>
                     </thead>
                     <tbody>
@@ -1504,19 +1528,28 @@ function PayrollPage() {
                             {new Date(a.created_at).toLocaleString("id-ID")}
                           </td>
                           <td className="px-2 py-2">
-                            {a.rejected_at ? (
-                              <span className="whitespace-nowrap rounded-md bg-destructive/10 text-destructive px-2 py-1 text-[11px]">
-                                Rejected
-                              </span>
-                            ) : a.action === "commit_payroll" ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              {a.rejected_at ? (
+                                <span className="whitespace-nowrap rounded-md bg-destructive/10 text-destructive px-2 py-1 text-[11px]">
+                                  Rejected
+                                </span>
+                              ) : a.action === "commit_payroll" ? (
+                                <button
+                                  onClick={() => rejectCalculation(a)}
+                                  title="Salah pilih tanggal/client? Reset baris ini balik ke fee=0"
+                                  className="whitespace-nowrap rounded-md border border-destructive/40 text-destructive px-2 py-1 text-[11px] hover:bg-destructive/10 transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              ) : null}
                               <button
-                                onClick={() => rejectCalculation(a)}
-                                title="Salah pilih tanggal/client? Reset baris ini balik ke fee=0"
-                                className="whitespace-nowrap rounded-md border border-destructive/40 text-destructive px-2 py-1 text-[11px] hover:bg-destructive/10 transition-colors"
+                                onClick={() => deleteAuditEntry(a)}
+                                title="Hapus baris riwayat ini (cuma catatannya, gak nyentuh fee yang udah tersimpan)"
+                                className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                               >
-                                Reject
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            ) : null}
+                            </div>
                           </td>
                         </tr>
                       ))}

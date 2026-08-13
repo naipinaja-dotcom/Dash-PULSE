@@ -4,6 +4,13 @@
 // yang (a) sudah di-link ke provider (clients.provider_id) DAN (b) ada di
 // "daftar reminder" aktif (payroll_reminder_schedules) — hitung fee pakai
 // skema pricing client itu, simpan ke delivery_records/attendance_logs.
+//
+// Jadwal produksi (lihat 20260730000001_live_fee_sync_cron.sql) kirim {from,to}
+// EKSPLISIT untuk satu hari kalender per run — bukan rolling window — supaya
+// tiap hari cuma dihitung ULANG persis 2x: sekali sebagai "H-0" (hari itu
+// sendiri, jam 16:00 WIB) dan sekali lagi besoknya sebagai "H-1" (jam 12:00
+// WIB, saat datanya udah pasti final). defaultWindow() di bawah cuma fallback
+// kalau {from,to} gak dikirim (mis. trigger manual tanpa param).
 // SENGAJA TIDAK bikin payroll_runs di sini (dulu pernah, dicabut lagi —
 // window rolling 2 hari cron ini gak nyambung sama periode gajian mingguan
 // per-client, bikin draft run kedua yang salah scope). Payroll run tetap
@@ -45,13 +52,13 @@ import { upsertLiveAttendance } from "./sync-live-attendance";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
-// Window rolling 2 hari (kemarin + hari ini, kalender Asia/Jakarta) tiap kali
-// cron jalan — bukan coba pas-in ke batas periode payroll (itu urusan
-// payroll-workflow yang jalan setelahnya). Overlap antar-run aman karena
-// upsertLiveDeliveries/upsertLiveAttendance idempotent (dedup by dash id /
-// overwrite by date range).
-// ponytail: window fix 2 hari, kalau cron sempat mati >2 hari data yang
-// terlewat gak ke-backfill otomatis — perlu jalanin manual dari Hitung Fee.
+// Fallback kalau {from,to} gak dikirim: rolling 2 hari (kemarin + hari ini,
+// kalender Asia/Jakarta) — bukan coba pas-in ke batas periode payroll (itu
+// urusan payroll-workflow yang jalan setelahnya). Overlap antar-run aman
+// karena upsertLiveDeliveries/upsertLiveAttendance idempotent (dedup by dash
+// id / overwrite by date range).
+// ponytail: fallback window fix 2 hari, kalau cron sempat mati >2 hari data
+// yang terlewat gak ke-backfill otomatis — perlu jalanin manual dari Hitung Fee.
 const JKT_OFFSET_MS = 7 * 60 * 60 * 1000;
 function jktToday(): string {
   return new Date(Date.now() + JKT_OFFSET_MS).toISOString().slice(0, 10);

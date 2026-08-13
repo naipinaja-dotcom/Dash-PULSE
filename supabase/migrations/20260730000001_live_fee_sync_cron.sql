@@ -21,19 +21,27 @@
 --   6. Cek histori run & response: SELECT * FROM cron.job_run_details
 --      ORDER BY start_time DESC LIMIT 10;
 --
--- Jadwal di bawah: 2x sehari, jam 09:50 & 17:50 UTC (16:50 & 00:50 WIB) —
--- SENGAJA 10 menit SEBELUM cron 'payroll-workflow-daily' (10:00 & 18:00 UTC,
--- lihat 20260720000001_payroll_workflow_cron.sql), biar data delivery/
--- attendance yang di-sync live sudah pasti masuk duluan sebelum
--- payroll-workflow generate/regenerate payroll run dari data itu.
+-- Jadwal di bawah: 2 job terpisah, TIAP JOB kirim {from,to} EKSPLISIT untuk
+-- SATU hari kalender (bukan window rolling 2 hari default) — supaya fee tiap
+-- hari cuma dihitung ULANG persis 2x sepanjang hidupnya: sekali sebagai
+-- "H-0" (hari itu sendiri, ditutup jam 16:00 WIB) dan sekali lagi besoknya
+-- sebagai "H-1" (jam 12:00 WIB, saat data hari itu sudah pasti final) — bukan
+-- 3x seperti window rolling lama (disinggung user: ketutup hari yang sama,
+-- kehitung sebelum aktual selesai).
+--   - live-fee-sync-h1-noon:  05:00 UTC = 12:00 WIB -> hitung KEMARIN
+--   - live-fee-sync-h0-close: 09:00 UTC = 16:00 WIB -> hitung HARI INI
+-- H0-close sengaja masih 1 jam SEBELUM cron 'payroll-workflow-daily'
+-- (10:00 & 18:00 UTC, lihat 20260720000001_payroll_workflow_cron.sql), biar
+-- data yang di-sync live sudah pasti masuk duluan sebelum payroll-workflow
+-- generate/regenerate payroll run dari data itu.
 -- Format cron: menit jam tanggal bulan hari-minggu (semua dalam UTC).
 
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
 --
 -- select cron.schedule(
---   'live-fee-sync-twice-daily',
---   '50 9,17 * * *', -- tiap hari jam 09:50 & 17:50 UTC (16:50 & 00:50 WIB)
+--   'live-fee-sync-h1-noon',
+--   '0 5 * * *', -- tiap hari jam 05:00 UTC (12:00 WIB) -> finalize KEMARIN
 --   $$
 --   select net.http_post(
 --     url := '<PRODUCTION_URL>/api/live-fee-sync',
@@ -41,13 +49,35 @@
 --       'Content-Type', 'application/json',
 --       'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'
 --     ),
---     body := '{}'::jsonb
+--     body := jsonb_build_object(
+--       'from', ((now() at time zone 'Asia/Jakarta')::date - 1)::text,
+--       'to', ((now() at time zone 'Asia/Jakarta')::date - 1)::text
+--     )
+--   );
+--   $$
+-- );
+--
+-- select cron.schedule(
+--   'live-fee-sync-h0-close',
+--   '0 9 * * *', -- tiap hari jam 09:00 UTC (16:00 WIB) -> finalize HARI INI
+--   $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'
+--     ),
+--     body := jsonb_build_object(
+--       'from', ((now() at time zone 'Asia/Jakarta')::date)::text,
+--       'to', ((now() at time zone 'Asia/Jakarta')::date)::text
+--     )
 --   );
 --   $$
 -- );
 
 -- Untuk ganti jadwal atau matikan cron:
---   select cron.unschedule('live-fee-sync-twice-daily');
+--   select cron.unschedule('live-fee-sync-h1-noon');
+--   select cron.unschedule('live-fee-sync-h0-close');
 --   -- lalu jalankan ulang cron.schedule(...) di atas dengan jadwal baru.
 
 -- Untuk backfill/test manual periode tertentu:

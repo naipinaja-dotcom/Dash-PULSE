@@ -124,6 +124,37 @@ type NettingCandidate = {
   headroom: number;
 };
 
+// Kasbon dengan penerima pihak ke-3 (kasbon_recipients, lihat add-tab.tsx)
+// motong net_pay rider tapi duitnya harus BENERAN ditransfer ke rekening
+// penerima itu, bukan cuma raib dari file bulk payment. Pakai paid_amount
+// (bukan `amount` nominal deduction) biar konsisten sama yang beneran
+// kepotong kalau gross gak cukup nutup semua potongan (lihat generate() —
+// paid_amount diisi pas Publish). Gabung per-recipient kalau >1 rider di run
+// yang sama motong ke penerima yang sama.
+async function fetchKasbonRecipientRows(detailIds: string[]): Promise<BulkPaymentRow[]> {
+  if (detailIds.length === 0) return [];
+  const { data, error } = await (supabase as any)
+    .from("payroll_deductions")
+    .select("paid_amount, kasbon_recipient_id, kasbon_recipients(name, bank_name, account_number, account_holder)")
+    .in("detail_id", detailIds)
+    .not("kasbon_recipient_id", "is", null);
+  if (error) throw error;
+  const byRecipient = new Map<string, { recipient: any; amount: number }>();
+  for (const d of data ?? []) {
+    const paid = Number(d.paid_amount) || 0;
+    if (paid <= 0) continue;
+    const entry = byRecipient.get(d.kasbon_recipient_id) ?? { recipient: d.kasbon_recipients, amount: 0 };
+    entry.amount += paid;
+    byRecipient.set(d.kasbon_recipient_id, entry);
+  }
+  return [...byRecipient.values()].map(({ recipient, amount }) => ({
+    bankName: recipient?.bank_name ?? null,
+    accountNumber: recipient?.account_number ?? null,
+    receiverName: recipient?.account_holder || recipient?.name || "",
+    amount,
+  }));
+}
+
 function PayrollPage() {
   const { t } = useT();
   const posthog = usePostHog();
@@ -952,6 +983,10 @@ function PayrollPage() {
           `${missingBank.length} rider dilewati (belum ada data bank): ${missingBank.slice(0, 5).join(", ")}${missingBank.length > 5 ? ", ..." : ""}`,
         );
       }
+
+      const kasbonRows = await fetchKasbonRecipientRows(payableDetails.map((d) => d.id));
+      rows.push(...kasbonRows);
+
       if (rows.length === 0)
         return toast.error("Tidak ada rider dengan data bank lengkap untuk di-export");
 
@@ -960,6 +995,7 @@ function PayrollPage() {
       else downloadBulkPaymentXLS(filename, rows);
       toast.success(
         `Bulk payment ${rows.length} rider berhasil di-generate` +
+          (kasbonRows.length ? `, termasuk ${kasbonRows.length} transfer ke penerima kasbon` : "") +
           (heldCount ? `; ${heldCount} detail hold dikeluarkan dari file reguler.` : ""),
       );
     } catch (e) {
@@ -1067,6 +1103,16 @@ function PayrollPage() {
       if (missingBank.length) {
         toast.warning(`${missingBank.length} rider susulan dilewati karena data bank belum lengkap.`);
       }
+
+      // Detail yang di-hold gak pernah masuk bulk payment reguler sama sekali
+      // (termasuk potongan kasbonnya) — jadi penerima kasbon rider ini juga
+      // baru bisa ditransfer dari sini, pas hold-nya dilepas.
+      const readyDetailIds = Object.values(paymentHolds)
+        .filter((hold) => (hold.payroll_follow_up_payments ?? []).some((p) => p.status === "ready"))
+        .map((hold) => hold.detail_id);
+      const kasbonRows = await fetchKasbonRecipientRows(readyDetailIds);
+      rows.push(...kasbonRows);
+
       if (rows.length === 0) return toast.error("Tidak ada pembayaran susulan dengan data bank lengkap.");
 
       const filename = `Pembayaran Susulan - ${activeRun.name} - ${activeRun.period_end}`;
@@ -1078,7 +1124,10 @@ function PayrollPage() {
         .update({ status: "exported", exported_at: new Date().toISOString() })
         .in("id", exportIds);
       if (markError) throw markError;
-      toast.success(`Pembayaran susulan ${rows.length} rider berhasil diexport.`);
+      toast.success(
+        `Pembayaran susulan ${exportIds.length} rider berhasil diexport` +
+          (kasbonRows.length ? `, termasuk ${kasbonRows.length} transfer ke penerima kasbon.` : "."),
+      );
       await loadPaymentHolds(details.map((row) => row.id));
     } catch (e) {
       toast.error((e as Error).message);

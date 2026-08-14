@@ -205,6 +205,20 @@
     background: var(--page-gradient);
   }
 
+  /* Neo Brutal keeps the finance workspace illustration from the approved
+     localhost design.  It is an absolute layer, so it never creates unused
+     page height or competes with the operational data above it. */
+  .admin-shell::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset: 3.5rem 0 0;
+    pointer-events: none;
+    opacity: .34;
+    background: url('/payroll-finance-pattern-v2.png') center top / cover no-repeat;
+    mix-blend-mode: multiply;
+  }
+
   .admin-shell h1,
   .admin-shell h2,
   .admin-shell h3,
@@ -711,6 +725,7 @@
     var(--color-background);
 }
 [data-design="classic"] .admin-sidebar::before,
+[data-design="classic"] .admin-shell::before,
 [data-design="classic"] .admin-header::after,
 [data-design="classic"] .pricing-rail::before,
 [data-design="classic"] .pricing-builder::before {

@@ -42,7 +42,14 @@ function DeductionsPage() {
             </button>
           ))}
         </div>
-        <section className="deductions-panel">
+        <section className={`deductions-panel${tab === "add" ? " deductions-panel--form" : ""}`}>
+          {tab === "add" && (
+            <div className="deductions-panel-heading">
+              <span data-eyebrow>Setup potongan</span>
+              <h2>Atur potongan rider</h2>
+              <p>Pilih rider, tentukan skema, lalu isi nominal dan tanggal mulai.</p>
+            </div>
+          )}
           {tab === "types" && <DTypesTab />}
           {tab === "molis" && <MolisTypesTab />}
           {tab === "add" && <AddTab />}

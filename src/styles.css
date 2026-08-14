@@ -48,13 +48,15 @@
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.975 0.004 280);
-  --foreground: oklch(0.15 0.04 265);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.04 265);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.04 265);
+  --radius: 0.2rem;
+  /* Warm cream neutrals (hue ~90) — neo-brutal: cream ground + violet accent
+     + ink borders. Cards sit a touch lighter than the page so they lift. */
+  --background: oklch(0.965 0.018 88);
+  --foreground: oklch(0.095 0.03 265);
+  --card: oklch(0.992 0.009 88);
+  --card-foreground: oklch(0.095 0.03 265);
+  --popover: oklch(0.992 0.009 88);
+  --popover-foreground: oklch(0.095 0.03 265);
   /* Purple #7c5cfc */
   --primary: oklch(0.56 0.22 290);
   --primary-foreground: oklch(0.99 0.003 280);
@@ -64,30 +66,44 @@
   --primary-soft-foreground: oklch(0.42 0.2 290);
   /* #c4b5fd */
   --primary-border: oklch(0.8 0.1 290);
-  --secondary: oklch(0.97 0.005 280);
-  --secondary-foreground: oklch(0.15 0.04 265);
-  --muted: oklch(0.96 0.005 280);
-  --muted-foreground: oklch(0.55 0.02 265);
+  --secondary: oklch(0.972 0.018 88);
+  --secondary-foreground: oklch(0.095 0.03 265);
+  --muted: oklch(0.945 0.018 88);
+  /* Secondary copy needs to survive dense tables and long reconciliation
+     sessions. This is deliberately darker than the prior soft-grey token. */
+  --muted-foreground: oklch(0.29 0.026 265);
   --accent: oklch(0.95 0.03 290);
   --accent-foreground: oklch(0.42 0.2 290);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(0.99 0 0);
-  --success: oklch(0.68 0.16 155);
+  /* Global action palette: Coral = needs intervention, Gold = warning / next
+     action, Violet = information / workflow. Dark ink on the bright fills
+     keeps labels readable for long finance sessions and colour-vision needs. */
+  --destructive: #e94f37;
+  --destructive-foreground: #17131d;
+  --success: #087f5b;
   --success-foreground: oklch(0.99 0 0);
-  --warning: oklch(0.78 0.16 75);
-  --warning-foreground: oklch(0.2 0.04 75);
-  --border: oklch(0.93 0.01 285);
-  --border-strong: oklch(0.86 0.015 285);
-  --input: oklch(0.975 0.004 280);
+  --warning: #f59e0b;
+  --warning-foreground: #17131d;
+  --border: oklch(0.15 0.04 265);
+  --border-strong: oklch(0.15 0.04 265);
+  --input: oklch(0.982 0.012 88);
   --ring: oklch(0.56 0.22 290);
-  --sidebar: oklch(0.985 0.008 285);
-  --sidebar-foreground: oklch(0.15 0.04 265);
+  --sidebar: oklch(0.984 0.012 88);
+  --sidebar-foreground: oklch(0.095 0.03 265);
   --sidebar-primary: oklch(0.56 0.22 290);
   --sidebar-primary-foreground: oklch(0.99 0 0);
   --sidebar-accent: oklch(0.95 0.03 290);
   --sidebar-accent-foreground: oklch(0.42 0.2 290);
   --sidebar-border: oklch(0.93 0.01 285);
   --sidebar-ring: oklch(0.56 0.22 290);
+  /* Gradasi batang/area grafik — dua stop dalam SATU hue (violet). Lintas-hue
+     sengaja dihindari: gradasi yang lompat hue bikin efek neo-brutal-nya hilang.
+     Dipakai lewat <defs><linearGradient> di chart, bukan sebagai class Tailwind. */
+  --chart-grad-from: oklch(0.62 0.22 290);
+  --chart-grad-to: oklch(0.44 0.20 290);
+  --brutal-accent: #f6c445;
+  /* Gradients are reserved for depth, never for data text. */
+  --page-gradient: linear-gradient(135deg, oklch(0.985 0.024 88) 0%, oklch(0.968 0.027 305) 52%, oklch(0.965 0.032 245) 100%);
+  --surface-gradient: linear-gradient(150deg, oklch(0.998 0.006 88), oklch(0.974 0.022 300));
 }
 
 .dark {
@@ -106,17 +122,21 @@
   --secondary: oklch(0.22 0.035 285);
   --secondary-foreground: oklch(0.96 0.01 285);
   --muted: oklch(0.22 0.035 285);
-  --muted-foreground: oklch(0.65 0.02 285);
+  /* Midpoint (0.70): readable in tables, yet clearly dimmer than the 0.96
+     foreground so hierarchy stays legible. Hierarchy leans on weight/size/case
+     (heavy uppercase headings) more than on this brightness gap. */
+  --muted-foreground: oklch(0.76 0.022 285);
   --accent: oklch(0.25 0.08 290);
   --accent-foreground: oklch(0.82 0.08 290);
-  --destructive: oklch(0.68 0.2 25);
-  --destructive-foreground: oklch(0.99 0 0);
-  --success: oklch(0.7 0.16 155);
-  --success-foreground: oklch(0.14 0.03 285);
-  --warning: oklch(0.8 0.16 75);
-  --warning-foreground: oklch(0.14 0.03 285);
-  --border: oklch(0.28 0.04 285);
-  --border-strong: oklch(0.35 0.05 285);
+  /* Same Coral–Gold status palette as :root — see comment there. */
+  --destructive: #e94f37;
+  --destructive-foreground: #17131d;
+  --success: #087f5b;
+  --success-foreground: oklch(0.99 0 0);
+  --warning: #f59e0b;
+  --warning-foreground: #17131d;
+  --border: oklch(0.96 0.01 285);
+  --border-strong: oklch(0.96 0.01 285);
   --input: oklch(0.22 0.035 285);
   --ring: oklch(0.65 0.2 290);
   /* sidebar #110e22 */
@@ -128,6 +148,14 @@
   --sidebar-accent-foreground: oklch(0.82 0.08 290);
   --sidebar-border: oklch(0.28 0.04 285);
   --sidebar-ring: oklch(0.65 0.2 290);
+  /* Distep ulang buat surface gelap (bukan dibalik otomatis) — lihat :root. */
+  --chart-grad-from: oklch(0.72 0.20 290);
+  --chart-grad-to: oklch(0.52 0.18 290);
+  --page-gradient:
+    radial-gradient(ellipse 76% 46% at 92% -12%, color-mix(in oklch, var(--color-primary) 18%, transparent), transparent 70%),
+    radial-gradient(ellipse 52% 34% at -6% 106%, color-mix(in oklch, var(--color-success) 8%, transparent), transparent 74%),
+    var(--color-background);
+  --surface-gradient: linear-gradient(145deg, color-mix(in oklch, var(--color-card) 92%, white), var(--color-card));
 }
 
 @layer base {
@@ -135,22 +163,26 @@
     border-color: var(--color-border);
   }
   body {
-    background-color: var(--color-background);
+    background: var(--page-gradient);
     color: var(--color-foreground);
-    font-family: 'Inter', system-ui, sans-serif;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+    font-size: 0.9375rem;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, [data-display] {
-    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    font-family: 'Sora', 'Manrope', system-ui, sans-serif;
     font-feature-settings: normal;
+    font-weight: 700;
+    letter-spacing: -0.025em;
   }
 
   [data-eyebrow] {
-    font-size: 0.6875rem;
-    font-weight: 600;
+    font-size: 0.75rem;
+    font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--color-muted-foreground);
@@ -165,53 +197,120 @@
     position: relative;
     /* Use the local fallbacks first so the redesign is visible in offline
        localhost previews; web fonts remain available for other platforms. */
-    font-family: 'Segoe UI', 'Manrope', system-ui, sans-serif;
+    font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     /* Keep long admin pages scrollable; the ambient layer owns its own clipping. */
     overflow-x: clip;
     overflow-y: visible;
-    background:
-      radial-gradient(ellipse 80% 45% at 74% -12%, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 72%),
-      radial-gradient(ellipse 65% 38% at 8% 105%, color-mix(in oklch, #68e5ff 5%, transparent), transparent 76%),
-      var(--color-background);
+    background: var(--page-gradient);
   }
 
   .admin-shell h1,
   .admin-shell h2,
   .admin-shell h3,
   .admin-shell [data-display] {
-    font-family: 'Bahnschrift', 'Sora', 'Segoe UI', system-ui, sans-serif;
+    font-family: 'Sora', 'Manrope', system-ui, sans-serif;
     letter-spacing: -0.025em;
   }
 
-  .admin-page-title { letter-spacing: -0.035em; }
-  .admin-page-subtitle { letter-spacing: .005em; }
-  .admin-metric-value { font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.02em; line-height: 1.15; }
-  .admin-stat-card, .admin-kpi-card { min-height: 124px; }
-  .admin-stat-card { position: relative; overflow: hidden; }
-  .admin-stat-card::after {
-    content: "";
-    position: absolute;
-    inset: auto 0 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 46%, transparent), transparent);
-    opacity: 0;
-    transform: scaleX(.42);
-    transform-origin: center;
-    transition: opacity .22s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+  .admin-page-title { letter-spacing: -0.03em; }
+  .admin-page-subtitle { letter-spacing: .005em; font-size: .75rem; font-weight: 550; }
+  .admin-metric-value {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+    font-weight: 700;
   }
-  .admin-stat-card:hover::after { opacity: 1; transform: scaleX(1); }
+  .admin-stat-card, .admin-kpi-card { min-height: 124px; }
+  .admin-stat-card {
+    position: relative;
+    border: 3px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: 6px 6px 0 0 var(--color-border-strong);
+    transition: transform .18s cubic-bezier(.22, 1, .36, 1), box-shadow .18s ease;
+  }
+  /* Tone = meaning (which stat this is); tilt direction just alternates by position. */
+  .admin-stat-card:nth-child(odd) { transform: rotate(-1.1deg); }
+  .admin-stat-card:nth-child(even) { transform: rotate(0.9deg); }
+  .admin-stat-card[data-tone="neutral"] { background: var(--surface-gradient); color: var(--color-foreground); }
+  .admin-stat-card[data-tone="primary"] { background: var(--color-primary); color: var(--color-primary-foreground); }
+  .admin-stat-card[data-tone="success"] { background: var(--color-success); color: var(--color-success-foreground); }
+  .admin-stat-card[data-tone="destructive"] { background: var(--color-destructive); color: var(--color-destructive-foreground); }
+  .admin-stat-card:hover {
+    transform: rotate(0deg) translate(-2px, -2px);
+    box-shadow: 9px 9px 0 0 var(--color-border-strong);
+  }
+  .admin-stat-card [data-eyebrow], .admin-stat-card .text-muted-foreground { color: inherit; opacity: .8; }
+  .stat-icon-chip { background: color-mix(in oklch, currentColor 18%, transparent); border: 3px solid currentColor; }
+
+  .admin-kpi-card {
+    border: 3px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: 6px 6px 0 0 var(--color-border-strong);
+    transition: transform .18s cubic-bezier(.22, 1, .36, 1), box-shadow .18s ease;
+  }
+  .admin-kpi-card:nth-child(odd) { transform: rotate(-0.8deg); }
+  .admin-kpi-card:nth-child(even) { transform: rotate(0.7deg); }
+  .admin-kpi-card:hover { transform: rotate(0deg) translate(-2px, -2px); box-shadow: 9px 9px 0 0 var(--color-border-strong); }
+  .admin-kpi-card[data-variant="default"] { background: var(--surface-gradient); color: var(--color-foreground); }
+  .admin-kpi-card[data-variant="primary"] { background: var(--color-primary); color: var(--color-primary-foreground); }
+  .admin-kpi-card[data-variant="muted"] { background: var(--color-secondary); color: var(--color-foreground); }
+  .admin-kpi-card[data-variant="success"] { background: var(--color-success); color: var(--color-success-foreground); }
+  .admin-kpi-card[data-variant="warning"] { background: var(--color-warning); color: var(--color-warning-foreground); }
+  .admin-kpi-card[data-variant="danger"] { background: var(--color-destructive); color: var(--color-destructive-foreground); }
+  .admin-kpi-card .text-muted-foreground { color: inherit; opacity: .8; }
+
+  /* Faint-text safety net: on any SOLID-fill stat/kpi card, force every nested
+     text token to inherit the card's contrasting foreground — kills the
+     "same-color text on same-color fill" washout (e.g. violet value on violet). */
+  .admin-kpi-card[data-variant="primary"] *,
+  .admin-kpi-card[data-variant="success"] *,
+  .admin-kpi-card[data-variant="warning"] *,
+  .admin-kpi-card[data-variant="danger"] *,
+  .admin-stat-card[data-tone="primary"] *,
+  .admin-stat-card[data-tone="success"] *,
+  .admin-stat-card[data-tone="destructive"] * {
+    color: inherit !important;
+  }
+
+  /* GLOBAL faint-text safety net: any muted / soft / same-family text token
+     sitting inside a solid saturated fill (bg-primary/success/warning/destructive)
+     gets washed out — force it to the fill's own contrasting foreground token
+     (explicit, not inherit, so it's correct even if the container didn't set one).
+     Catches selected cards, banners, pills app-wide without per-component edits. */
+  .bg-primary .text-muted-foreground,
+  .bg-primary .text-primary,
+  .bg-primary .text-primary-soft-foreground {
+    color: var(--color-primary-foreground) !important;
+    opacity: .9;
+  }
+  .bg-success .text-muted-foreground,
+  .bg-success .text-success {
+    color: var(--color-success-foreground) !important;
+    opacity: .9;
+  }
+  .bg-warning .text-muted-foreground,
+  .bg-warning .text-warning {
+    color: var(--color-warning-foreground) !important;
+    opacity: .9;
+  }
+  .bg-destructive .text-muted-foreground,
+  .bg-destructive .text-destructive {
+    color: var(--color-destructive-foreground) !important;
+    opacity: .9;
+  }
 
   .admin-chart-card {
-    border-radius: 1rem;
-    background: color-mix(in oklch, var(--color-card) 92%, transparent);
-    box-shadow: 0 14px 38px color-mix(in oklch, var(--color-primary) 7%, transparent), inset 0 1px 0 rgb(255 255 255 / .06);
-    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+    background: var(--surface-gradient);
+    border: 2px solid var(--color-border-strong);
+    box-shadow: 6px 6px 0 0 var(--color-border-strong);
+    transition: transform .15s ease;
   }
 
   .admin-chart-card:hover {
-    border-color: color-mix(in oklch, var(--color-primary) 28%, var(--color-border));
-    box-shadow: 0 18px 44px color-mix(in oklch, var(--color-primary) 11%, transparent), inset 0 1px 0 rgb(255 255 255 / .08);
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 0 var(--color-border-strong);
   }
 
   .admin-chart-card .recharts-cartesian-grid-horizontal line,
@@ -220,62 +319,37 @@
     opacity: .32;
   }
 
-  .admin-chart-card .recharts-text { fill: var(--color-muted-foreground); }
+  .admin-chart-card .recharts-text { fill: var(--color-muted-foreground); font-weight: 600; }
+  .admin-chart-card .recharts-legend-item-text { color: var(--color-foreground) !important; }
   .admin-chart-card h3 { font-size: .9375rem; line-height: 1.3; }
-  .admin-chart-card p { font-size: .75rem; line-height: 1.4; }
-  .admin-chart-card a { font-size: .75rem; font-weight: 600; }
+  .admin-chart-card p { font-size: .8125rem; line-height: 1.45; }
+  .admin-chart-card a { font-size: .8125rem; font-weight: 700; }
 
-  .admin-ambient {
-    position: fixed;
-    z-index: 0;
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-
-  .admin-ambient-orb {
-    position: absolute;
-    border-radius: 999px;
-    filter: blur(56px);
-    opacity: .14;
-    will-change: transform;
-  }
-
-  .admin-ambient-orb-a {
-    width: 26rem;
-    height: 26rem;
-    right: 9%;
-    top: -18rem;
-    background: color-mix(in oklch, var(--color-primary) 70%, #68e5ff);
-    animation: admin-ambient-drift 17s ease-in-out infinite alternate;
-  }
-
-  .admin-ambient-orb-b {
-    width: 20rem;
-    height: 20rem;
-    left: 18%;
-    bottom: -15rem;
-    background: color-mix(in oklch, var(--color-primary) 60%, #ff758f);
-    opacity: .08;
-    animation: admin-ambient-drift 21s ease-in-out -5s infinite alternate-reverse;
-  }
-
+  .admin-ambient,
+  .admin-ambient-orb,
   .admin-ambient-grid {
-    position: absolute;
-    inset: 0;
-    opacity: .13;
-    background-image: linear-gradient(color-mix(in oklch, var(--color-border) 55%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in oklch, var(--color-border) 55%, transparent) 1px, transparent 1px);
-    background-size: 52px 52px;
-    mask-image: radial-gradient(ellipse 90% 55% at 50% 0%, black, transparent 78%);
+    display: none;
   }
 
   .admin-sidebar {
     position: relative;
     z-index: 1;
-    background: color-mix(in oklch, var(--color-sidebar) 86%, transparent);
-    backdrop-filter: blur(22px);
-    -webkit-backdrop-filter: blur(22px);
+    background: color-mix(in oklch, var(--color-sidebar) 96%, transparent);
+    border-right: 2px solid var(--color-border-strong);
   }
+  .admin-sidebar::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset: 3.5rem 0 0;
+    opacity: .32;
+    pointer-events: none;
+    background: url('/payroll-finance-pattern-v2.png') left top / 900px auto no-repeat;
+    mix-blend-mode: multiply;
+    -webkit-mask-image: linear-gradient(180deg, #000 0 38%, transparent 78%);
+    mask-image: linear-gradient(180deg, #000 0 38%, transparent 78%);
+  }
+  .admin-sidebar > * { position: relative; z-index: 1; }
 
   .admin-brand {
     position: relative;
@@ -284,54 +358,71 @@
   .admin-brand::after {
     content: "";
     position: absolute;
-    left: 1.25rem;
-    right: 1.25rem;
+    left: 0;
+    right: 0;
     bottom: -1px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 70%, transparent), transparent);
-    opacity: .8;
+    height: 2px;
+    background: var(--color-border-strong);
   }
 
+  /* Hard-bordered segmented control — no soft container, no glow. */
   .admin-mode-switch {
-    border: 1px solid color-mix(in oklch, var(--color-border) 80%, transparent);
-    background: color-mix(in oklch, var(--color-muted) 68%, transparent);
+    border: 2px solid var(--color-border-strong);
+    background: var(--surface-gradient);
+    box-shadow: 3px 3px 0 0 var(--color-border-strong);
+    border-radius: var(--radius-md);
+    gap: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
   }
+  .admin-mode-switch > button { border-radius: 0 !important; }
+  .admin-mode-switch > button + button { border-left: 2px solid var(--color-border-strong); }
+  .admin-mode-active { box-shadow: none !important; }
 
-  .admin-mode-active { box-shadow: 0 5px 16px color-mix(in oklch, var(--color-primary) 26%, transparent), inset 0 1px 0 rgb(255 255 255 / .22); }
+  .admin-section-label { letter-spacing: .16em; opacity: 1; }
 
-  .admin-section-label { letter-spacing: .18em; opacity: .72; }
-
-  .admin-nav-item { position: relative; overflow: hidden; }
-  .admin-nav-item::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 72%);
-    opacity: 0;
-    transition: opacity .18s ease;
+  /* Nav item: flat by default, SOLID blocky fill + ink border + hard shadow when active. */
+  .admin-nav-item {
+    position: relative;
+    border: 2px solid transparent;
+    font-weight: 600;
   }
-  .admin-nav-item:hover::before, .admin-nav-active::before { opacity: 1; }
-  .admin-nav-active { box-shadow: inset 2px 0 0 var(--color-primary), 0 4px 16px color-mix(in oklch, var(--color-primary) 10%, transparent); }
-  .admin-nav-item > * { position: relative; z-index: 1; }
+  .admin-nav-item:not(.admin-nav-active) { color: color-mix(in oklch, var(--color-foreground) 82%, transparent) !important; }
+  .admin-nav-item:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-muted);
+  }
+  .admin-nav-active,
+  .admin-nav-active:hover {
+    background: var(--color-primary) !important;
+    color: var(--color-primary-foreground) !important;
+    border: 2px solid var(--color-border-strong);
+    box-shadow: 3px 3px 0 0 var(--color-border-strong);
+    font-weight: 700;
+  }
+  .admin-nav-active svg { color: var(--color-primary-foreground) !important; }
 
-  .admin-sidebar-footer { background: linear-gradient(180deg, transparent, color-mix(in oklch, var(--color-primary) 4%, transparent)); }
-  .admin-avatar-orb { box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 12%, transparent), 0 5px 15px color-mix(in oklch, var(--color-primary) 24%, transparent); }
+  .admin-sidebar-footer { border-top: 2px solid var(--color-border-strong); }
+  .admin-avatar-orb { border: 2px solid var(--color-border-strong); box-shadow: 2px 2px 0 0 var(--color-border-strong); }
 
   .admin-header {
     position: relative;
-    background: color-mix(in oklch, var(--color-card) 78%, transparent);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: color-mix(in oklch, var(--color-card) 97%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 2px solid var(--color-border-strong);
   }
   .admin-header::after {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
-    bottom: -1px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 50%, transparent), transparent);
-    opacity: .55;
+    bottom: -2px;
+    height: 5px;
+    background: linear-gradient(90deg, var(--color-primary) 0 38%, #1d4ed8 38% 63%, var(--brutal-accent) 63% 82%, #ff6654 82% 100%);
+    border-top: 2px solid var(--color-border-strong);
+    border-bottom: 2px solid var(--color-border-strong);
+    pointer-events: none;
   }
   .admin-header-context { color: var(--color-muted-foreground); font: 600 9px/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .14em; }
   .admin-live-dot { width: .38rem; height: .38rem; border-radius: 999px; background: var(--color-success); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-success) 17%, transparent), 0 0 10px color-mix(in oklch, var(--color-success) 65%, transparent); }
@@ -340,6 +431,93 @@
 
   .admin-content > * { min-width: 0; }
   .admin-nav-item { transition-property: color, background-color, box-shadow, opacity, transform; }
+  /* Data labels are operational content, not decoration.  Keep every small
+     label legible even for low-vision and colour-blind users. */
+  .admin-content :is(label, th, td.text-muted-foreground, .text-muted-foreground) {
+    color: var(--color-muted-foreground);
+  }
+  .admin-content :is(th, [data-eyebrow]) { font-weight: 700; }
+  .admin-content th.text-muted-foreground,
+  .admin-content td.text-muted-foreground { color: var(--color-foreground); }
+  .admin-content :is(input, select, textarea)::placeholder { color: color-mix(in oklch, var(--color-foreground) 58%, var(--color-card)); opacity: 1; }
+  .admin-content [class*="text-foreground/"] { color: var(--color-foreground) !important; }
+
+  /* Pricing is a dense configuration page, not a poster.  Reserve the hard
+     Neo Brutal treatment for the two work surfaces and the active choice;
+     demote every nested control one level so people can scan rates quickly. */
+  .pricing-workbench { position: relative; }
+  .pricing-rail,
+  .pricing-builder {
+    background: color-mix(in oklch, var(--color-card) 96%, transparent);
+    border-width: 2px !important;
+    box-shadow: 5px 5px 0 0 var(--color-border-strong) !important;
+  }
+  .pricing-rail {
+    background: linear-gradient(155deg, color-mix(in oklch, var(--color-card) 96%, white), color-mix(in oklch, var(--color-card) 91%, #d9ccff));
+  }
+  .pricing-builder {
+    background: linear-gradient(155deg, color-mix(in oklch, var(--color-card) 97%, white), color-mix(in oklch, var(--color-card) 94%, #d8efff));
+  }
+  .pricing-rail::before,
+  .pricing-builder::before {
+    content: "";
+    display: block;
+    height: 5px;
+    margin: -1.25rem -1.25rem 1rem;
+    background: linear-gradient(90deg, var(--color-primary) 0 62%, #1d4ed8 62% 82%, var(--brutal-accent) 82% 100%);
+  }
+  .pricing-rail :is(button[class*="border-2"], label[class*="border-2"]) {
+    border-width: 1px !important;
+    border-color: color-mix(in oklch, var(--color-border-strong) 62%, transparent) !important;
+    box-shadow: none !important;
+  }
+  .pricing-rail :is(button.bg-primary, label.bg-primary) {
+    border-width: 2px !important;
+    border-color: var(--color-border-strong) !important;
+    background: var(--color-primary) !important;
+    box-shadow: 3px 3px 0 0 var(--color-border-strong) !important;
+  }
+  .pricing-rail [data-pricing-side="client"].bg-primary {
+    background: #1d4ed8 !important;
+    color: white !important;
+  }
+  .pricing-rail [data-pricing-category="delivery"].bg-primary {
+    background: #ff6654 !important;
+    color: var(--color-foreground) !important;
+  }
+  .pricing-rail [data-pricing-category="attendance"].bg-primary {
+    background: var(--brutal-accent) !important;
+    color: var(--color-foreground) !important;
+  }
+  .pricing-rail [data-pricing-dimension="distance"].bg-primary {
+    background: #1d4ed8 !important;
+    color: white !important;
+  }
+  .pricing-rail [data-pricing-dimension="weight"].bg-primary {
+    background: var(--brutal-accent) !important;
+    color: var(--color-foreground) !important;
+  }
+  .pricing-rail :is([data-pricing-category="delivery"].bg-primary, [data-pricing-category="attendance"].bg-primary, [data-pricing-dimension="weight"].bg-primary) .text-muted-foreground {
+    color: var(--color-foreground) !important;
+    opacity: .76;
+  }
+  .pricing-rail .pricing-callout {
+    border-width: 1px !important;
+    border-style: dashed !important;
+    background: color-mix(in oklch, var(--color-warning) 20%, var(--color-card));
+  }
+  .pricing-builder :is(.rounded-md.border, .rounded-lg.border) {
+    border-color: color-mix(in oklch, var(--color-border-strong) 55%, transparent);
+  }
+  .pricing-builder .bg-muted { background: color-mix(in oklch, var(--color-primary) 7%, var(--color-muted)); }
+  .pricing-workbench input:focus,
+  .pricing-workbench select:focus {
+    outline: 2px solid color-mix(in oklch, var(--color-primary) 62%, transparent);
+    outline-offset: 1px;
+  }
+  .pricing-workbench .text-muted-foreground {
+    color: color-mix(in oklch, var(--color-foreground) 72%, var(--color-muted-foreground));
+  }
 
   @media (prefers-reduced-motion: no-preference) {
     /* Fade the page shell only; transforms stay on cards so dialogs/tooltips
@@ -352,19 +530,19 @@
     .admin-stat-card:nth-child(3) { animation-delay: .08s; }
     .admin-stat-card:nth-child(4) { animation-delay: .12s; }
     .admin-nav-item:hover { transform: translateX(2px); }
+    .admin-sidebar::before {
+      animation: admin-sidebar-art-drift 22s ease-in-out infinite alternate;
+      will-change: transform;
+    }
   }
 
   @media (max-width: 640px) {
-    .admin-ambient-orb { opacity: .045; filter: blur(42px); }
-    .admin-ambient-grid { opacity: .07; }
     .admin-page-title { font-size: 15px; }
     .admin-metric-value { font-size: 24px; }
   }
 
   .rider-shell {
-    background:
-      radial-gradient(ellipse 95% 34% at 50% -10%, color-mix(in oklch, var(--color-primary) 20%, transparent), transparent 72%),
-      var(--color-background);
+    background: var(--color-background);
   }
 
   .rider-pulse-line {
@@ -378,38 +556,55 @@
   .rider-orb { animation: rider-orb 13s ease-in-out infinite alternate; }
 
   .rider-stars, .rider-meteor { display: none; }
-  .dark .rider-stars {
-    display: block;
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    opacity: .62;
-    background-image:
-      radial-gradient(circle at 14% 18%, rgba(255,255,255,.9) 0 1px, transparent 1.6px),
-      radial-gradient(circle at 78% 12%, rgba(182,156,255,.95) 0 1px, transparent 1.7px),
-      radial-gradient(circle at 36% 41%, rgba(104,229,255,.65) 0 .8px, transparent 1.5px),
-      radial-gradient(circle at 88% 57%, rgba(255,255,255,.7) 0 .8px, transparent 1.5px),
-      radial-gradient(circle at 18% 76%, rgba(182,156,255,.8) 0 1px, transparent 1.7px),
-      radial-gradient(circle at 62% 85%, rgba(255,255,255,.6) 0 .8px, transparent 1.5px);
-    background-size: 183px 151px, 241px 197px, 169px 223px, 277px 193px, 213px 263px, 311px 229px;
-    mask-image: linear-gradient(to bottom, black, transparent 78%);
+
+  /* Classic-mode overrides that must beat the OTHER important rules already
+     in this layer (nav-active, mode-active, the stat/kpi faint-text safety
+     net) — for important-vs-important, layer beats specificity, so these
+     have to live in the same layer as what they're overriding. */
+  [data-design="classic"] .admin-stat-card[data-tone="primary"] .stat-icon-chip,
+  [data-design="classic"] .admin-stat-card[data-tone="neutral"] .stat-icon-chip,
+  [data-design="classic"] .admin-kpi-card[data-variant="primary"] .stat-icon-chip,
+  [data-design="classic"] .admin-kpi-card[data-variant="default"] .stat-icon-chip {
+    color: var(--color-primary) !important;
   }
-  .dark .rider-meteor {
-    display: block;
-    position: fixed;
-    top: 12%;
-    left: -26%;
-    width: 124px;
-    height: 2px;
-    border-radius: 999px;
-    pointer-events: none;
-    opacity: 0;
-    transform: rotate(-27deg);
-    background: linear-gradient(90deg, transparent, rgba(104,229,255,.45), rgba(255,255,255,.95));
-    box-shadow: 0 0 9px rgba(182,156,255,.85), 0 0 26px rgba(124,58,237,.45);
-    animation: rider-meteor 12s cubic-bezier(.2,.6,.4,1) infinite;
+  [data-design="classic"] .admin-stat-card[data-tone="success"] .stat-icon-chip,
+  [data-design="classic"] .admin-kpi-card[data-variant="success"] .stat-icon-chip {
+    color: var(--color-success) !important;
   }
-  .dark .rider-meteor-b { top: 39%; left: -38%; width: 88px; animation-delay: 5.8s; animation-duration: 15s; opacity: 0; }
+  [data-design="classic"] .admin-stat-card[data-tone="destructive"] .stat-icon-chip,
+  [data-design="classic"] .admin-kpi-card[data-variant="danger"] .stat-icon-chip {
+    color: var(--color-destructive) !important;
+  }
+  [data-design="classic"] .admin-kpi-card[data-variant="warning"] .stat-icon-chip {
+    color: var(--color-warning) !important;
+  }
+  [data-design="classic"] .admin-mode-active { box-shadow: 0 5px 16px color-mix(in oklch, var(--color-primary) 26%, transparent) !important; }
+  [data-design="classic"] .admin-nav-active,
+  [data-design="classic"] .admin-nav-active:hover {
+    border-width: 0 !important;
+    box-shadow: none !important;
+    background: var(--color-primary-soft) !important;
+    color: var(--color-primary-soft-foreground) !important;
+  }
+  [data-design="classic"] .admin-nav-active svg { color: var(--color-primary-soft-foreground) !important; }
+  [data-design="classic"] .pricing-rail :is(
+    [data-pricing-side].bg-primary,
+    [data-pricing-category].bg-primary,
+    [data-pricing-dimension].bg-primary
+  ) {
+    background: var(--color-primary-soft) !important;
+    color: var(--color-primary-soft-foreground) !important;
+    border-color: var(--color-primary-border) !important;
+    box-shadow: none !important;
+  }
+  [data-design="classic"] .pricing-rail :is(
+    [data-pricing-side].bg-primary,
+    [data-pricing-category].bg-primary,
+    [data-pricing-dimension].bg-primary
+  ) .text-muted-foreground {
+    color: var(--color-primary-soft-foreground) !important;
+    opacity: .74;
+  }
 }
 
 @keyframes rider-enter {
@@ -419,18 +614,6 @@
 
 @keyframes rider-orb {
   to { transform: translate(10px, 12px) scale(1.13); }
-}
-
-@keyframes rider-meteor {
-  0%, 72% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-27deg); }
-  74% { opacity: .92; }
-  82% { opacity: .2; transform: translate3d(145vw, 46vh, 0) rotate(-27deg); }
-  83%, 100% { opacity: 0; transform: translate3d(145vw, 46vh, 0) rotate(-27deg); }
-}
-
-@keyframes admin-ambient-drift {
-  from { transform: translate3d(-8px, 0, 0) scale(.96); }
-  to { transform: translate3d(14px, 12px, 0) scale(1.08); }
 }
 
 @keyframes admin-content-fade {
@@ -443,8 +626,202 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes admin-sidebar-art-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(0, .65rem, 0) scale(1.025); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rider-enter, .rider-orb, .rider-meteor, .admin-ambient-orb,
-  .admin-content, .admin-chart-card, .admin-stat-card, .animate-spin, .animate-pulse { animation: none !important; }
+  .admin-content, .admin-chart-card, .admin-stat-card, .admin-sidebar::before,
+  .animate-spin, .animate-pulse { animation: none !important; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+/* Respect OS-level high-contrast preferences.  Decorative art recedes while
+   text, borders and chart labels become unmistakable. */
+@media (prefers-contrast: more) {
+  :root {
+    --muted-foreground: oklch(0.2 0.025 265);
+    --border: oklch(0.12 0.03 265);
+    --border-strong: oklch(0.08 0.025 265);
+  }
+  .admin-sidebar::before { opacity: .1 !important; animation: none !important; }
+  .admin-content :is(th, [data-eyebrow], .text-muted-foreground) { font-weight: 700; }
+  .admin-chart-card .recharts-text { fill: var(--color-foreground); }
+}
+
+/* ── Classic design (toggle) ────────────────────────────────────────────
+   Neo-brutal is the default look. [data-design="classic"] on <html>
+   restores the pre-redesign soft/glass tokens and flattens the hard-offset
+   shadows + thick borders that utility classes hardcode inline. Left
+   unlayered on purpose so it outranks the Tailwind utilities layer without
+   needing to touch every component file.
+   :not(.dark) is load-bearing: without it, this tied .dark on specificity
+   for any token declared in both blocks and, for tokens only declared here
+   (e.g. --background), beat .dark outright — leaking light values into dark
+   mode regardless of source order. */
+:root[data-design="classic"]:not(.dark) {
+  --radius: 0.75rem;
+  --background: oklch(0.975 0.004 280);
+  --card: oklch(1 0 0);
+  --popover: oklch(1 0 0);
+  --secondary: oklch(0.97 0.005 280);
+  --muted: oklch(0.96 0.005 280);
+  --destructive: #e94f37;
+  --destructive-foreground: #17131d;
+  --success: #087f5b;
+  --success-foreground: oklch(0.99 0 0);
+  --warning: #f59e0b;
+  --warning-foreground: #17131d;
+  --border: oklch(0.93 0.01 285);
+  --border-strong: oklch(0.86 0.015 285);
+  --input: oklch(0.975 0.004 280);
+  --sidebar: oklch(0.985 0.008 285);
+}
+
+.dark[data-design="classic"] {
+  --secondary: oklch(0.22 0.035 285);
+  --muted: oklch(0.22 0.035 285);
+  --muted-foreground: oklch(0.65 0.02 285);
+  --destructive: #e94f37;
+  --destructive-foreground: #17131d;
+  --success: #087f5b;
+  --success-foreground: oklch(0.99 0 0);
+  --warning: #f59e0b;
+  --warning-foreground: #17131d;
+  --border: oklch(0.28 0.04 285);
+  --border-strong: oklch(0.35 0.05 285);
+  --input: oklch(0.22 0.035 285);
+  --sidebar: oklch(0.16 0.035 285);
+}
+
+[data-design="classic"] [data-eyebrow] { font-weight: 600; letter-spacing: 0.1em; }
+
+/* Every hard-offset brutal shadow shares this suffix regardless of offset size. */
+[data-design="classic"] [class*="_0_0_var(--color-border-strong)"] { box-shadow: none !important; }
+[data-design="classic"] [class*="border-[3px]"],
+[data-design="classic"] [class*="border-2"] { border-width: 1px !important; }
+[data-design="classic"] [class*="hover:-translate"] { transform: none !important; }
+
+[data-design="classic"] .admin-shell {
+  background:
+    radial-gradient(ellipse 80% 45% at 74% -12%, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 72%),
+    radial-gradient(ellipse 65% 38% at 8% 105%, color-mix(in oklch, #68e5ff 5%, transparent), transparent 76%),
+    var(--color-background);
+}
+[data-design="classic"] .admin-sidebar::before,
+[data-design="classic"] .admin-header::after,
+[data-design="classic"] .pricing-rail::before,
+[data-design="classic"] .pricing-builder::before {
+  display: none !important;
+}
+[data-design="classic"] .admin-ambient,
+[data-design="classic"] .admin-ambient-orb,
+[data-design="classic"] .admin-ambient-grid { display: block; }
+[data-design="classic"] .admin-sidebar {
+  background: color-mix(in oklch, var(--color-sidebar) 86%, transparent);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border-right: none !important;
+}
+[data-design="classic"] .admin-header {
+  background: color-mix(in oklch, var(--color-card) 85%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom-width: 1px !important;
+}
+[data-design="classic"] .pricing-rail,
+[data-design="classic"] .pricing-builder {
+  background: color-mix(in oklch, var(--color-card) 84%, transparent) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 14px 38px color-mix(in oklch, var(--color-primary) 7%, transparent) !important;
+}
+[data-design="classic"] .admin-stat-card,
+[data-design="classic"] .admin-kpi-card {
+  border-width: 1px !important;
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--color-foreground) 6%, transparent) !important;
+  transform: none !important;
+  border-radius: 1rem;
+}
+[data-design="classic"] .admin-stat-card:hover,
+[data-design="classic"] .admin-kpi-card:hover {
+  transform: none !important;
+  box-shadow: 0 8px 20px color-mix(in oklch, var(--color-primary) 10%, transparent) !important;
+}
+[data-design="classic"] .admin-chart-card {
+  border-width: 1px !important;
+  box-shadow: 0 14px 38px color-mix(in oklch, var(--color-primary) 7%, transparent) !important;
+  border-radius: 1rem;
+}
+[data-design="classic"] .admin-chart-card:hover {
+  box-shadow: 0 18px 44px color-mix(in oklch, var(--color-primary) 11%, transparent) !important;
+}
+[data-design="classic"] .admin-mode-switch {
+  border-width: 1px !important;
+  box-shadow: none !important;
+  background: color-mix(in oklch, var(--color-muted) 68%, transparent);
+}
+[data-design="classic"] .admin-avatar-orb { border-width: 0 !important; box-shadow: none !important; }
+
+/* Stat/KPI cards: brutal paints the whole card in the tone color; classic
+   keeps the card neutral and tints only the icon chip, like the pre-redesign
+   iconBg/iconColor pairing. (Chip *color* is finished inside @layer components
+   below — it has to out-rank the same-layer "* { color: inherit !important }"
+   safety net, and important-vs-important ranks layered above unlayered no
+   matter the selector specificity, so an unlayered rule here can't win that.) */
+[data-design="classic"] .admin-stat-card[data-tone],
+[data-design="classic"] .admin-kpi-card[data-variant] {
+  background: var(--color-card) !important;
+  color: var(--color-foreground) !important;
+}
+[data-design="classic"] .stat-icon-chip { border-width: 0 !important; }
+[data-design="classic"] .admin-stat-card[data-tone="primary"] .stat-icon-chip,
+[data-design="classic"] .admin-stat-card[data-tone="neutral"] .stat-icon-chip,
+[data-design="classic"] .admin-kpi-card[data-variant="primary"] .stat-icon-chip,
+[data-design="classic"] .admin-kpi-card[data-variant="default"] .stat-icon-chip {
+  background: var(--color-primary-soft) !important;
+}
+[data-design="classic"] .admin-stat-card[data-tone="success"] .stat-icon-chip,
+[data-design="classic"] .admin-kpi-card[data-variant="success"] .stat-icon-chip {
+  background: color-mix(in oklch, var(--color-success) 12%, transparent) !important;
+}
+[data-design="classic"] .admin-stat-card[data-tone="destructive"] .stat-icon-chip,
+[data-design="classic"] .admin-kpi-card[data-variant="danger"] .stat-icon-chip {
+  background: color-mix(in oklch, var(--color-destructive) 12%, transparent) !important;
+}
+[data-design="classic"] .admin-kpi-card[data-variant="warning"] .stat-icon-chip {
+  background: color-mix(in oklch, var(--color-warning) 12%, transparent) !important;
+}
+
+/* Badges/alerts/pills: every one of these was hand-written per file as
+   "border-2 border-border-strong bg-{tone} text-{tone}-foreground" for the
+   brutal solid-fill look. Same combo, one global rule, no JSX touched —
+   classic wants the pre-redesign tint + tone-colored text instead. Requires
+   border-2 (not border-[3px]) so Button/Card's own solid CTAs are untouched. */
+[data-design="classic"] [class*="border-2"][class*="bg-destructive"] {
+  background: color-mix(in oklch, var(--color-destructive) 12%, transparent) !important;
+  border-color: color-mix(in oklch, var(--color-destructive) 30%, transparent) !important;
+  color: var(--color-destructive) !important;
+}
+[data-design="classic"] [class*="border-2"][class*="bg-success"] {
+  background: color-mix(in oklch, var(--color-success) 12%, transparent) !important;
+  border-color: color-mix(in oklch, var(--color-success) 30%, transparent) !important;
+  color: var(--color-success) !important;
+}
+[data-design="classic"] [class*="border-2"][class*="bg-primary"] {
+  background: var(--color-primary-soft) !important;
+  border-color: var(--color-primary-border) !important;
+  color: var(--color-primary-soft-foreground) !important;
+}
+[data-design="classic"] [class*="border-2"][class*="bg-warning"] {
+  background: color-mix(in oklch, var(--color-warning) 18%, transparent) !important;
+  border-color: color-mix(in oklch, var(--color-warning) 35%, transparent) !important;
+}
+/* --warning-foreground is dark ink year-round (it's tuned for a solid bright-
+   yellow fill), which reads fine in light mode's tint too — but in dark mode
+   the same 18% tint sits on a near-black page, so dark-on-dark goes invisible. */
+.dark[data-design="classic"] [class*="border-2"][class*="bg-warning"] {
+  color: var(--color-warning) !important;
 }

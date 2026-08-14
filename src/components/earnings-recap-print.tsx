@@ -47,8 +47,8 @@ export function EarningsRecapPrint({
           <div style={{ height: 10, background: "#7c5cff", ...exact }} />
           <div style={{ padding: "20px 28px 28px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-              <div><img src="/dash-logo.png" alt="DASH" style={{ height: 32, marginBottom: 4 }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} /><div style={{ fontSize: 11, color: "#666" }}>PT. Dash Elektrik Indonesia</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 11, fontWeight: 700 }}>REKAP PENGHASILAN FINAL</div><div style={{ fontSize: 11, color: "#666", marginTop: 3 }}>{formatTanggal(from)} - {formatTanggal(to)}</div><div style={{ fontSize: 10, color: "#999", marginTop: 3 }}>Dibuat: {formatTanggal(new Date().toISOString().slice(0, 10))}</div></div>
+              <div><img src="/dash-logo.png" alt="DASH" style={{ height: 32, marginBottom: 4 }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} /><div style={{ fontSize: 11, color: "#555" }}>PT. Dash Elektrik Indonesia</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 11, fontWeight: 700 }}>REKAP PENGHASILAN FINAL</div><div style={{ fontSize: 11, color: "#555", marginTop: 3 }}>{formatTanggal(from)} - {formatTanggal(to)}</div><div style={{ fontSize: 10, color: "#555", marginTop: 3 }}>Dibuat: {formatTanggal(new Date().toISOString().slice(0, 10))}</div></div>
             </div>
             <div style={{ background: "#f8f7ff", borderRadius: 6, padding: "10px 14px", marginBottom: 16, ...exact }}><table style={{ fontSize: 12 }}><tbody><tr><td style={{ color: "#666", paddingRight: 16, paddingBottom: 2 }}>Nama</td><td style={{ fontWeight: 600 }}>{riderName}</td></tr><tr><td style={{ color: "#666", paddingRight: 16 }}>Kode Mitra</td><td style={{ fontWeight: 600 }}>{employeeId}</td></tr></tbody></table></div>
             <Label>Rincian Penghasilan Final per Client</Label>
@@ -63,5 +63,5 @@ export function EarningsRecapPrint({
   );
 }
 
-function Label({ children }: { children: string }) { return <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: "#999", marginBottom: 6 }}>{children}</div>; }
+function Label({ children }: { children: string }) { return <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: "#555", marginBottom: 6 }}>{children}</div>; }
 function Line({ label, value }: { label: string; value: string }) { return <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}><span>{label}</span><span style={{ fontFamily: "monospace" }}>{value}</span></div>; }

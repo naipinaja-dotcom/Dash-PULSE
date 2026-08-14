@@ -91,7 +91,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
                 <div style={{ color: "#666" }}>
                   {period ? `${formatTanggal(period.period_start)} – ${formatTanggal(period.period_end)}` : ""}
                 </div>
-                <div style={{ color: "#999", marginTop: 2 }}>
+                <div style={{ color: "#555", marginTop: 2 }}>
                   Diterbitkan: {formatTanggal(slip.published_at.slice(0, 10))}
                 </div>
               </div>
@@ -197,7 +197,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
             </div>
 
             {/* footer */}
-            <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid #e0e0e0", display: "flex", justifyContent: "flex-end", fontSize: 10, color: "#999" }}>
+            <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid #e0e0e0", display: "flex", justifyContent: "flex-end", fontSize: 10, color: "#555" }}>
               <span>Halaman 1 dari 1</span>
             </div>
           </div>
@@ -209,7 +209,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#999", marginBottom: 6 }}>
+    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#555", marginBottom: 6 }}>
       {children}
     </div>
   );

@@ -1187,7 +1187,7 @@ function PayrollPage() {
             <button
               onClick={deleteEmptyDrafts}
               disabled={deletingBulk || loading}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-destructive/40 text-destructive px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-destructive/10 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-border-strong text-destructive px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-destructive hover:text-destructive-foreground transition-colors"
               title="Hapus draft run yang belum ada detail rider (biasanya kebuat otomatis untuk client tanpa jadwal)"
             >
               {deletingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -1230,9 +1230,11 @@ function PayrollPage() {
               <Loader2 className="w-4 h-4 animate-spin mx-auto" />
             ) : (
               pagedRuns.map((r) => {
-                  const statusColor =
-                    r.status === "published"
-                      ? "text-success"
+                  const isActive = activeRun?.id === r.id;
+                  const statusColor = isActive
+                    ? "text-primary-foreground"
+                    : r.status === "published"
+                      ? "text-primary"
                       : r.status === "finalized"
                         ? "text-warning"
                         : "text-muted-foreground";
@@ -1243,13 +1245,13 @@ function PayrollPage() {
                     <button
                       key={r.id}
                       onClick={() => setActiveRun(r)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${activeRun?.id === r.id ? "bg-primary-soft text-primary-soft-foreground font-medium" : "hover:bg-muted/60"}`}
+                      className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors ${isActive ? "bg-primary text-primary-foreground border-2 border-border-strong shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "hover:bg-muted/60"}`}
                     >
                       <div className="truncate font-medium text-[13px]">{clientName}</div>
-                      <div className="text-[11px] mt-0.5 text-muted-foreground truncate">
+                      <div className={`text-xs mt-0.5 truncate ${isActive ? "text-primary-foreground opacity-90" : "text-muted-foreground"}`}>
                         {r.name}
                       </div>
-                      <div className={`text-[11px] mt-0.5 ${statusColor}`}>
+                      <div className={`text-xs mt-0.5 font-semibold ${statusColor}`}>
                         {r.period_start} → {r.period_end} · {r.status}
                       </div>
                     </button>
@@ -1466,7 +1468,7 @@ function PayrollPage() {
                         onClick={deleteRun}
                         disabled={deletingRun}
                         title="Hapus run ini (cuma bisa selagi masih draft)"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 text-destructive px-3 py-1.5 text-[13px] disabled:opacity-40 hover:bg-destructive/10 transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong text-destructive px-3 py-1.5 text-[13px] disabled:opacity-40 hover:bg-destructive hover:text-destructive-foreground transition-colors"
                       >
                         {deletingRun ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1485,8 +1487,8 @@ function PayrollPage() {
                   lain (draft, periode overlap). Cuma warning + tombol opsional,
                   gak otomatis — admin yang putusin. */}
               {nettingCandidates.length > 0 && (
-                <div className="rounded-xl border border-warning/40 bg-warning/5 overflow-hidden mb-4">
-                  <div className="px-3 py-2 bg-warning/10 text-[12px] font-medium text-warning flex items-center gap-1.5">
+                <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-hidden mb-4">
+                  <div className="px-3 py-2 bg-warning text-warning-foreground text-[12px] font-medium flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5" /> {nettingCandidates.length} rider
                     kekurangan gross buat nutup potongan di run ini — ada sisa di run client lain
                   </div>
@@ -1581,14 +1583,14 @@ function PayrollPage() {
                           <td className="px-2 py-2">
                             <div className="flex items-center justify-end gap-1.5">
                               {a.rejected_at ? (
-                                <span className="whitespace-nowrap rounded-md bg-destructive/10 text-destructive px-2 py-1 text-[11px]">
+                                <span className="whitespace-nowrap rounded-md border-2 border-border-strong bg-destructive text-destructive-foreground px-2 py-1 text-[11px]">
                                   Rejected
                                 </span>
                               ) : a.action === "commit_payroll" ? (
                                 <button
                                   onClick={() => rejectCalculation(a)}
                                   title="Salah pilih tanggal/client? Reset baris ini balik ke fee=0"
-                                  className="whitespace-nowrap rounded-md border border-destructive/40 text-destructive px-2 py-1 text-[11px] hover:bg-destructive/10 transition-colors"
+                                  className="whitespace-nowrap rounded-md border-2 border-border-strong text-destructive px-2 py-1 text-[11px] hover:bg-destructive hover:text-destructive-foreground transition-colors"
                                 >
                                   Reject
                                 </button>
@@ -1596,7 +1598,7 @@ function PayrollPage() {
                               <button
                                 onClick={() => deleteAuditEntry(a)}
                                 title="Hapus baris riwayat ini (cuma catatannya, gak nyentuh fee yang udah tersimpan)"
-                                className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1678,7 +1680,7 @@ function PayrollPage() {
                             <td className="px-2 py-2.5 text-[13px] tabular-nums">
                               Rp{Number(d.incentive).toLocaleString("id-ID")}
                             </td>
-                            <td className="px-2 py-2.5 text-[13px] tabular-nums text-destructive">
+                            <td className={`px-2 py-2.5 text-[13px] tabular-nums ${Number(d.penalty) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
                               Rp{Number(d.penalty).toLocaleString("id-ID")}
                             </td>
                             <td className="px-2 py-2.5 text-[13px] tabular-nums">
@@ -1704,7 +1706,7 @@ function PayrollPage() {
                             <td className="px-2 py-2.5 text-[12px]">
                               {paymentHolds[d.id]?.status === "held" ? (
                                 <div className="space-y-1">
-                                  <span className="inline-flex rounded-full bg-warning/15 px-2 py-0.5 font-medium text-warning">
+                                  <span className="inline-flex rounded-full border-2 border-border-strong bg-warning px-2 py-0.5 font-medium text-warning-foreground">
                                     Ditahan
                                   </span>
                                   <p className="max-w-36 truncate text-[10px] text-muted-foreground" title={paymentHolds[d.id].reason}>
@@ -1720,7 +1722,7 @@ function PayrollPage() {
                                 </div>
                               ) : paymentHolds[d.id]?.status === "released" ? (
                                 <div className="space-y-1">
-                                  <span className="inline-flex rounded-full bg-success/15 px-2 py-0.5 font-medium text-success">
+                                  <span className="inline-flex rounded-full border-2 border-border-strong bg-success px-2 py-0.5 font-medium text-success-foreground">
                                     Susulan
                                   </span>
                                   <p className="text-[10px] text-muted-foreground">
@@ -1737,7 +1739,7 @@ function PayrollPage() {
                                   }}
                                   disabled={paymentHoldBusyId === d.id || Number(d.net_pay) <= 0}
                                   title={Number(d.net_pay) <= 0 ? "Net pay harus lebih dari Rp0" : "Tahan dari bulk payment reguler"}
-                                  className="rounded-md border border-warning/40 px-2 py-1 text-[11px] font-medium text-warning hover:bg-warning/10 disabled:opacity-50"
+                                  className="rounded-md border-2 border-border-strong bg-warning px-2 py-1 text-[11px] font-semibold text-warning-foreground hover:bg-warning/85 disabled:opacity-50"
                                 >
                                   {paymentHoldBusyId === d.id ? "Memproses…" : "Hold payment"}
                                 </button>
@@ -1951,7 +1953,7 @@ function PayrollPage() {
           <div className="h-1 bg-gradient-to-r from-warning via-primary to-primary" />
           <div className="p-6">
             <DialogHeader>
-              <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-warning/15 text-warning">
+              <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl border-2 border-border-strong bg-warning text-warning-foreground">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <DialogTitle className="text-xl">Tahan pembayaran rider</DialogTitle>
@@ -1969,7 +1971,7 @@ function PayrollPage() {
                     key={reason}
                     type="button"
                     onClick={() => setHoldReason(reason)}
-                    className={`rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${holdReason === reason ? "border-warning bg-warning/10 text-warning" : "border-border text-muted-foreground hover:border-warning/50 hover:text-foreground"}`}
+                    className={`rounded-lg border-2 px-3 py-2 text-left text-xs font-medium transition-colors ${holdReason === reason ? "border-border-strong bg-warning text-warning-foreground" : "border-border text-muted-foreground hover:border-warning/50 hover:text-foreground"}`}
                   >
                     {reason}
                   </button>

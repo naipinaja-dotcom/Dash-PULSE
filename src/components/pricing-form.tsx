@@ -317,6 +317,7 @@ function PricingFormInner({
       title={mode === "create" ? "Tambah Skema Pricing" : "Edit Skema Pricing"}
       subtitle="Atur cara kalkulasi harga — sisi rider (cost) atau client (revenue)."
     >
+      <div className="pricing-workbench">
       <button
         type="button"
         onClick={() => navigate({ to: "/admin/pricing" })}
@@ -332,7 +333,7 @@ function PricingFormInner({
           discroll jauh buat sampe. Gak ada field/handler yang dihapus — cuma
           dipindah posisi. */}
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 mb-4 items-start">
-        <aside className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4 lg:sticky lg:top-4">
+        <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
           <div className="flex flex-col gap-1.5">
             <FieldLabel>
               Nama Skema <span className="font-normal text-muted-foreground">(opsional)</span>
@@ -373,13 +374,14 @@ function PricingFormInner({
               {(["rider", "client"] as SchemeFor[]).map((sf) => (
                 <button
                   key={sf}
+                  data-pricing-side={sf}
                   type="button"
                   onClick={() => setSchemeFor(sf)}
                   className={
-                    "text-left rounded-md px-3 py-2.5 border transition-colors " +
+                    "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
                     (schemeFor === sf
-                      ? "border-2 border-primary bg-primary-soft"
-                      : "border-border hover:border-primary-border hover:bg-primary-soft/40")
+                      ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                      : "bg-card text-foreground hover:bg-muted")
                   }
                 >
                   <span className="text-xs font-medium block">
@@ -404,17 +406,18 @@ function PricingFormInner({
                 return (
                   <button
                     key={cat.key}
+                    data-pricing-category={cat.key}
                     type="button"
                     onClick={() => handleCategoryChange(cat.key)}
                     className={
-                      "text-left rounded-lg px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border " +
+                      "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
                       (active
-                        ? "border-2 border-primary bg-primary-soft shadow-sm shadow-primary/10"
-                        : "border-border hover:border-primary-border/60 hover:bg-primary-soft/20 hover:shadow-sm")
+                        ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                        : "bg-card text-foreground hover:bg-muted")
                     }
                   >
                     <div className="flex items-center gap-1.5">
-                      <Icon className="w-4 h-4 text-primary" />
+                      <Icon className="w-4 h-4" />
                       <span className="text-xs font-medium leading-tight">{cat.name}</span>
                     </div>
                     <span className="text-[11px] text-muted-foreground leading-snug">{cat.desc}</span>
@@ -439,11 +442,12 @@ function PricingFormInner({
                   return (
                     <label
                       key={dim.key}
+                      data-pricing-dimension={dim.key}
                       className={
-                        "text-left rounded-lg px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border cursor-pointer " +
+                        "text-left rounded-md px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border-2 border-border-strong cursor-pointer " +
                         (checked
-                          ? "border-primary bg-primary-soft shadow-sm shadow-primary/10"
-                          : "border-border hover:border-primary-border/60 hover:bg-primary-soft/20")
+                          ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                          : "bg-card text-foreground hover:bg-muted")
                       }
                     >
                       <input
@@ -454,7 +458,7 @@ function PricingFormInner({
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5">
-                          <Icon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                           <span className="text-xs font-medium leading-tight">{dim.name}</span>
                         </div>
                         <span className="text-[11px] text-muted-foreground leading-snug block mt-0.5">{dim.desc}</span>
@@ -467,9 +471,9 @@ function PricingFormInner({
           )}
 
           {/* Callout */}
-          <div className="rounded-md border border-primary-border bg-primary-soft px-3.5 py-2.5 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-primary-soft-foreground leading-relaxed">
+          <div className="pricing-callout rounded-md border-2 border-border-strong bg-secondary px-3.5 py-2.5 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-foreground leading-relaxed">
               {category === "delivery"
                 ? (() => {
                     const dims = subtype as DeliveryDimensions | null;
@@ -536,7 +540,7 @@ function PricingFormInner({
         {/* Builder — tabel rate/attendance, modifier delivery-only (Add-KG,
             Multi-drop), kalkulator hidup, semuanya dalam 1 panel biar keliatan
             bareng tanpa scroll jauh. */}
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+        <div className="pricing-builder rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4">
           {category === "delivery" && subtype && (
             <DeliveryFields
               subtype={subtype}
@@ -606,6 +610,7 @@ function PricingFormInner({
           <Save className="w-4 h-4" />
           {saving ? "Menyimpan…" : "Simpan Skema"}
         </button>
+      </div>
       </div>
     </AdminLayout>
   );

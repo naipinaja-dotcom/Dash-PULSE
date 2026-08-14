@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { formatRupiah } from "@/lib/format";
 import { fetchAllRows } from "@/lib/fetch-all";
+import { fixedRemaining, latestRentalUnpaid } from "@/lib/arrears";
 import {
   Users,
   DollarSign,
@@ -16,6 +17,15 @@ import {
   Download,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 
 const isSupabaseConnected = Boolean(import.meta.env.VITE_SUPABASE_URL);
 
@@ -25,6 +35,7 @@ export const Route = createFileRoute("/admin/dashboard")({ component: DashboardP
 const fmtNum = (v: number | null) => (v === null ? "…" : v.toLocaleString("id-ID"));
 const fmtMoney = (v: number | null, suffix = "jt") =>
   v === null ? "…" : `${(v / 1_000_000).toFixed(1)}${suffix}`;
+const fmtRb = (v: number) => `${Math.round(v / 1000).toLocaleString("id-ID")}rb`;
 const dateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
@@ -99,26 +110,54 @@ function DashboardPage() {
         }
       });
 
-    // Tunggakan terbesar
-    supabase
-      .from("rider_installments")
-      .select("*, riders(full_name)")
-      .eq("active", true)
-      .order("remaining_amount", { ascending: false })
-      .limit(4)
-      .then(({ data }) => {
-        if (data) {
-          setTunggakan(
-            data.map((row: any) => ({
-              name: row.riders?.full_name ?? "Rider",
-              remaining: row.remaining_installments ?? 0,
-              total: row.total_installments ?? 1,
-              amount: fmtMoney(row.remaining_amount, "rb"),
-              installments: `${row.remaining_installments ?? 0} ${t("dash.installmentsLeft")}`,
-            })),
-          );
-        }
-      });
+    // Tunggakan terbesar — rider_installments gak punya kolom remaining_amount/
+    // remaining_installments/total_installments (cuma installment_count,
+    // installments_paid, per_period_amount), jadi dihitung manual di sini lewat
+    // helper di src/lib/arrears.ts (dipakai juga di ArrearsTab & rider.dashboard,
+    // biar satu tempat aja yang jadi sumber kebenaran rumus tunggakan).
+    (async () => {
+      const { data: installments } = await supabase
+        .from("rider_installments")
+        .select("id, mode, installment_count, installments_paid, per_period_amount, riders(full_name)")
+        .eq("active", true);
+      if (!installments) return;
+
+      const fixedItems = installments
+        .filter((r: any) => r.mode === "fixed")
+        .map((r: any) => {
+          const { remaining, total, amount } = fixedRemaining(r.installment_count, r.installments_paid, r.per_period_amount);
+          return {
+            name: r.riders?.full_name ?? "Rider",
+            remaining,
+            total,
+            amountValue: amount,
+            installments: `${remaining} ${t("dash.installmentsLeft")}`,
+          };
+        })
+        .filter((r) => r.remaining > 0);
+
+      const rentalRows = installments.filter((r: any) => r.mode === "daily" || r.mode === "monthly");
+      let rentalItems: typeof fixedItems = [];
+      if (rentalRows.length > 0) {
+        const latestUnpaid = await latestRentalUnpaid(rentalRows.map((r: any) => r.id));
+        rentalItems = rentalRows
+          .map((r: any) => ({
+            name: r.riders?.full_name ?? "Rider",
+            remaining: 1,
+            total: 1,
+            amountValue: latestUnpaid.get(r.id) ?? 0,
+            installments: "Tunggakan sewa",
+          }))
+          .filter((r) => r.amountValue > 0);
+      }
+
+      setTunggakan(
+        [...fixedItems, ...rentalItems]
+          .sort((a, b) => b.amountValue - a.amountValue)
+          .slice(0, 4)
+          .map((r) => ({ name: r.name, remaining: r.remaining, total: r.total, installments: r.installments, amount: fmtRb(r.amountValue) })),
+      );
+    })();
   }, []);
 
   /* ── stat cards config ────────────────────── */
@@ -127,8 +166,7 @@ function DashboardPage() {
       label: t("dash.ridersActive"),
       value: fmtNum(ridersAktif),
       icon: Users,
-      iconBg: "bg-primary-soft",
-      iconColor: "text-primary",
+      tone: "neutral" as const,
       change: null,
       changeUp: false,
     },
@@ -136,8 +174,7 @@ function DashboardPage() {
       label: t("dash.totalFee"),
       value: totalFee !== null ? fmtMoney(totalFee) : "—",
       icon: DollarSign,
-      iconBg: "bg-success/10",
-      iconColor: "text-success",
+      tone: "primary" as const,
       change: null,
       changeUp: false,
     },
@@ -145,8 +182,7 @@ function DashboardPage() {
       label: t("dash.tunggakanActive"),
       value: fmtNum(tunggakanCount),
       icon: AlertTriangle,
-      iconBg: "bg-destructive/10",
-      iconColor: "text-destructive",
+      tone: "destructive" as const,
       change: null,
       changeUp: false,
     },
@@ -154,8 +190,7 @@ function DashboardPage() {
       label: t("dash.deliveriesWeek"),
       value: deliveries !== null ? fmtNum(deliveries) : "—",
       icon: Truck,
-      iconBg: "bg-warning/10",
-      iconColor: "text-warning",
+      tone: "success" as const,
       change: null,
       changeUp: false,
     },
@@ -164,7 +199,6 @@ function DashboardPage() {
   /* ── KPI + chart data (completed delivery_records only) ── */
   type WeekBucket = { label: string; deliveries: number; fee: number };
   const [weeklyData, setWeeklyData] = useState<WeekBucket[]>([]);
-  const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConnected) return;
@@ -226,9 +260,6 @@ function DashboardPage() {
     };
   }, []);
 
-  const maxDel = useMemo(() => Math.max(...weeklyData.map((w) => w.deliveries), 1), [weeklyData]);
-  const maxFee = useMemo(() => Math.max(...weeklyData.map((w) => w.fee), 1), [weeklyData]);
-
   /* ── alerts ────────────────────────────────── */
   const alerts = [
     {
@@ -241,9 +272,9 @@ function DashboardPage() {
   ];
 
   const alertStyles = {
-    danger: "bg-destructive/10 border-destructive/20 before:bg-destructive",
-    warn: "bg-warning/10 border-warning/20 before:bg-warning",
-    info: "bg-primary-soft border-primary-border/20 before:bg-primary",
+    danger: "border-2 border-border-strong bg-destructive text-destructive-foreground",
+    warn: "border-2 border-border-strong bg-warning text-warning-foreground",
+    info: "border-2 border-border-strong bg-primary text-primary-foreground",
   };
 
   return (
@@ -252,14 +283,14 @@ function DashboardPage() {
       <div className="flex items-center justify-between mb-5">
         <div />
         <div className="flex items-center gap-2">
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-[13px] font-medium text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
             <Calendar className="w-3 h-3" />{t("dash.last7days")}
           </button>
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-[13px] font-medium text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
             <Building2 className="w-3 h-3" />
             {t("dash.allClients")}
           </button>
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-[13px] font-semibold hover:opacity-90 transition-opacity">
             <Download className="w-3 h-3" />
             {t("btn.exportBtn")}
           </button>
@@ -267,20 +298,15 @@ function DashboardPage() {
       </div>
 
       {/* ── Stat cards ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 rounded-xl border border-border bg-card shadow-sm divide-y divide-border sm:divide-y-0 sm:divide-x mb-5 overflow-hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
         {stats.map((s) => {
           const Icon = s.icon;
           return (
-            <div
-              key={s.label}
-              className="admin-stat-card group p-4 hover:bg-muted/40 transition-colors cursor-pointer"
-            >
+            <div key={s.label} className="admin-stat-card group p-4 cursor-pointer" data-tone={s.tone}>
               <div className="flex items-start justify-between mb-2">
                 <span data-eyebrow>{s.label}</span>
-                <div
-                  className={`w-7 h-7 rounded-lg ${s.iconBg} grid place-items-center flex-shrink-0`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${s.iconColor}`} />
+                <div className="stat-icon-chip w-7 h-7 rounded-lg grid place-items-center flex-shrink-0">
+                  <Icon className="w-3.5 h-3.5" />
                 </div>
               </div>
               <div className="admin-metric-value text-[26px] font-bold tracking-tight tabular-nums font-mono">
@@ -289,7 +315,7 @@ function DashboardPage() {
               {s.change && (
                 <div className="flex items-center justify-between mt-1.5">
                   <span
-                    className={`text-[10px] font-semibold inline-flex items-center gap-0.5 ${s.changeUp ? "text-success" : "text-destructive"}`}
+                    className={`text-[11px] font-semibold inline-flex items-center gap-0.5 ${s.changeUp ? "text-success" : "text-destructive"}`}
                   >
                     {s.changeUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                     {s.change}
@@ -304,74 +330,78 @@ function DashboardPage() {
       {/* ── Main content grid ─── */}
       <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-4 mb-4">
         {/* Chart */}
-        <div className="admin-chart-card rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="admin-chart-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[13px] font-semibold">{t("dash.weeklyChart")}</h3>
-            <Link to="/admin/shipment-analytics" className="text-[10px] text-primary font-medium hover:underline">
+            <h3 className="text-sm font-semibold">{t("dash.weeklyChart")}</h3>
+            <Link to="/admin/shipment-analytics" className="text-xs text-primary font-semibold hover:underline">
               {t("btn.viewDetail")}
             </Link>
           </div>
           {weeklyData.length === 0 ? (
-            <div className="h-[170px] flex items-center justify-center text-xs text-muted-foreground">{t("btn.loading")}</div>
+            <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground">{t("btn.loading")}</div>
           ) : (
-            <div className="flex items-end gap-3 h-[170px] px-1">
-              {weeklyData.map((w, i) => {
-                const hDel = (w.deliveries / maxDel) * 130;
-                const hFee = (w.fee / maxFee) * 130;
-                const active = hoveredWeek === i;
-                return (
-                  <div key={w.label} className="flex-1 flex flex-col items-center gap-1 relative"
-                    onMouseEnter={() => setHoveredWeek(i)} onMouseLeave={() => setHoveredWeek(null)}>
-                    {active && (
-                      <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-foreground text-background rounded-lg px-2.5 py-1.5 text-[10px] whitespace-nowrap z-10 shadow-lg">
-                        <div className="font-semibold">{w.deliveries} order</div>
-                        <div>{formatRupiah(w.fee)}</div>
-                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-foreground rotate-45" />
-                      </div>
-                    )}
-                    <div className="flex gap-1 items-end w-full justify-center">
-                      <div className="flex-1 max-w-5 rounded-t-md transition-[height,opacity,background] duration-300"
-                        style={{ height: Math.max(hDel, 4), background: active ? "var(--color-primary)" : "linear-gradient(to top, color-mix(in oklch, var(--color-primary) 92%, #68e5ff), color-mix(in oklch, var(--color-primary) 62%, transparent))", opacity: active ? 1 : 0.85 }} />
-                      <div className="flex-1 max-w-5 rounded-t-md transition-[height,opacity,background] duration-300"
-                        style={{ height: Math.max(hFee, 4), background: active ? "color-mix(in oklch, var(--color-primary) 45%, transparent)" : "linear-gradient(to top, color-mix(in oklch, var(--color-primary) 35%, transparent), color-mix(in oklch, var(--color-primary) 15%, transparent))", opacity: active ? 1 : 0.85 }} />
-                    </div>
-                    <span className={`text-[9px] font-medium font-mono transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}>{w.label}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              {/* Order & fee dipisah: satuannya beda (buah vs rupiah), jadi gak
+                  boleh ditumpuk di satu sumbu — tinggi batangnya bakal keliatan
+                  bisa dibandingin padahal skalanya sendiri-sendiri. */}
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={weeklyData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="dashBarGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-grad-from)" />
+                      <stop offset="100%" stopColor="var(--chart-grad-to)" />
+                    </linearGradient>
+                  </defs>
+                  {/* Warna & opacity garis grid diatur di .admin-chart-card (styles.css). */}
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "var(--border)", strokeOpacity: 0.35 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={38} allowDecimals={false} />
+                  <Tooltip
+                    cursor={{ fill: "var(--color-primary)", opacity: 0.08 }}
+                    contentStyle={{
+                      background: "var(--card)",
+                      border: "2px solid var(--border-strong)",
+                      borderRadius: 6,
+                      boxShadow: "4px 4px 0 0 var(--border-strong)",
+                      fontSize: 12,
+                    }}
+                    formatter={(value: number) => [value.toLocaleString("id-ID"), "Order"]}
+                  />
+                  <Bar
+                    dataKey="deliveries"
+                    fill="url(#dashBarGrad)"
+                    stroke="var(--border-strong)"
+                    strokeWidth={2}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </>
           )}
-          <div className="flex gap-4 mt-3">
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <div className="w-2.5 h-2.5 rounded-sm bg-primary" /> Deliveries
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <div className="w-2.5 h-2.5 rounded-sm bg-primary/30" /> Total fee
-            </div>
-          </div>
         </div>
 
         {/* Top riders */}
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)]">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[13px] font-semibold">{t("dash.top5")}</h3>
+            <h3 className="text-sm font-semibold">{t("dash.top5")}</h3>
             <Link
               to="/admin/riders"
-              className="text-[10px] text-primary font-medium hover:underline"
+              className="text-xs text-primary font-semibold hover:underline"
             >
               {t("btn.viewAll")}
             </Link>
           </div>
-          <table className="w-full text-[12px]">
+          <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pb-2.5">
+                <th className="text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pb-2.5">
                   Rider
                 </th>
-                <th className="text-right text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pb-2.5">
+                <th className="text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pb-2.5">
                   Trip
                 </th>
-                <th className="text-right text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pb-2.5">
+                <th className="text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pb-2.5">
                   Fee
                 </th>
               </tr>
@@ -393,16 +423,16 @@ function DashboardPage() {
                 >
                   <td className="py-2.5">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-primary-soft grid place-items-center text-[10px] font-semibold text-primary flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground border-2 border-border-strong grid place-items-center text-[10px] font-semibold flex-shrink-0">
                         {r.initials}
                       </div>
                       <span className="font-semibold">{r.name}</span>
                     </div>
                   </td>
-                  <td className="text-right text-muted-foreground tabular-nums font-mono text-[11px]">
+                  <td className="text-right text-muted-foreground tabular-nums font-mono text-xs">
                     {r.trips}
                   </td>
-                  <td className="text-right font-semibold text-primary tabular-nums font-mono text-[11px]">
+                  <td className="text-right font-semibold text-primary tabular-nums font-mono text-xs">
                     {(r.fee / 1_000_000).toFixed(1)}jt
                   </td>
                 </tr>
@@ -415,14 +445,13 @@ function DashboardPage() {
       {/* ── Bottom grid ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Alerts */}
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-          <h3 className="text-[13px] font-semibold mb-3">{t("dash.needsAttention")}</h3>
+        <div className="rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+          <h3 className="text-sm font-semibold mb-3">{t("dash.needsAttention")}</h3>
           <div className="space-y-1.5">
             {alerts.map((a, i) => (
               <div
                 key={i}
-                className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[11px] border before:absolute before:left-3 before:w-[7px] before:h-[7px] before:rounded-full ${alertStyles[a.type]}`}
-                style={{ paddingLeft: "2rem" }}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs leading-relaxed ${alertStyles[a.type]}`}
               >
                 {a.text}
               </div>
@@ -431,12 +460,12 @@ function DashboardPage() {
         </div>
 
         {/* Tunggakan */}
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)]">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold">{t("dash.biggestArrears")}</h3>
+            <h3 className="text-sm font-semibold">{t("dash.biggestArrears")}</h3>
             <Link
               to="/admin/deductions"
-              className="text-[10px] text-primary font-medium hover:underline"
+              className="text-xs text-primary font-semibold hover:underline"
             >
               {t("btn.viewAll")}
             </Link>
@@ -502,11 +531,11 @@ function DashboardPage() {
 
       {/* Supabase warning */}
       {!isSupabaseConnected && (
-        <div className="rounded-lg border border-primary-border/30 bg-primary-soft p-4 mt-5">
-          <div className="text-sm font-medium text-primary-soft-foreground mb-1">
+        <div className="rounded-md border-2 border-border-strong bg-secondary p-4 mt-5">
+          <div className="text-sm font-medium text-foreground mb-1">
             Hubungkan Supabase untuk data real
           </div>
-          <p className="text-xs text-primary-soft-foreground/80">
+          <p className="text-xs text-muted-foreground">
             Dashboard menampilkan data dummy. Connect Supabase project untuk menarik data dari tabel{" "}
             <code className="text-[11px]">riders</code>,{" "}
             <code className="text-[11px]">payroll_runs</code>, dan{" "}

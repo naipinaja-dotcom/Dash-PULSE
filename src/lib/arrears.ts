@@ -25,13 +25,16 @@ export async function latestRentalUnpaid(installmentIds: string[]): Promise<Map<
   if (installmentIds.length === 0) return result;
   const { data: deds } = await sb
     .from("payroll_deductions")
-    .select("installment_id, amount, paid_amount, payroll_details(payroll_runs(period_end))")
+    .select("installment_id, amount, paid_amount, payroll_details(payroll_runs(period_end, status))")
     .in("installment_id", installmentIds)
     .not("paid_amount", "is", null);
   const latestByInstallment = new Map<string, { periodEnd: string; unpaid: number }>();
   for (const d of deds ?? []) {
-    const periodEnd: string | undefined = d.payroll_details?.payroll_runs?.period_end;
-    if (!d.installment_id || !periodEnd) continue;
+    const run = d.payroll_details?.payroll_runs;
+    const periodEnd: string | undefined = run?.period_end;
+    // paid_amount normally exists only after Publish. Keep the status guard
+    // explicit so a manually altered draft can never be shown as arrears.
+    if (!d.installment_id || !periodEnd || run?.status !== "published") continue;
     const unpaid = Math.max(0, Number(d.amount) - Number(d.paid_amount ?? 0));
     const cur = latestByInstallment.get(d.installment_id);
     if (!cur || periodEnd > cur.periodEnd) latestByInstallment.set(d.installment_id, { periodEnd, unpaid });

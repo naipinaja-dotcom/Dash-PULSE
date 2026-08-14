@@ -16,6 +16,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RiderProfileRouteImport } from './routes/rider.profile'
 import { Route as RiderPayslipsRouteImport } from './routes/rider.payslips'
+import { Route as RiderHistoryRouteImport } from './routes/rider.history'
 import { Route as RiderDashboardRouteImport } from './routes/rider.dashboard'
 import { Route as ApiPnlWeeklyPushRouteImport } from './routes/api.pnl-weekly-push'
 import { Route as ApiPayrollWorkflowRouteImport } from './routes/api.payroll-workflow'
@@ -80,6 +81,11 @@ const RiderProfileRoute = RiderProfileRouteImport.update({
 const RiderPayslipsRoute = RiderPayslipsRouteImport.update({
   id: '/payslips',
   path: '/payslips',
+  getParentRoute: () => RiderRoute,
+} as any)
+const RiderHistoryRoute = RiderHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => RiderRoute,
 } as any)
 const RiderDashboardRoute = RiderDashboardRouteImport.update({
@@ -266,6 +272,7 @@ export interface FileRoutesByFullPath {
   '/api/payroll-workflow': typeof ApiPayrollWorkflowRoute
   '/api/pnl-weekly-push': typeof ApiPnlWeeklyPushRoute
   '/rider/dashboard': typeof RiderDashboardRoute
+  '/rider/history': typeof RiderHistoryRoute
   '/rider/payslips': typeof RiderPayslipsRoute
   '/rider/profile': typeof RiderProfileRoute
   '/admin/pricing/$id': typeof AdminPricingIdRoute
@@ -305,6 +312,7 @@ export interface FileRoutesByTo {
   '/api/payroll-workflow': typeof ApiPayrollWorkflowRoute
   '/api/pnl-weekly-push': typeof ApiPnlWeeklyPushRoute
   '/rider/dashboard': typeof RiderDashboardRoute
+  '/rider/history': typeof RiderHistoryRoute
   '/rider/payslips': typeof RiderPayslipsRoute
   '/rider/profile': typeof RiderProfileRoute
   '/admin/pricing/$id': typeof AdminPricingIdRoute
@@ -345,6 +353,7 @@ export interface FileRoutesById {
   '/api/payroll-workflow': typeof ApiPayrollWorkflowRoute
   '/api/pnl-weekly-push': typeof ApiPnlWeeklyPushRoute
   '/rider/dashboard': typeof RiderDashboardRoute
+  '/rider/history': typeof RiderHistoryRoute
   '/rider/payslips': typeof RiderPayslipsRoute
   '/rider/profile': typeof RiderProfileRoute
   '/admin/pricing/$id': typeof AdminPricingIdRoute
@@ -386,6 +395,7 @@ export interface FileRouteTypes {
     | '/api/payroll-workflow'
     | '/api/pnl-weekly-push'
     | '/rider/dashboard'
+    | '/rider/history'
     | '/rider/payslips'
     | '/rider/profile'
     | '/admin/pricing/$id'
@@ -425,6 +435,7 @@ export interface FileRouteTypes {
     | '/api/payroll-workflow'
     | '/api/pnl-weekly-push'
     | '/rider/dashboard'
+    | '/rider/history'
     | '/rider/payslips'
     | '/rider/profile'
     | '/admin/pricing/$id'
@@ -464,6 +475,7 @@ export interface FileRouteTypes {
     | '/api/payroll-workflow'
     | '/api/pnl-weekly-push'
     | '/rider/dashboard'
+    | '/rider/history'
     | '/rider/payslips'
     | '/rider/profile'
     | '/admin/pricing/$id'
@@ -535,6 +547,13 @@ declare module '@tanstack/react-router' {
       path: '/payslips'
       fullPath: '/rider/payslips'
       preLoaderRoute: typeof RiderPayslipsRouteImport
+      parentRoute: typeof RiderRoute
+    }
+    '/rider/history': {
+      id: '/rider/history'
+      path: '/history'
+      fullPath: '/rider/history'
+      preLoaderRoute: typeof RiderHistoryRouteImport
       parentRoute: typeof RiderRoute
     }
     '/rider/dashboard': {
@@ -804,12 +823,14 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface RiderRouteChildren {
   RiderDashboardRoute: typeof RiderDashboardRoute
+  RiderHistoryRoute: typeof RiderHistoryRoute
   RiderPayslipsRoute: typeof RiderPayslipsRoute
   RiderProfileRoute: typeof RiderProfileRoute
 }
 
 const RiderRouteChildren: RiderRouteChildren = {
   RiderDashboardRoute: RiderDashboardRoute,
+  RiderHistoryRoute: RiderHistoryRoute,
   RiderPayslipsRoute: RiderPayslipsRoute,
   RiderProfileRoute: RiderProfileRoute,
 }

@@ -1,11 +1,12 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Receipt, User, LogOut, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Receipt, User, History, LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { useT, LangToggle } from "@/lib/i18n";
 
 const NAV = [
   { to: "/rider/dashboard", labelKey: "nav.beranda", icon: LayoutDashboard },
+  { to: "/rider/history", labelKey: "nav.riwayat", icon: History },
   { to: "/rider/payslips", labelKey: "nav.slipGaji", icon: Receipt },
   { to: "/rider/profile", labelKey: "nav.profil", icon: User },
 ] as const;
@@ -61,7 +62,7 @@ export function RiderLayout({ children, title }: { children: ReactNode; title: s
       </header>
       <main className="relative z-[1] flex-1 pb-28 px-4 py-6 max-w-xl w-full mx-auto">{children}</main>
       <nav className="fixed bottom-3 inset-x-3 max-w-[calc(36rem-1.5rem)] mx-auto rounded-[1.35rem] border border-border/80 bg-card/90 shadow-2xl shadow-black/15 backdrop-blur-xl overflow-hidden z-20">
-        <div className="max-w-xl mx-auto grid grid-cols-3">
+        <div className="max-w-xl mx-auto grid grid-cols-4">
           {NAV.map((it) => {
             const Icon = it.icon;
             const active = pathname === it.to;

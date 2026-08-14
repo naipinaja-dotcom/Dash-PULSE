@@ -443,6 +443,124 @@
   .admin-main { position: relative; z-index: 1; }
   .admin-content { position: relative; z-index: 0; }
 
+  /* Potongan has dense operational forms.  Give every tab one deliberate
+     working surface so inputs do not float directly on the illustration. */
+  .deductions-workspace { max-width: 78rem; }
+  .deductions-panel {
+    position: relative;
+    min-height: 31rem;
+    padding: 1.25rem;
+    border: 2px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: color-mix(in oklch, var(--color-card) 96%, #f5f0ff);
+    box-shadow: 6px 6px 0 0 var(--color-border-strong);
+  }
+  .deductions-panel::before {
+    content: "";
+    display: block;
+    height: 5px;
+    margin: -1.25rem -1.25rem 1.1rem;
+    background: linear-gradient(90deg, var(--color-primary) 0 58%, #1d4ed8 58% 78%, var(--brutal-accent) 78% 100%);
+    border-bottom: 2px solid var(--color-border-strong);
+  }
+  .deductions-panel :is(input, select, textarea) { background: var(--color-input); }
+  .deductions-panel--form {
+    max-width: 38rem;
+    background:
+      linear-gradient(145deg, color-mix(in oklch, var(--color-card) 97%, white), color-mix(in oklch, var(--color-card) 92%, #ece5ff));
+  }
+  .deductions-panel-heading {
+    position: relative;
+    padding: .1rem 0 .9rem;
+    margin-bottom: 1.1rem;
+    border-bottom: 1px dashed color-mix(in oklch, var(--color-border-strong) 42%, transparent);
+  }
+  .deductions-panel-heading::after {
+    content: "01";
+    position: absolute;
+    right: 0;
+    top: -.1rem;
+    color: color-mix(in oklch, var(--color-primary) 22%, transparent);
+    font: 800 2.6rem/.9 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: -.1em;
+    pointer-events: none;
+  }
+  .deductions-panel-heading h2 { margin-top: .2rem; font-size: 1.1rem; line-height: 1.25; }
+  .deductions-panel-heading p { max-width: 28rem; margin-top: .25rem; color: var(--color-muted-foreground); font-size: .78rem; line-height: 1.45; }
+  .deduction-mode-picker {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in oklch, var(--color-primary) 5%, var(--color-card));
+  }
+  .deduction-mode-picker::after {
+    content: "PILIH SKEMA";
+    position: absolute;
+    right: .65rem;
+    top: .65rem;
+    color: color-mix(in oklch, var(--color-primary) 42%, transparent);
+    font: 700 .58rem/1 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: .12em;
+    pointer-events: none;
+  }
+  .deduction-mode-option {
+    min-height: 9.25rem;
+    transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease;
+  }
+  .deduction-mode-option:not(.bg-primary) { background: color-mix(in oklch, var(--color-card) 88%, #efeaff); }
+  .deduction-mode-option:not(.bg-primary):hover {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+    box-shadow: 3px 3px 0 color-mix(in oklch, var(--color-primary) 55%, var(--color-border-strong));
+  }
+  .deduction-mode-option.bg-primary {
+    position: relative;
+    box-shadow: 4px 4px 0 var(--color-border-strong);
+    transform: translate(-1px, -1px);
+  }
+  .deduction-mode-option.bg-primary::after {
+    content: "TERPILIH";
+    display: block;
+    width: fit-content;
+    margin-top: .75rem;
+    padding: .18rem .35rem;
+    background: var(--brutal-accent);
+    color: var(--color-foreground);
+    font: 800 .56rem/1 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: .07em;
+  }
+  .deduction-save-area {
+    display: flex;
+    align-items: stretch;
+    gap: .75rem;
+    margin-top: .25rem;
+  }
+  .deduction-summary {
+    position: relative;
+    display: grid;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 2px solid var(--color-border-strong);
+    background: color-mix(in oklch, var(--color-card) 94%, #fff1df);
+  }
+  .deduction-summary > div { padding: .55rem .65rem; border-right: 1px solid var(--color-border-strong); }
+  .deduction-summary > div:last-of-type { border-right: 0; }
+  .deduction-summary span { display: block; color: var(--color-muted-foreground); font: 700 .56rem/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
+  .deduction-summary strong { display: block; margin-top: .3rem; overflow: hidden; color: var(--color-foreground); font-size: .72rem; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+  .deduction-summary p { grid-column: 1 / -1; margin: 0; padding: .35rem .65rem; border-top: 1px dashed color-mix(in oklch, var(--color-border-strong) 60%, transparent); color: var(--color-primary-soft-foreground); font-size: .68rem; font-weight: 750; }
+  .deduction-save-button {
+    min-width: 9.75rem;
+    border: 2px solid var(--color-border-strong);
+    box-shadow: 4px 4px 0 var(--color-border-strong);
+    font-weight: 800;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .deduction-save-button:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--color-border-strong); }
+  .deduction-save-button:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--color-border-strong); }
+  @media (max-width: 34rem) {
+    .deduction-save-area { flex-direction: column; }
+    .deduction-save-button { min-height: 2.75rem; }
+  }
+
   .admin-content > * { min-width: 0; }
   .admin-nav-item { transition-property: color, background-color, box-shadow, opacity, transform; }
   /* Data labels are operational content, not decoration.  Keep every small
@@ -753,6 +871,14 @@
   -webkit-backdrop-filter: blur(18px);
   box-shadow: 0 14px 38px color-mix(in oklch, var(--color-primary) 7%, transparent) !important;
 }
+[data-design="classic"] .deductions-panel {
+  border-width: 1px;
+  border-color: var(--color-border);
+  background: color-mix(in oklch, var(--color-card) 88%, transparent);
+  box-shadow: 0 14px 38px color-mix(in oklch, var(--color-primary) 7%, transparent);
+}
+[data-design="classic"] .deductions-panel::before { display: none; }
+[data-design="classic"] .deductions-panel-heading::after { display: none; }
 [data-design="classic"] .admin-stat-card,
 [data-design="classic"] .admin-kpi-card {
   border-width: 1px !important;

@@ -33,6 +33,9 @@ export function AddTab() {
     const q = search.trim().toLowerCase();
     return !q || r.full_name.toLowerCase().includes(q) || r.employee_id.toLowerCase().includes(q);
   });
+  const selectedTypeName = types.find((type) => type.id === f.deduction_type_id)?.name ?? "Belum dipilih";
+  const selectedMode = f.mode === "fixed" ? "Cicilan tetap" : f.mode === "daily" ? "Per hari" : "Per bulan";
+  const summaryAmount = f.mode === "fixed" ? f.total_amount : f.daily_rate;
   const toggleRider = (id: string) =>
     setF((p) => ({
       ...p,
@@ -233,13 +236,13 @@ export function AddTab() {
           <p className="text-xs text-muted-foreground">Belum ada penerima? Tambahkan dari menu master Penerima Kasbon terlebih dahulu.</p>
         </div>
       )}
-      <div className="rounded-md border border-border p-3">
+      <div className="deduction-mode-picker rounded-md border border-border p-3">
         <label className="font-medium text-xs">Mode Potongan</label>
         <div className="mt-1.5 grid grid-cols-3 gap-2">
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "fixed" })}
-            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "fixed" ? "border-primary bg-primary-soft" : "border-border"}`}
+            className={`deduction-mode-option text-left rounded-md px-3 py-2 border-2 text-xs ${f.mode === "fixed" ? "border-border-strong bg-primary text-primary-foreground" : "border-border"}`}
           >
             <span className="font-medium block">Cicilan tetap</span>
             <span className="text-muted-foreground">Total dibagi N kali, mis. kerusakan barang/kasbon</span>
@@ -247,7 +250,7 @@ export function AddTab() {
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "daily" })}
-            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "daily" ? "border-primary bg-primary-soft" : "border-border"}`}
+            className={`deduction-mode-option text-left rounded-md px-3 py-2 border-2 text-xs ${f.mode === "daily" ? "border-border-strong bg-primary text-primary-foreground" : "border-border"}`}
           >
             <span className="font-medium block">Per hari</span>
             <span className="text-muted-foreground">
@@ -258,7 +261,7 @@ export function AddTab() {
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "monthly" })}
-            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "monthly" ? "border-primary bg-primary-soft" : "border-border"}`}
+            className={`deduction-mode-option text-left rounded-md px-3 py-2 border-2 text-xs ${f.mode === "monthly" ? "border-border-strong bg-primary text-primary-foreground" : "border-border"}`}
           >
             <span className="font-medium block">Per bulan</span>
             <span className="text-muted-foreground">
@@ -427,13 +430,21 @@ export function AddTab() {
           className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
         />
       </div>
-      <button
-        onClick={save}
-        disabled={saving}
-        className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm disabled:opacity-50"
-      >
-        {saving ? "Menyimpan…" : "Simpan Potongan"}
-      </button>
+      <div className="deduction-save-area" aria-live="polite">
+        <div className="deduction-summary" aria-label="Ringkasan potongan">
+          <div><span>Rider</span><strong>{f.rider_ids.length || "—"}</strong></div>
+          <div><span>Skema</span><strong>{selectedMode}</strong></div>
+          <div><span>Nominal</span><strong>Rp{summaryAmount.toLocaleString("id-ID")}</strong></div>
+          <p>{selectedTypeName}</p>
+        </div>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="deduction-save-button rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {saving ? "Menyimpan…" : "Simpan Potongan"}
+        </button>
+      </div>
     </div>
   );
 }

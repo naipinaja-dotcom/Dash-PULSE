@@ -163,16 +163,16 @@ function PayrollRunPicker({
 
   return (
     <div ref={pickerRef} className="relative min-w-[280px] flex-1 max-w-xl">
-      <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Payroll Run</label>
+      <label className="inline-flex border-2 border-[#111827] bg-[#FFD45A] px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#111827] shadow-[3px_3px_0_#111827]">Payroll Run</label>
       <button
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="mt-1 flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/45 focus:outline-none focus:ring-2 focus:ring-primary/25"
+        className="mt-2 flex w-full items-center justify-between gap-3 rounded-none border-[3px] border-[#111827] bg-[#FFFDF8] px-4 py-3 text-left shadow-[6px_6px_0_#111827] transition-all hover:-translate-x-px hover:-translate-y-px hover:bg-[#FFF5D6] hover:shadow-[8px_8px_0_#111827] focus:outline-none focus:ring-2 focus:ring-primary"
       >
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-foreground">
+          <span className="block truncate text-sm font-black text-[#111827]">
             {selected ? payrollClientName(selected.name) : "Pilih Payroll Run"}
           </span>
           {selected && (
@@ -182,16 +182,16 @@ function PayrollRunPicker({
           )}
         </span>
         {selected && (
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+          <span className={`shrink-0 border-2 border-[#111827] px-2 py-1 text-[10px] font-black uppercase tracking-wide ${selected.status === "published" ? "bg-[#FFD45A] text-[#513600]" : "bg-[#FFB4A8] text-[#6C2117]"}`}>
             {selected.status === "published" ? "Published" : "Finalized"}
           </span>
         )}
-        <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-5 w-5 shrink-0 text-[#111827] transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl">
-          <div className="border-b border-border p-2">
+        <div className="absolute z-30 mt-3 w-full overflow-hidden rounded-none border-[3px] border-[#111827] bg-[#FFFDF8] shadow-[8px_8px_0_#111827]">
+          <div className="border-b-[3px] border-[#111827] bg-[#F2E9FF] p-3">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -200,11 +200,11 @@ function PayrollRunPicker({
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => event.key === "Escape" && setOpen(false)}
                 placeholder="Cari client atau periode..."
-                className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/25"
+                className="w-full rounded-none border-[3px] border-[#111827] bg-[#FFFDF8] py-2.5 pl-9 pr-3 text-sm font-semibold text-[#111827] outline-none placeholder:text-[#5B6473] focus:bg-white focus:ring-2 focus:ring-[#7C4DFF]"
               />
             </label>
           </div>
-          <div role="listbox" className="max-h-72 overflow-y-auto p-1.5">
+          <div role="listbox" className="max-h-72 overflow-y-auto bg-[#FFFDF8] p-2">
             {filteredRuns.length === 0 ? (
               <p className="px-3 py-5 text-center text-xs text-muted-foreground">Payroll tidak ditemukan.</p>
             ) : (
@@ -219,18 +219,18 @@ function PayrollRunPicker({
                     setOpen(false);
                     setQuery("");
                   }}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${run.id === value ? "bg-primary-soft text-foreground" : "hover:bg-muted"}`}
+                  className={`flex w-full items-center gap-3 rounded-none border-[3px] px-3 py-3 text-left transition-all ${run.id === value ? "mb-2 border-[#111827] bg-[#E4D4FF] shadow-[4px_4px_0_#111827]" : "border-transparent hover:border-[#111827] hover:bg-[#FFF0B5]"}`}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{payrollClientName(run.name)}</span>
+                    <span className="block truncate text-sm font-black text-[#111827]">{payrollClientName(run.name)}</span>
                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
                       {formatTanggal(run.period_start)} – {formatTanggal(run.period_end)}
                     </span>
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${run.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+                  <span className={`shrink-0 border-2 border-[#111827] px-2 py-1 text-[10px] font-black uppercase tracking-wide ${run.status === "published" ? "bg-[#FFD45A] text-[#513600]" : "bg-[#FFB4A8] text-[#6C2117]"}`}>
                     {run.status === "published" ? "Published" : "Finalized"}
                   </span>
-                  {run.id === value && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                  {run.id === value && <Check className="h-5 w-5 shrink-0 text-[#5A23D8] stroke-[3]" />}
                 </button>
               ))
             )}

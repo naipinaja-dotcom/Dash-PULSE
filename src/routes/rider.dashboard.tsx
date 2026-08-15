@@ -6,6 +6,7 @@ import { useRiderSelf } from "@/lib/use-rider-self";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { ChevronDown, ChevronRight, CircleDollarSign, ReceiptText, WalletCards } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { fixedRemaining, latestRentalUnpaid } from "@/lib/arrears";
 
 export const Route = createFileRoute("/rider/dashboard")({ component: DashboardPage });
 
@@ -14,7 +15,19 @@ const sb = supabase as any;
 
 type DedPeriod = { start: string; end: string; days: number; amount: number };
 type DedClient = { clientName: string; days: number; amount: number; periods: DedPeriod[] };
-type DedType = { typeName: string; mode: string; totalDays: number; totalAmount: number; clients: DedClient[] };
+type DedType = {
+  typeName: string;
+  mode: string;
+  totalDays: number;
+  totalAmount: number;
+  clients: DedClient[];
+  // Array, bukan satu nilai — kalau rider punya 2+ installment aktif dengan
+  // jenis yang sama, masing-masing punya catatan/tunggakan/progress sendiri
+  // dan gak boleh saling nimpa (lihat instInfo di effect di bawah).
+  notes: string[];
+  tunggakan: number;
+  progress: string[];
+};
 
 function DashboardPage() {
   const { rider } = useRiderSelf();
@@ -32,32 +45,60 @@ function DashboardPage() {
       .then(({ data }: { data: { data: typeof latest; payroll_runs: { name: string } | null } | null }) => {
         if (data) { setLatest(data.data); setRunName(data.payroll_runs?.name ?? null); }
       });
-    supabase.from("rider_installments").select("mode, total_amount, installments_paid, per_period_amount, installment_count")
-      .eq("rider_id", rider.id).eq("active", true)
-      .then(({ data }) => {
-        const remaining = (data ?? [])
-          .filter((i) => i.mode === "fixed")
-          .reduce((s, i) => s + Math.max(0, ((i.installment_count ?? 0) - i.installments_paid) * (i.per_period_amount ?? 0)), 0);
-        setInstallmentTotal(remaining);
-      });
+    // Dua sumber independen — jalan paralel, baru digabung pas keduanya beres.
+    // (1) sisa tunggakan per installment aktif, dipakai buat banner atas +
+    // dilampirin ke baris accordion di bawah lewat installment_id.
+    // (2) rincian potongan terbaru per jenis, dari payroll_details rider ini.
+    // Rumus tunggakannya ada di src/lib/arrears.ts (satu tempat, dipakai juga
+    // di admin.dashboard.tsx & ArrearsTab) — sama persis dengan
+    // getCarriedArrears() di payroll-generate.ts, di sini cuma dibaca doang.
+    const loadArrears = async () => {
+      const { data: installments } = await sb.from("rider_installments")
+        .select("id, mode, installments_paid, per_period_amount, installment_count, notes")
+        .eq("rider_id", rider.id).eq("active", true);
+      const rows = installments ?? [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fixedRows = rows.filter((i: any) => i.mode === "fixed");
+      const info = new Map<string, { notes: string | null; tunggakan: number; progress: string | null }>();
+      let fixedTotal = 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const i of fixedRows as any[]) {
+        const { amount } = fixedRemaining(i.installment_count, i.installments_paid, i.per_period_amount);
+        info.set(i.id, { notes: i.notes, tunggakan: amount, progress: `${i.installments_paid}/${i.installment_count ?? 0}` });
+        fixedTotal += amount;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rentalRows = rows.filter((i: any) => i.mode === "daily" || i.mode === "monthly");
+      if (rentalRows.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const latestUnpaid = await latestRentalUnpaid(rentalRows.map((i: any) => i.id));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const i of rentalRows as any[]) {
+          info.set(i.id, { notes: i.notes, tunggakan: latestUnpaid.get(i.id) ?? 0, progress: null });
+        }
+      }
+      return { fixedTotal, info };
+    };
 
-    // Rincian potongan terbaru — ambil dari payroll_details terbaru rider ini
-    (async () => {
+    const loadDedGroups = async () => {
       const { data: details } = await sb.from("payroll_details")
         .select("id, run_id, client_id, payroll_runs(period_start, period_end), clients(name)")
         .eq("rider_id", rider.id)
         .order("created_at", { ascending: false })
         .limit(20);
-      if (!details?.length) return;
+      if (!details?.length) return [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const detailIds = details.map((d: any) => d.id);
       const { data: deds } = await sb.from("payroll_deductions")
         .select("detail_id, amount, description, installment_id, deduction_types(name), rider_installments(mode)")
         .in("detail_id", detailIds);
-      if (!deds?.length) return;
+      if (!deds?.length) return [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const detailMap = new Map(details.map((d: any) => [d.id, d]));
-      const byType = new Map<string, { typeName: string; mode: string; totalDays: number; totalAmount: number; byClient: Map<string, DedClient> }>();
+      const byType = new Map<
+        string,
+        { typeName: string; mode: string; totalDays: number; totalAmount: number; byClient: Map<string, DedClient>; installmentIds: Set<string> }
+      >();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const ded of deds as any[]) {
         const detail = detailMap.get(ded.detail_id);
@@ -71,19 +112,42 @@ function DashboardPage() {
         const pStart = detail.payroll_runs?.period_start ?? "";
         const pEnd = detail.payroll_runs?.period_end ?? "";
 
-        if (!byType.has(typeName)) byType.set(typeName, { typeName, mode, totalDays: 0, totalAmount: 0, byClient: new Map() });
-        const t = byType.get(typeName)!;
-        t.totalDays += days;
-        t.totalAmount += amount;
+        if (!byType.has(typeName)) byType.set(typeName, { typeName, mode, totalDays: 0, totalAmount: 0, byClient: new Map(), installmentIds: new Set() });
+        const g = byType.get(typeName)!;
+        g.totalDays += days;
+        g.totalAmount += amount;
+        if (ded.installment_id) g.installmentIds.add(ded.installment_id);
 
         const cKey = detail.client_id ?? "_";
-        if (!t.byClient.has(cKey)) t.byClient.set(cKey, { clientName, days: 0, amount: 0, periods: [] });
-        const c = t.byClient.get(cKey)!;
+        if (!g.byClient.has(cKey)) g.byClient.set(cKey, { clientName, days: 0, amount: 0, periods: [] });
+        const c = g.byClient.get(cKey)!;
         c.days += days;
         c.amount += amount;
         c.periods.push({ start: pStart, end: pEnd, days, amount });
       }
-      setDedTypes([...byType.values()].map((t) => ({ ...t, clients: [...t.byClient.values()] })).sort((a, b) => b.totalAmount - a.totalAmount));
+      return [...byType.values()];
+    };
+
+    (async () => {
+      const [{ fixedTotal, info }, groups] = await Promise.all([loadArrears(), loadDedGroups()]);
+      setInstallmentTotal(fixedTotal);
+      setDedTypes(
+        groups
+          .map((g) => {
+            const notes: string[] = [];
+            const progress: string[] = [];
+            let tunggakan = 0;
+            for (const id of g.installmentIds) {
+              const inf = info.get(id);
+              if (!inf) continue;
+              if (inf.notes) notes.push(inf.notes);
+              if (inf.progress) progress.push(inf.progress);
+              tunggakan += inf.tunggakan;
+            }
+            return { ...g, clients: [...g.byClient.values()], notes, tunggakan, progress };
+          })
+          .sort((a, b) => b.totalAmount - a.totalAmount),
+      );
     })();
   }, [rider]);
 
@@ -136,11 +200,37 @@ function DashboardPage() {
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
                         {d.mode === "daily" ? t("rider.daily") : d.mode === "fixed" ? t("rider.installment") : t("rider.auto")}
                       </span>
+                      {d.tunggakan > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-medium">
+                          {t("rider.hasArrears")}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[13px] font-semibold tabular-nums">{formatRupiah(d.totalAmount)}</div>
                   </button>
                   {isOpen && (
                     <div className="px-3 pb-3 border-t border-border/50">
+                      {d.notes.map((note, i) => (
+                        <div key={i} className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+                          <span className="font-medium text-foreground/80">{t("rider.adminNote")}:</span> "{note}"
+                        </div>
+                      ))}
+                      {(d.tunggakan > 0 || d.progress.length > 0) && (
+                        <div className="flex justify-between items-center gap-3 mt-2 pt-2 border-t border-border/30">
+                          {d.tunggakan > 0 && (
+                            <div>
+                              <div className="text-[9px] uppercase tracking-wide text-muted-foreground">{t("rider.activeInstallment")}</div>
+                              <div className="text-[12px] font-semibold text-warning mt-0.5">{formatRupiah(d.tunggakan)}</div>
+                            </div>
+                          )}
+                          {d.progress.length > 0 && (
+                            <div className="text-right">
+                              <div className="text-[9px] uppercase tracking-wide text-muted-foreground">{t("rider.installment")}</div>
+                              <div className="text-[12px] font-medium mt-0.5">{d.progress.join(", ")} {t("rider.installmentUnit")}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {d.clients.map((c) => (
                         <div key={c.clientName} className="mt-2">
                           <div className="flex justify-between text-[12px]">
@@ -167,6 +257,12 @@ function DashboardPage() {
                           <span className="tabular-nums">{d.totalDays} {t("rider.dayUnit")} · {formatRupiah(d.totalAmount)}</span>
                         </div>
                       )}
+                      <Link
+                        to="/rider/history"
+                        className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                      >
+                        {t("rider.viewPaymentHistory")} <ChevronRight className="w-3 h-3" />
+                      </Link>
                     </div>
                   )}
                 </div>

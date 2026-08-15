@@ -196,7 +196,7 @@ function ExecutiveDashboard() {
     <AdminLayout title={t("exec.title")} subtitle={t("exec.subtitle")}>
 
       {/* ── Date range control ── */}
-      <div className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4 mb-5 flex flex-wrap items-end gap-3 text-sm shadow-sm">
+      <div className="rounded-xl bg-card border-[3px] border-border-strong shadow-[6px_6px_0_0_var(--color-border-strong)] p-4 mb-5 flex flex-wrap items-end gap-3 text-sm">
         <div className="flex flex-col gap-1">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Dari</label>
           <input
@@ -231,7 +231,7 @@ function ExecutiveDashboard() {
       {/* ── KPI cards ── */}
       {perClient && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <Kpi label="Total Revenue" value={jt(totRevenue)} icon={<DollarSign className="w-4 h-4" />} variant="default" />
+          <Kpi label="Total Revenue" value={jt(totRevenue)} icon={<DollarSign className="w-4 h-4" />} variant="primary" />
           <Kpi label="Total Cost" value={jt(totCost)} icon={<TrendingDown className="w-4 h-4" />} variant="muted" />
           <Kpi label="Gross Margin" value={jt(totMargin)} icon={<Activity className="w-4 h-4" />} variant={totMargin >= 0 ? "success" : "danger"} />
           <Kpi label="Margin %" value={totPct.toFixed(1) + "%"} icon={<Percent className="w-4 h-4" />} variant={totPct >= 15 ? "success" : totPct >= 0 ? "warning" : "danger"} />
@@ -240,18 +240,18 @@ function ExecutiveDashboard() {
 
       {/* ── Warning banner ── */}
       {perClient && (rugiCount > 0 || thinCount > 0) && (
-        <div className="flex items-start gap-3 mb-5 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
-          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
+        <div className="flex items-start gap-3 mb-5 rounded-xl border-[3px] border-border-strong bg-warning text-warning-foreground shadow-[6px_6px_0_0_var(--color-border-strong)] p-4">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg border-2 border-border-strong flex items-center justify-center">
+            <AlertTriangle className="w-4 h-4" />
           </div>
           <div className="text-sm">
-            <p className="font-semibold text-amber-600 dark:text-amber-400 mb-0.5">Perhatian Margin Client</p>
-            <p className="text-muted-foreground">
-              {rugiCount > 0 && <span className="font-medium text-destructive">{rugiCount} client RUGI</span>}
-              {rugiCount > 0 && thinCount > 0 && <span className="text-muted-foreground"> · </span>}
-              {thinCount > 0 && <span className="font-medium text-amber-600 dark:text-amber-400">{thinCount} client margin tipis (&lt;15%)</span>}
+            <p className="font-bold mb-0.5">Perhatian Margin Client</p>
+            <p className="opacity-90">
+              {rugiCount > 0 && <span className="font-bold">{rugiCount} client RUGI</span>}
+              {rugiCount > 0 && thinCount > 0 && <span> · </span>}
+              {thinCount > 0 && <span className="font-bold">{thinCount} client margin tipis (&lt;15%)</span>}
               {" — "}
-              <Link to="/admin/pnl" className="underline underline-offset-2 hover:text-foreground transition-colors">
+              <Link to="/admin/pnl" className="font-semibold underline underline-offset-2">
                 Lihat rincian di Margin Analytics
               </Link>
             </p>
@@ -262,11 +262,11 @@ function ExecutiveDashboard() {
       {/* ── Charts ── */}
       {perClient && (
         <div className="grid md:grid-cols-2 gap-4 mb-5">
-          <div className="admin-chart-card rounded-xl border border-border bg-card shadow-sm p-5">
+          <div className="admin-chart-card rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold">Tren Revenue vs Cost</h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Perbandingan pendapatan dan biaya rider</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Perbandingan pendapatan dan biaya rider</p>
               </div>
             </div>
             {trend.length === 0 ? (
@@ -288,10 +288,10 @@ function ExecutiveDashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.6} />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={(v) => jt(v)} width={68} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => jt(v)} width={68} axisLine={false} tickLine={false} />
                   <Tooltip
-                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}
+                    contentStyle={{ background: "var(--card)", border: "2px solid var(--border-strong)", borderRadius: 8, fontSize: 12, fontWeight: 700, boxShadow: "4px 4px 0 0 var(--border-strong)" }}
                     formatter={(value: number) => formatRupiah(value)}
                   />
                   <Area type="monotone" dataKey="revenue" name="Revenue" stroke="var(--primary)" fill="url(#gRev)" strokeWidth={2} />
@@ -301,11 +301,11 @@ function ExecutiveDashboard() {
             )}
           </div>
 
-          <div className="admin-chart-card rounded-xl border border-border bg-card shadow-sm p-5">
+          <div className="admin-chart-card rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold">Tren BCR (Margin %)</h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   <span className="inline-flex items-center gap-1">
                     <span className="w-2 h-0.5 bg-destructive inline-block rounded" /> Rugi
                   </span>
@@ -325,12 +325,12 @@ function ExecutiveDashboard() {
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trend} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.6} />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={(v) => v + "%"} width={40} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => v + "%"} width={40} axisLine={false} tickLine={false} />
                   <ReferenceLine y={0} stroke="var(--destructive)" strokeDasharray="4 3" strokeWidth={1.5} />
-                  <ReferenceLine y={15} stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1.5} />
+                  <ReferenceLine y={15} stroke="var(--warning)" strokeDasharray="4 3" strokeWidth={1.5} />
                   <Tooltip
-                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}
+                    contentStyle={{ background: "var(--card)", border: "2px solid var(--border-strong)", borderRadius: 8, fontSize: 12, fontWeight: 700, boxShadow: "4px 4px 0 0 var(--border-strong)" }}
                     formatter={(value: number) => value.toFixed(1) + "%"}
                   />
                   <Line type="monotone" dataKey="marginPct" name="BCR (Margin %)" stroke="var(--success)" strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
@@ -397,7 +397,7 @@ function ExecutiveDashboard() {
                         <div className="flex justify-between items-center">
                           <span className="font-medium text-sm">{r.client}</span>
                           {ex && ex.payrollRuns > 0 && (
-                            <span className="text-[10px] font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded">PAYROLL RUN ADA</span>
+                            <span className="text-[10px] font-semibold border-2 border-border-strong bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded">PAYROLL RUN ADA</span>
                           )}
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -441,7 +441,7 @@ function ExecutiveDashboard() {
             </button>
             {snapshots.length > 0 && showPnlHistory && (
               <button onClick={clearAllSnapshots} title="Hapus semua riwayat"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 text-destructive px-2.5 py-2 text-xs hover:bg-destructive/10 transition-colors">
+                className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong text-destructive px-2.5 py-2 text-xs hover:bg-destructive hover:text-destructive-foreground transition-colors">
                 <Trash2 className="w-3.5 h-3.5" /> Hapus Semua
               </button>
             )}
@@ -519,37 +519,16 @@ function ExecutiveDashboard() {
   );
 }
 
-type KpiVariant = "default" | "muted" | "success" | "warning" | "danger";
+type KpiVariant = "default" | "primary" | "muted" | "success" | "warning" | "danger";
 
 function Kpi({ label, value, icon, variant = "default" }: { label: string; value: string; icon?: React.ReactNode; variant?: KpiVariant }) {
-  const styles: Record<KpiVariant, string> = {
-    default: "border-border bg-card",
-    muted: "border-border bg-card",
-    success: "border-success/25 bg-success/5",
-    warning: "border-amber-500/25 bg-amber-500/5",
-    danger: "border-destructive/25 bg-destructive/5",
-  };
-  const valueStyles: Record<KpiVariant, string> = {
-    default: "text-foreground",
-    muted: "text-muted-foreground",
-    success: "text-success",
-    warning: "text-amber-600 dark:text-amber-400",
-    danger: "text-destructive",
-  };
-  const iconStyles: Record<KpiVariant, string> = {
-    default: "bg-muted text-muted-foreground",
-    muted: "bg-muted text-muted-foreground",
-    success: "bg-success/15 text-success",
-    warning: "bg-amber-500/15 text-amber-500",
-    danger: "bg-destructive/15 text-destructive",
-  };
   return (
-    <div className={"admin-kpi-card rounded-xl border p-4 shadow-sm " + styles[variant]}>
+    <div className="admin-kpi-card p-4" data-variant={variant}>
       <div className="flex items-center justify-between mb-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
-        {icon && <div className={"w-7 h-7 rounded-lg flex items-center justify-center " + iconStyles[variant]}>{icon}</div>}
+        {icon && <div className="stat-icon-chip w-7 h-7 rounded-lg flex items-center justify-center">{icon}</div>}
       </div>
-      <div className={"admin-metric-value text-[26px] font-bold font-mono tracking-tight " + valueStyles[variant]}>{value}</div>
+      <div className="admin-metric-value text-[26px] font-bold font-mono tracking-tight">{value}</div>
     </div>
   );
 }

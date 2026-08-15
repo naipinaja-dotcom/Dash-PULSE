@@ -1,39 +1,35 @@
 -- Live Fee Auto-Sync — pg_cron scheduling
 --
--- Ini BUKAN migration otomatis seperti file lain di folder ini. Isinya sengaja
--- di-comment out karena butuh 2 nilai yang cuma diketahui pas deploy:
---   1. URL production project ini (mis. https://xxxx.vercel.app)
---   2. Isi env LIVE_FEE_SYNC_SECRET yang sama persis dengan yang di-set di server
+-- STATUS: SUDAH AKTIF di production sejak 2026-08-13 (job 'live-fee-sync-h1-morning'
+-- & 'live-fee-sync-h0-close' di cron.job) — dijalankan langsung lewat Supabase SQL
+-- Editor / execute_sql, BUKAN lewat migration runner otomatis (project ini gak
+-- punya migration runner utk pg_cron; lihat CATATAN di bawah). File ini didokumentasikan
+-- di sini SUPAYA gak dikira "belum pernah diaktifin" kayak insiden 2026-08-13 —
+-- SELALU cek `select * from cron.job;` langsung ke production buat status riil,
+-- jangan cuma percaya file ini di-comment atau enggak.
 --
--- Cara aktivasi (jalankan manual di Supabase SQL Editor, BUKAN lewat migration
--- runner otomatis):
---   1. Buka Supabase Dashboard -> Database -> Extensions -> aktifkan
---      "pg_cron" dan "pg_net" kalau belum aktif (kemungkinan sudah aktif dari
---      setup cron lain).
---   2. Copy blok SQL di bawah, ganti dua placeholder:
---        <PRODUCTION_URL>        -> domain production (tanpa trailing slash)
---        <LIVE_FEE_SYNC_SECRET>  -> isi env LIVE_FEE_SYNC_SECRET
---   3. Pastikan DASH_MGMT_API_TOKEN sudah di-set di server (Vercel) SEBELUM
---      cron ini jalan, kalau tidak endpoint akan error tiap kali dipanggil.
---   4. Jalankan di SQL Editor. Sekali jalan, cron langsung terjadwal —
---      tidak perlu diulang tiap deploy.
---   5. Cek jadwal aktif: SELECT * FROM cron.job;
---   6. Cek histori run & response: SELECT * FROM cron.job_run_details
---      ORDER BY start_time DESC LIMIT 10;
---
--- Jadwal di bawah: 2x sehari, jam 09:50 & 17:50 UTC (16:50 & 00:50 WIB) —
--- SENGAJA 10 menit SEBELUM cron 'payroll-workflow-daily' (10:00 & 18:00 UTC,
--- lihat 20260720000001_payroll_workflow_cron.sql), biar data delivery/
--- attendance yang di-sync live sudah pasti masuk duluan sebelum
--- payroll-workflow generate/regenerate payroll run dari data itu.
+-- Jadwal aktif: 2 job terpisah, TIAP JOB kirim {from,to} EKSPLISIT untuk SATU
+-- hari kalender (bukan window rolling 2 hari default) — supaya fee tiap hari
+-- cuma dihitung ULANG persis 2x sepanjang hidupnya: sekali sebagai "H-1"
+-- (kemarin, jam 06:00 WIB — udah pasti final, gak perlu buru-buru) dan sekali
+-- sebagai "H-0" (hari ini, jam 15:50 WIB — 10 menit sebelum payroll-workflow
+-- same-day jam 16:00 WIB baca datanya, lihat 20260720000001_payroll_workflow_cron.sql).
+--   - live-fee-sync-h1-morning: 23:00 UTC = 06:00 WIB (hari berikutnya) -> tarik KEMARIN
+--   - live-fee-sync-h0-close:   08:50 UTC = 15:50 WIB                  -> tarik HARI INI
 -- Format cron: menit jam tanggal bulan hari-minggu (semua dalam UTC).
+--
+-- Cara ganti jadwal (jalankan di Supabase SQL Editor):
+--   select cron.unschedule('live-fee-sync-h1-morning');
+--   select cron.unschedule('live-fee-sync-h0-close');
+--   -- lalu jalankan ulang 2 blok cron.schedule(...) di bawah dengan jadwal baru
+--   -- (uncomment dulu, isi <PRODUCTION_URL>/<LIVE_FEE_SYNC_SECRET> yang asli).
 
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
 --
 -- select cron.schedule(
---   'live-fee-sync-twice-daily',
---   '50 9,17 * * *', -- tiap hari jam 09:50 & 17:50 UTC (16:50 & 00:50 WIB)
+--   'live-fee-sync-h1-morning',
+--   '0 23 * * *', -- tiap hari jam 23:00 UTC (06:00 WIB besoknya) -> tarik KEMARIN
 --   $$
 --   select net.http_post(
 --     url := '<PRODUCTION_URL>/api/live-fee-sync',
@@ -41,14 +37,31 @@
 --       'Content-Type', 'application/json',
 --       'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'
 --     ),
---     body := '{}'::jsonb
+--     body := jsonb_build_object(
+--       'from', ((now() at time zone 'Asia/Jakarta')::date - 1)::text,
+--       'to', ((now() at time zone 'Asia/Jakarta')::date - 1)::text
+--     )
 --   );
 --   $$
 -- );
-
--- Untuk ganti jadwal atau matikan cron:
---   select cron.unschedule('live-fee-sync-twice-daily');
---   -- lalu jalankan ulang cron.schedule(...) di atas dengan jadwal baru.
+--
+-- select cron.schedule(
+--   'live-fee-sync-h0-close',
+--   '50 8 * * *', -- tiap hari jam 08:50 UTC (15:50 WIB) -> tarik HARI INI
+--   $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'
+--     ),
+--     body := jsonb_build_object(
+--       'from', ((now() at time zone 'Asia/Jakarta')::date)::text,
+--       'to', ((now() at time zone 'Asia/Jakarta')::date)::text
+--     )
+--   );
+--   $$
+-- );
 
 -- Untuk backfill/test manual periode tertentu:
 --   curl -X POST https://dash-payroll-engine.vercel.app/api/live-fee-sync \

@@ -14,14 +14,14 @@ const sb = supabase as any;
 
 const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
 const COLORS = [
-  "#6366f1",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#06b6d4",
-  "#a855f7",
-  "#ec4899",
-  "#84cc16",
+  "#0072B2",
+  "#E69F00",
+  "#009E73",
+  "#CC79A7",
+  "#56B4E9",
+  "#D55E00",
+  "#332288",
+  "#999933",
 ];
 
 type RiderRow = {
@@ -297,7 +297,7 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
 
   return (
     <>
-      <div className="rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-xs px-3.5 py-2.5 mb-4 leading-relaxed">
+      <div className="rounded-lg border-2 border-border-strong bg-warning text-warning-foreground text-xs px-3.5 py-2.5 mb-4 leading-relaxed">
         Metrik cash-flow — dipisahkan dari Margin/PNL. Angka di sini menunjukkan total potongan yang
         ditahan dari rider (cicilan &amp; potongan lain), <b>bukan</b> komponen cost/revenue Dash.
       </div>

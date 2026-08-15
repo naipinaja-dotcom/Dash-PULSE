@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
 import { toast } from "sonner";
-import type { DType, MolisType, Rider } from "./types";
+import type { Client, DType, MolisType, Rider } from "./types";
 
 export function AddTab() {
   const [riders, setRiders] = useState<Rider[]>([]);
   const [types, setTypes] = useState<DType[]>([]);
   const [molisTypes, setMolisTypes] = useState<MolisType[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [recipients, setRecipients] = useState<{ id: string; name: string; bank_name: string; account_number: string; account_holder: string }[]>([]);
   const [f, setF] = useState({
     rider_ids: [] as string[],
@@ -18,6 +19,7 @@ export function AddTab() {
     cycle_start_day: 25,
     molis_type_id: "",
     charge_target: "rider" as "rider" | "client_revenue",
+    client_id: "",
     start_date: new Date().toISOString().slice(0, 10),
     installment: false,
     installment_count: 1,
@@ -31,6 +33,9 @@ export function AddTab() {
     const q = search.trim().toLowerCase();
     return !q || r.full_name.toLowerCase().includes(q) || r.employee_id.toLowerCase().includes(q);
   });
+  const selectedTypeName = types.find((type) => type.id === f.deduction_type_id)?.name ?? "Belum dipilih";
+  const selectedMode = f.mode === "fixed" ? "Cicilan tetap" : f.mode === "daily" ? "Per hari" : "Per bulan";
+  const summaryAmount = f.mode === "fixed" ? f.total_amount : f.daily_rate;
   const toggleRider = (id: string) =>
     setF((p) => ({
       ...p,
@@ -58,6 +63,11 @@ export function AddTab() {
       .eq("active", true)
       .order("name")
       .then(({ data }: any) => setMolisTypes(data ?? []));
+    (supabase as any)
+      .from("clients")
+      .select("id, name")
+      .order("name")
+      .then(({ data }: any) => setClients(data ?? []));
     (supabase as any).from("kasbon_recipients").select("id, name, bank_name, account_number, account_holder").eq("active", true).order("name")
       .then(({ data }: any) => setRecipients(data ?? []));
   }, []);
@@ -86,6 +96,7 @@ export function AddTab() {
       cycle_start_day: f.mode === "monthly" ? f.cycle_start_day : null,
       molis_type_id: isMolisMode ? f.molis_type_id || null : null,
       charge_target: isMolisMode ? f.charge_target : "rider",
+      client_id: f.client_id || null,
       start_date: f.start_date,
       next_deduction_date: f.start_date,
       notes: f.notes || null,
@@ -103,6 +114,7 @@ export function AddTab() {
       cycle_start_day: 25,
       molis_type_id: "",
       charge_target: "rider",
+      client_id: "",
       notes: "",
       kasbon_recipient_id: "",
     });
@@ -189,6 +201,28 @@ export function AddTab() {
           ))}
         </select>
       </div>
+      <div>
+        <label className="font-medium">
+          Client Prioritas <span className="font-normal text-muted-foreground">(opsional)</span>
+        </label>
+        <select
+          value={f.client_id}
+          onChange={(e) => setF({ ...f, client_id: e.target.value })}
+          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+        >
+          <option value="">— pakai client rumah rider —</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground mt-1">
+          Potongan ini cuma kepotong di payroll run client ini. Kalau fee rider di client ini gak
+          cukup, sisa kurangnya bisa "dititip" ke client lain lewat netting manual di Payroll Run
+          (butuh approve admin dulu, gak otomatis kepotong).
+        </p>
+      </div>
       {types.find((type) => type.id === f.deduction_type_id)?.code === "KASBON" && (
         <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2">
           <div>
@@ -202,13 +236,13 @@ export function AddTab() {
           <p className="text-xs text-muted-foreground">Belum ada penerima? Tambahkan dari menu master Penerima Kasbon terlebih dahulu.</p>
         </div>
       )}
-      <div className="rounded-md border border-border p-3">
+      <div className="deduction-mode-picker rounded-md border border-border p-3">
         <label className="font-medium text-xs">Mode Potongan</label>
         <div className="mt-1.5 grid grid-cols-3 gap-2">
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "fixed" })}
-            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "fixed" ? "border-primary bg-primary-soft" : "border-border"}`}
+            className={`deduction-mode-option text-left rounded-md px-3 py-2 border-2 text-xs ${f.mode === "fixed" ? "border-border-strong bg-primary text-primary-foreground" : "border-border"}`}
           >
             <span className="font-medium block">Cicilan tetap</span>
             <span className="text-muted-foreground">Total dibagi N kali, mis. kerusakan barang/kasbon</span>
@@ -216,7 +250,7 @@ export function AddTab() {
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "daily" })}
-            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "daily" ? "border-primary bg-primary-soft" : "border-border"}`}
+            className={`deduction-mode-option text-left rounded-md px-3 py-2 border-2 text-xs ${f.mode === "daily" ? "border-border-strong bg-primary text-primary-foreground" : "border-border"}`}
           >
             <span className="font-medium block">Per hari</span>
             <span className="text-muted-foreground">
@@ -227,7 +261,7 @@ export function AddTab() {
           <button
             type="button"
             onClick={() => setF({ ...f, mode: "monthly" })}
-            className={`text-left rounded-md px-3 py-2 border text-xs ${f.mode === "monthly" ? "border-primary bg-primary-soft" : "border-border"}`}
+            className={`deduction-mode-option text-left rounded-md px-3 py-2 border-2 text-xs ${f.mode === "monthly" ? "border-border-strong bg-primary text-primary-foreground" : "border-border"}`}
           >
             <span className="font-medium block">Per bulan</span>
             <span className="text-muted-foreground">
@@ -396,13 +430,21 @@ export function AddTab() {
           className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
         />
       </div>
-      <button
-        onClick={save}
-        disabled={saving}
-        className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm disabled:opacity-50"
-      >
-        {saving ? "Menyimpan…" : "Simpan Potongan"}
-      </button>
+      <div className="deduction-save-area" aria-live="polite">
+        <div className="deduction-summary" aria-label="Ringkasan potongan">
+          <div><span>Rider</span><strong>{f.rider_ids.length || "—"}</strong></div>
+          <div><span>Skema</span><strong>{selectedMode}</strong></div>
+          <div><span>Nominal</span><strong>Rp{summaryAmount.toLocaleString("id-ID")}</strong></div>
+          <p>{selectedTypeName}</p>
+        </div>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="deduction-save-button rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {saving ? "Menyimpan…" : "Simpan Potongan"}
+        </button>
+      </div>
     </div>
   );
 }

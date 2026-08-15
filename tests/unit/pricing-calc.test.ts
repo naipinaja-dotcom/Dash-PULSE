@@ -506,6 +506,157 @@ describe("calcScheme — modular_v2 rate_by tanpa dimensi", () => {
 });
 
 // ==================================================================
+// modular_v2 — rate_by="delivery_type" DENGAN Distance+Weight dua-duanya aktif
+// (regression: Wicked Pies client-revenue scheme — Return kena dobel-charge
+// kalau distance & weight sama-sama jatuh ke band flat yang match override,
+// dan Return jauh/berat malah lolos dari override kalau bandnya "tier".
+// Config di bawah adalah config Wicked Pies · Rider · Per Pengiriman asli.)
+// ==================================================================
+describe("calcScheme — modular_v2 rate_by=delivery_type + Distance & Weight aktif bareng", () => {
+  const wickedPiesRevenueEnv = () =>
+    env({
+      type: "modular_v2",
+      config: {
+        rate_by: "delivery_type",
+        match_column: "Area",
+        rates: [{ key: "Return", rate: 12000 }],
+        unit_basis: "awb",
+        default_rate: 0,
+        distance: {
+          enabled: true,
+          accumulate: "per_order",
+          rows: [
+            { type: "flat", from: 0, to: 5, base_fee: 12000, step: 0, add_per_step: 0 },
+            { type: "tier", from: 5, to: 1000, base_fee: 12000, step: 1, add_per_step: 2000 },
+          ],
+        },
+        weight: {
+          mode: "range",
+          enabled: true,
+          accumulate: "per_order",
+          rows: [
+            { type: "flat", from: 0, to: 20, base_fee: 0, step: 0, add_per_step: 0 },
+            { type: "tier", from: 20, to: 100, base_fee: 0, step: 1, add_per_step: 2000 },
+          ],
+        },
+      } as never,
+    });
+
+  it("Return deket & ringan (dua dimensi jatuh ke band flat) dihitung SEKALI, bukan dobel", () => {
+    const e = wickedPiesRevenueEnv();
+    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 3, weight_kg: 5 })]);
+    expect(res.perRow[0].fee).toBe(12000); // bukan 24000 (12rb distance + 12rb weight)
+  });
+
+  it("Return jauh (band distance jadi tier) tetap kena flat Return, bukan rumus tier delivery biasa", () => {
+    const e = wickedPiesRevenueEnv();
+    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 50, weight_kg: 5 })]);
+    expect(res.perRow[0].fee).toBe(12000); // bukan 12000 + 45*2000 = 102000
+  });
+
+  it("Return berat (band weight jadi tier) tetap kena flat Return, bukan rumus tier delivery biasa", () => {
+    const e = wickedPiesRevenueEnv();
+    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 3, weight_kg: 50 })]);
+    expect(res.perRow[0].fee).toBe(12000); // bukan 0 + 30*2000 = 60000
+  });
+
+  it("DELIVERY biasa (gak match rate table) tetap jalan normal lewat band Distance+Weight dijumlah", () => {
+    const e = wickedPiesRevenueEnv();
+    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "DELIVERY", distance_km: 3, weight_kg: 5 })]);
+    expect(res.perRow[0].fee).toBe(12000); // distance flat 12000 (gak match "Return") + weight flat 0
+  });
+
+  it("DELIVERY jauh & berat tetap dihitung tier per dimensi seperti biasa (gak ketutup override)", () => {
+    const e = wickedPiesRevenueEnv();
+    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "DELIVERY", distance_km: 50, weight_kg: 50 })]);
+    // distance: 12000 + 45*2000 = 102000; weight: 0 + 30*2000 = 60000
+    expect(res.perRow[0].fee).toBe(162000);
+  });
+});
+
+// ==================================================================
+// modular_v2 — weight_surcharge: berat lewat batas -> fee Distance dikali N
+// ==================================================================
+describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau berat lewat batas)", () => {
+  const distanceOnlyEnv = (weight_surcharge: { enabled: boolean; threshold_kg: number; multiplier: number } | null) =>
+    env({
+      type: "modular_v2",
+      config: {
+        rate_by: "flat",
+        match_column: "Area",
+        rates: [],
+        unit_basis: "awb",
+        default_rate: 0,
+        weight_surcharge,
+        distance: {
+          enabled: true,
+          accumulate: "per_order",
+          rows: [{ type: "flat", from: 0, to: 1000, base_fee: 10000, step: 0, add_per_step: 0 }],
+        },
+        weight: null,
+      } as never,
+    });
+
+  it("berat di bawah batas: fee Distance normal, gak kena kali", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 15 })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
+  it("berat PAS di batas (>=) ikut kena kali", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 20 })]);
+    expect(res.perRow[0].fee).toBe(20000);
+  });
+
+  it("berat lewat batas: fee Distance dikali multiplier", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 25 })]);
+    expect(res.perRow[0].fee).toBe(20000);
+  });
+
+  it("mati (enabled:false): berat berapapun gak ngaruh ke fee Distance", () => {
+    const e = distanceOnlyEnv({ enabled: false, threshold_kg: 20, multiplier: 2 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 999 })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
+  it("weight_surcharge null (skema lama belum punya field ini): tetap jalan normal", () => {
+    const e = distanceOnlyEnv(null);
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 999 })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
+  it("Weight dimension aktif TERPISAH tetap dihitung normal, gak ikut kena kali — cuma pemicu", () => {
+    const e = env({
+      type: "modular_v2",
+      config: {
+        rate_by: "flat",
+        match_column: "Area",
+        rates: [],
+        unit_basis: "awb",
+        default_rate: 0,
+        weight_surcharge: { enabled: true, threshold_kg: 20, multiplier: 2 },
+        distance: {
+          enabled: true,
+          accumulate: "per_order",
+          rows: [{ type: "flat", from: 0, to: 1000, base_fee: 10000, step: 0, add_per_step: 0 }],
+        },
+        weight: {
+          mode: "range",
+          enabled: true,
+          accumulate: "per_order",
+          rows: [{ type: "flat", from: 0, to: 1000, base_fee: 5000, step: 0, add_per_step: 0 }],
+        },
+      } as never,
+    });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 25 })]);
+    // distance 10000*2 (kena kali, berat lewat batas) + weight 5000 (normal, gak ikut kali)
+    expect(res.perRow[0].fee).toBe(25000);
+  });
+});
+
+// ==================================================================
 // billing_addons — regression: calcAttendanceScheme/calcHybridScheme dulu
 // gak pernah nerapin billing_addons sama sekali (min_charge/admin_fee/ppn),
 // walau form ngasih toggle-nya buat scheme_for="client" di kategori manapun.

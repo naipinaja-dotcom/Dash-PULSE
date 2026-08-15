@@ -81,20 +81,33 @@ function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExa
     const steps: ExStep[] = [];
     let total = 0;
 
-    // Sama seperti calcRangeComponent.flatFee() di pricing-calc.ts: band "flat"
-    // bisa punya override tarif per-kolom/delivery-return, bukan langsung base_fee.
-    const flatOverrideFee = (band: RangeRow): { fee: number; overridden: boolean } => {
-      if (p.delivery.rate_by === "flat") return { fee: Number(band.base_fee) || 0, overridden: false };
-      const hit = p.delivery.rates.find((r) => norm(r.key) === norm(inp.area));
-      return hit ? { fee: parseRupiah(hit.rate), overridden: true } : { fee: Number(band.base_fee) || 0, overridden: false };
+    // Rate override PER BARIS (kolom/delivery-return), bukan per-dimensi — sama
+    // kayak calcModularDeliveryComponent di pricing-calc.ts. Kalau match, itu
+    // GANTI total fee baris ini, dipakai sekali doang oleh dimensi pertama yang
+    // aktif — bukan ditambahin ke distance MAUPUN weight (dulu bug: baris yang
+    // match di dua-duanya dobel-charge, lihat regresi Wicked Pies).
+    const overrideHit = p.delivery.rate_by !== "flat" ? p.delivery.rates.find((r) => norm(r.key) === norm(inp.area)) : undefined;
+    let overrideUsed = false;
+    const consumeOverride = (): number | null => {
+      if (!overrideHit || overrideUsed) return null;
+      overrideUsed = true;
+      return parseRupiah(overrideHit.rate);
     };
 
     if (dims.distance) {
       const km = Number(inp.distance) || 0;
       const { fee: bandFee, band } = bandLookupFee(numericRows(p.delivery.distance.rows), km);
-      const { fee, overridden } = band && band.type === "flat" ? flatOverrideFee(band) : { fee: bandFee, overridden: false };
+      const overrideFee = consumeOverride();
+      let fee = overrideFee ?? bandFee;
+      // Surcharge berat → Distance: berat (dari input Weight kalau dimensi itu
+      // aktif juga, atau dari input khusus di bawah kalau enggak) lewat batas
+      // → fee Distance ini dikali N. Sama kayak calcModularDeliveryComponent.
+      const ws = p.delivery.weight_surcharge;
+      const wKg = Number(inp.weight || inp.totalKg) || 0;
+      const surcharged = ws?.enabled && wKg >= (Number(ws.threshold_kg) || 0);
+      if (surcharged) fee *= Number(ws.multiplier) || 1;
       steps.push({
-        text: `Distance: ${km} km → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overridden ? ` (rate override: ${inp.area})` : ""}`,
+        text: `Distance: ${km} km → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}${surcharged ? ` × ${ws!.multiplier} (berat ${wKg}kg ≥ ${ws!.threshold_kg}kg)` : ""}`,
         amount: fee,
       });
       total += fee;
@@ -112,16 +125,17 @@ function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExa
         total += fee;
       } else {
         const { fee: bandFee, band } = bandLookupFee(numericRows(p.delivery.weight.rows), kg);
-        const { fee, overridden } = band && band.type === "flat" ? flatOverrideFee(band) : { fee: bandFee, overridden: false };
+        const overrideFee = consumeOverride();
+        const fee = overrideFee ?? bandFee;
         steps.push({
-          text: `Weight: ${kg} kg → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overridden ? ` (rate override: ${inp.area})` : ""}`,
+          text: `Weight: ${kg} kg → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}`,
           amount: fee,
         });
         total += fee;
       }
     }
 
-    if (dims.distance && dims.weight) notes.push("Distance + Weight dijumlah.");
+    if (dims.distance && dims.weight) notes.push("Distance + Weight dijumlah (kecuali salah satunya kena rate override — itu gantiin totalnya, gak ditambah).");
     modNotes();
     return { steps, total: { label: "Total", amount: total }, notes };
   }
@@ -204,6 +218,13 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
               {dims.weight && props.delivery.weight.mode === "range" && (
                 <div className="flex flex-col gap-1">
                   <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? "Total berat hari ini (kg)" : "Berat (kg)"}</span>
+                  <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => p({ weight: e.target.value })}
+                    className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+                </div>
+              )}
+              {!dims.weight && props.delivery.weight_surcharge?.enabled && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground">Berat (kg) — pemicu surcharge Distance</span>
                   <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => p({ weight: e.target.value })}
                     className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
                 </div>

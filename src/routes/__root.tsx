@@ -90,6 +90,30 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+function AnalyticsProvider({ children }: { children: ReactNode }) {
+  const apiKey = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
+
+  // PostHog emits warnings and can fall back to a global instance when its
+  // project token is absent in an environment. Do not mount that fallback:
+  // analytics is optional, whereas navigating the payroll system is not.
+  if (!apiKey) return <>{children}</>;
+
+  return (
+    <PostHogProvider
+      apiKey={apiKey}
+      options={{
+        api_host: "/ingest",
+        ui_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.posthog.com",
+        defaults: "2025-05-24",
+        capture_exceptions: true,
+        debug: import.meta.env.DEV,
+      }}
+    >
+      {children}
+    </PostHogProvider>
+  );
+}
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -135,18 +159,9 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <PostHogProvider
-          apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN!}
-          options={{
-            api_host: "/ingest",
-            ui_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.posthog.com",
-            defaults: "2025-05-24",
-            capture_exceptions: true,
-            debug: import.meta.env.DEV,
-          }}
-        >
+        <AnalyticsProvider>
           {children}
-        </PostHogProvider>
+        </AnalyticsProvider>
         <Scripts />
       </body>
     </html>

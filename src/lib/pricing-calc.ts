@@ -342,30 +342,19 @@ export function bandLookupFee(rows: RangeRow[], value: number): { fee: number; b
   return { fee: 0, band: null };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function calcRangeComponent(
   rows: DeliveryRow[],
   dimCfg: RangeDimensionConfig,
   valueOf: (r: DeliveryRow) => number,
-  rateSettings: { rate_by: "flat" | "column" | "delivery_type"; match_column: string; rates: { key: string; rate: number }[] },
 ): number[] {
   const out = new Array(rows.length).fill(0);
   const idxOf = new Map<DeliveryRow, number>();
   rows.forEach((r, i) => idxOf.set(r, i));
 
-  // Baris bertipe "flat" bisa punya override rate per-kolom/delivery-return
-  // (menggantikan konsep "Flat per Unit" lama) — kalau rate_by="flat" atau
-  // gak ada rule yang cocok, fallback ke base_fee band itu.
-  const flatFee = (r: DeliveryRow, band: RangeRow): number => {
-    if (rateSettings.rate_by === "flat") return Number(band.base_fee) || 0;
-    const hit = resolveRateHit(r, rateSettings);
-    return hit ? Number(hit.rate) || 0 : Number(band.base_fee) || 0;
-  };
-
   if (dimCfg.accumulate === "per_order") {
     rows.forEach((r) => {
-      const { fee, band } = bandLookupFee(dimCfg.rows, valueOf(r));
-      out[idxOf.get(r)!] = band && band.type === "flat" ? flatFee(r, band) : fee;
+      const { fee } = bandLookupFee(dimCfg.rows, valueOf(r));
+      out[idxOf.get(r)!] = fee;
     });
     return out;
   }
@@ -398,10 +387,53 @@ export function calcModularDeliveryComponent(
   const out = new Array(rows.length).fill(0);
   const rateSettings = { rate_by: cfg.rate_by, match_column: cfg.match_column, rates: cfg.rates ?? [] };
 
+  // rate_by="column"/"delivery_type" itu override PER BARIS (mis. Return flat
+  // Rp12rb) yang GANTIIN total fee modular baris itu (distance+weight
+  // gabungan) — bukan nilai tambahan per-dimensi. Dihitung SEKALI di sini dan
+  // dipakai cuma sekali oleh dimensi per_order pertama yang nyentuh baris itu.
+  // Dulu override ini dihitung ulang di dalam tiap panggilan calcRangeComponent
+  // per dimensi, jadi kalau distance & weight dua-duanya aktif, baris yang
+  // ke-override di KEDUA dimensi (mis. Return <5km DAN <20kg, dua-duanya jatuh
+  // ke band flat) ke-tambah 2× (bug: Wicked Pies Return dobel-charge). Override
+  // juga cuma berlaku dulu kalau band yang ke-hit tipenya "flat" — baris yang
+  // jatuh ke band "tier" (mis. Return jauh/berat) lolos dari override dan
+  // malah kena rumus per-km/per-kg delivery biasa. accumulate="daily" TETAP
+  // gak kepake override-nya (nilai udah gabungan banyak baris, gak valid
+  // dipaksa jadi 1 angka per baris).
+  const rowOverride: (number | null)[] =
+    rateSettings.rate_by === "flat"
+      ? rows.map(() => null)
+      : rows.map((r) => {
+          const hit = resolveRateHit(r, rateSettings);
+          return hit ? Number(hit.rate) || 0 : null;
+        });
+  const overrideUsed = new Array(rows.length).fill(false);
+  const applyDim = (dimCfg: RangeDimensionConfig, valueOf: (r: DeliveryRow) => number, target: number[]) => {
+    calcRangeComponent(rows, dimCfg, valueOf).forEach((f, i) => {
+      if (dimCfg.accumulate === "per_order" && rowOverride[i] != null) {
+        if (!overrideUsed[i]) {
+          target[i] += rowOverride[i]!;
+          overrideUsed[i] = true;
+        }
+        return;
+      }
+      target[i] += f;
+    });
+  };
+
   if (cfg.distance?.enabled) {
-    calcRangeComponent(rows, cfg.distance, (r) => Number(r.distance_km) || 0, rateSettings).forEach(
-      (f, i) => (out[i] += f),
-    );
+    const distanceOut = new Array(rows.length).fill(0);
+    applyDim(cfg.distance, (r) => Number(r.distance_km) || 0, distanceOut);
+    // Berat lewat batas -> fee Distance baris itu dikali N (Weight, kalau
+    // aktif, tetap dihitung normal terpisah di bawah — berat di sini cuma
+    // pemicu, bukan komponen yang ikut kena kali).
+    const ws = cfg.weight_surcharge;
+    if (ws?.enabled) {
+      rows.forEach((r, i) => {
+        if ((Number(r.weight_kg) || 0) >= ws.threshold_kg) distanceOut[i] *= ws.multiplier;
+      });
+    }
+    distanceOut.forEach((f, i) => (out[i] += f));
   }
 
   if (cfg.weight?.enabled) {
@@ -415,9 +447,7 @@ export function calcModularDeliveryComponent(
       };
       calcThresholdComponent(rows, thCfg).forEach((f, i) => (out[i] += f));
     } else {
-      calcRangeComponent(rows, cfg.weight, (r) => Number(r.weight_kg) || 0, rateSettings).forEach(
-        (f, i) => (out[i] += f),
-      );
+      applyDim(cfg.weight, (r) => Number(r.weight_kg) || 0, out);
     }
   }
 

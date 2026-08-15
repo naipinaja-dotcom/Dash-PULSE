@@ -317,6 +317,7 @@ function PricingFormInner({
       title={mode === "create" ? "Tambah Skema Pricing" : "Edit Skema Pricing"}
       subtitle="Atur cara kalkulasi harga — sisi rider (cost) atau client (revenue)."
     >
+      <div className="pricing-workbench">
       <button
         type="button"
         onClick={() => navigate({ to: "/admin/pricing" })}
@@ -325,9 +326,14 @@ function PricingFormInner({
         <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke daftar
       </button>
 
-      {/* Info card */}
-      <div className="rounded-xl border border-border bg-card p-5 mb-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+      {/* Rail (kiri, sticky) + Builder (kanan) — digabung dari 3 card terpisah
+          (Info / Kategori / Modifier) biar Billing Add-ons (dulu nyempil di
+          card Modifier paling bawah, di dalam ToggleBlock default-collapsed)
+          keliatan begitu buka halaman, dan tabel rate + kalkulator gak perlu
+          discroll jauh buat sampe. Gak ada field/handler yang dihapus — cuma
+          dipindah posisi. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 mb-4 items-start">
+        <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
           <div className="flex flex-col gap-1.5">
             <FieldLabel>
               Nama Skema <span className="font-normal text-muted-foreground">(opsional)</span>
@@ -348,238 +354,242 @@ function PricingFormInner({
               options={clients.map((c) => ({ value: c.id, label: c.name }))}
             />
           </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>Berlaku Dari</FieldLabel>
-            <TextInput type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Berlaku Dari</FieldLabel>
+              <TextInput type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>
+                Sampai <span className="font-normal">(opsional)</span>
+              </FieldLabel>
+              <TextInput type="date" value={effTo} onChange={(e) => setEffTo(e.target.value)} />
+            </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>
-              Berlaku Sampai <span className="font-normal">(opsional)</span>
-            </FieldLabel>
-            <TextInput type="date" value={effTo} onChange={(e) => setEffTo(e.target.value)} />
-          </div>
-        </div>
 
-        {/* Scheme for */}
-        <div className="mt-3">
-          <p className="text-xs font-medium text-muted-foreground mb-1.5">Skema untuk</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(["rider", "client"] as SchemeFor[]).map((sf) => (
-              <button
-                key={sf}
-                type="button"
-                onClick={() => setSchemeFor(sf)}
-                className={
-                  "text-left rounded-md px-3 py-2.5 border transition-colors " +
-                  (schemeFor === sf
-                    ? "border-2 border-primary bg-primary-soft"
-                    : "border-border hover:border-primary-border hover:bg-primary-soft/40")
-                }
-              >
-                <span className="text-xs font-medium block">
-                  {sf === "rider" ? "Rider (Cost)" : "Client (Revenue)"}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {sf === "rider" ? "Fee yang dibayar ke rider" : "Harga yang ditagih ke client"}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Category + subtype chooser + dynamic params */}
-      <div className="rounded-xl border border-border bg-card p-5 mb-4 shadow-sm">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">
-          Pilih kategori
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
-          {PRICING_CATEGORIES.map((cat) => {
-            const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
-            const active = category === cat.key;
-            return (
-              <button
-                key={cat.key}
-                type="button"
-                onClick={() => handleCategoryChange(cat.key)}
-                className={
-                  "text-left rounded-lg px-3 py-3 flex flex-col gap-1 transition-all duration-150 border " +
-                  (active
-                    ? "border-2 border-primary bg-primary-soft shadow-sm shadow-primary/10"
-                    : "border-border hover:border-primary-border/60 hover:bg-primary-soft/20 hover:shadow-sm")
-                }
-              >
-                <Icon className="w-4 h-4 text-primary" />
-                <span className="text-xs font-medium leading-tight">{cat.name}</span>
-                <span className="text-[11px] text-muted-foreground leading-snug">{cat.desc}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Dimensi delivery — checkbox Distance / Weight */}
-        {category === "delivery" && (
+          {/* Scheme for */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-2">
-              Dimensi Pricing (pilih satu atau dua):
-            </label>
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              {DELIVERY_DIMENSIONS.map((dim) => {
-                const Icon = DIMENSION_ICONS[dim.key];
-                const dims = (subtype as DeliveryDimensions) || { distance: false, weight: false };
-                const checked = dims[dim.key] ?? false;
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Skema untuk</p>
+            <div className="grid grid-cols-1 gap-2">
+              {(["rider", "client"] as SchemeFor[]).map((sf) => (
+                <button
+                  key={sf}
+                  data-pricing-side={sf}
+                  type="button"
+                  onClick={() => setSchemeFor(sf)}
+                  className={
+                    "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
+                    (schemeFor === sf
+                      ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                      : "bg-card text-foreground hover:bg-muted")
+                  }
+                >
+                  <span className="text-xs font-medium block">
+                    {sf === "rider" ? "Rider (Cost)" : "Client (Revenue)"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {sf === "rider" ? "Fee yang dibayar ke rider" : "Harga yang ditagih ke client"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
 
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+              Pilih kategori
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {PRICING_CATEGORIES.map((cat) => {
+                const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
+                const active = category === cat.key;
                 return (
-                  <label
-                    key={dim.key}
+                  <button
+                    key={cat.key}
+                    data-pricing-category={cat.key}
+                    type="button"
+                    onClick={() => handleCategoryChange(cat.key)}
                     className={
-                      "text-left rounded-lg px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border cursor-pointer " +
-                      (checked
-                        ? "border-primary bg-primary-soft shadow-sm shadow-primary/10"
-                        : "border-border hover:border-primary-border/60 hover:bg-primary-soft/20")
+                      "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
+                      (active
+                        ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                        : "bg-card text-foreground hover:bg-muted")
                     }
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => setSubtype({ ...dims, [dim.key]: e.target.checked })}
-                      className="w-4 h-4 mt-0.5 flex-shrink-0"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                        <span className="text-xs font-medium leading-tight">{dim.name}</span>
-                      </div>
-                      <span className="text-[11px] text-muted-foreground leading-snug block mt-0.5">{dim.desc}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="w-4 h-4" />
+                      <span className="text-xs font-medium leading-tight">{cat.name}</span>
                     </div>
-                  </label>
+                    <span className="text-[11px] text-muted-foreground leading-snug">{cat.desc}</span>
+                  </button>
                 );
               })}
             </div>
           </div>
-        )}
 
-        {/* Callout */}
-        <div className="rounded-md border border-primary-border bg-primary-soft px-3.5 py-2.5 mb-4 flex items-start gap-2.5">
-          <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-primary-soft-foreground leading-relaxed">
-            {category === "delivery"
-              ? (() => {
-                  const dims = subtype as DeliveryDimensions | null;
-                  if (!dims || (!dims.distance && !dims.weight)) return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
-                  const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map((d) => d.name);
-                  if (enabled.length === 1) return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
-                  return "Distance + Weight aktif — masing-masing punya tabel range sendiri, hasilnya dijumlah (sum).";
-                })()
-              : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
-          </p>
-        </div>
+          {/* Dimensi delivery — checkbox Distance / Weight */}
+          {category === "delivery" && (
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-2">
+                Dimensi Pricing (pilih satu atau dua):
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {DELIVERY_DIMENSIONS.map((dim) => {
+                  const Icon = DIMENSION_ICONS[dim.key];
+                  const dims = (subtype as DeliveryDimensions) || { distance: false, weight: false };
+                  const checked = dims[dim.key] ?? false;
 
-        {/* ===== DELIVERY ===== */}
-        {category === "delivery" && subtype && (
-          <DeliveryFields
+                  return (
+                    <label
+                      key={dim.key}
+                      data-pricing-dimension={dim.key}
+                      className={
+                        "text-left rounded-md px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border-2 border-border-strong cursor-pointer " +
+                        (checked
+                          ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                          : "bg-card text-foreground hover:bg-muted")
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setSubtype({ ...dims, [dim.key]: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 flex-shrink-0"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="text-xs font-medium leading-tight">{dim.name}</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground leading-snug block mt-0.5">{dim.desc}</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Callout */}
+          <div className="pricing-callout rounded-md border-2 border-border-strong bg-secondary px-3.5 py-2.5 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-foreground leading-relaxed">
+              {category === "delivery"
+                ? (() => {
+                    const dims = subtype as DeliveryDimensions | null;
+                    if (!dims || (!dims.distance && !dims.weight)) return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
+                    const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map((d) => d.name);
+                    if (enabled.length === 1) return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
+                    return "Distance + Weight aktif — masing-masing punya tabel range sendiri, hasilnya dijumlah (sum).";
+                  })()
+                : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
+            </p>
+          </div>
+
+          {/* Billing Add-ons — dipindah dari card Modifier paling bawah biar
+              gak nyembunyi di collapsed toggle yang jauh di bawah fold (lihat
+              diskusi redesign). Gating sama persis kayak sebelumnya:
+              scheme_for === "client" doang, gak dibatasi kategori. */}
+          {schemeFor === "client" && (
+            <ToggleBlock
+              label="Billing Add-ons"
+              hint="Urutan hitung: min charge (lantai) → + management fee (% operational) → + admin fee → × (1 + PPN%). PPN paling akhir. Management/PPN kosong = gak muncul di invoice."
+              on={f.billingOn}
+              onToggle={(on) => patch({ billingOn: on })}
+            >
+              <div className="grid grid-cols-1 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Min Charge (Rp)</FieldLabel>
+                  <RupiahInput
+                    value={f.billing.min_charge}
+                    onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Management Fee (%)</FieldLabel>
+                  <TextInput
+                    value={f.billing.management_fee_percent}
+                    inputMode="decimal"
+                    onChange={(e) =>
+                      patch({ billing: { ...f.billing, management_fee_percent: e.target.value } })
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Admin Fee (Rp)</FieldLabel>
+                  <RupiahInput
+                    value={f.billing.admin_fee_flat}
+                    onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>PPN (%)</FieldLabel>
+                  <TextInput
+                    value={f.billing.ppn_percent}
+                    inputMode="decimal"
+                    onChange={(e) =>
+                      patch({ billing: { ...f.billing, ppn_percent: e.target.value } })
+                    }
+                  />
+                </div>
+              </div>
+            </ToggleBlock>
+          )}
+        </aside>
+
+        {/* Builder — tabel rate/attendance, modifier delivery-only (Add-KG,
+            Multi-drop), kalkulator hidup, semuanya dalam 1 panel biar keliatan
+            bareng tanpa scroll jauh. */}
+        <div className="pricing-builder rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4">
+          {category === "delivery" && subtype && (
+            <DeliveryFields
+              subtype={subtype}
+              value={f.delivery}
+              onChange={(v) => patch({ delivery: v })}
+            />
+          )}
+
+          {category === "attendance" && (
+            <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
+          )}
+
+          {category === "delivery" && !(subtype as DeliveryDimensions | null)?.weight && (
+            <ToggleBlock
+              label="Add-KG (surcharge berat)"
+              hint="Biaya tambahan berdasarkan berat, bertingkat. Nonaktif otomatis kalau dimensi Weight sudah dipakai (biar gak double-count)."
+              on={f.addKgOn}
+              onToggle={(on) => patch({ addKgOn: on })}
+            >
+              <StepTierEditor unit="kg" value={f.addKg} onChange={(v) => patch({ addKg: v })} />
+            </ToggleBlock>
+          )}
+
+          {category === "delivery" && (
+            <ToggleBlock
+              label="Multi-drop (kiriman ke-2 dst)"
+              hint="Otomatis mulai kiriman ke-2 dalam hari yang sama, per rider."
+              on={f.multiDropOn}
+              onToggle={(on) => patch({ multiDropOn: on })}
+            >
+              <div className="flex flex-col gap-1.5 max-w-xs">
+                <FieldLabel>Fee per kiriman ekstra (Rp)</FieldLabel>
+                <RupiahInput value={f.multiDropFee} onChange={(v) => patch({ multiDropFee: v })} />
+              </div>
+            </ToggleBlock>
+          )}
+
+          <InteractiveCalc
+            category={category}
             subtype={subtype}
-            value={f.delivery}
-            onChange={(v) => patch({ delivery: v })}
+            delivery={f.delivery}
+            attendance={f.attendance}
+            schemeFor={schemeFor}
+            addKgOn={f.addKgOn}
+            multiDropOn={f.multiDropOn}
+            multiDropFee={f.multiDropFee}
+            billingOn={f.billingOn}
           />
-        )}
-
-        {/* ===== ATTENDANCE ===== */}
-        {category === "attendance" && (
-          <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
-        )}
-
-        <InteractiveCalc
-          category={category}
-          subtype={subtype}
-          delivery={f.delivery}
-          attendance={f.attendance}
-          schemeFor={schemeFor}
-          addKgOn={f.addKgOn}
-          multiDropOn={f.multiDropOn}
-          multiDropFee={f.multiDropFee}
-          billingOn={f.billingOn}
-        />
-      </div>
-
-      {/* ===== MODIFIERS ===== */}
-      <div className="rounded-xl border border-border bg-card p-5 mb-4 space-y-3 shadow-sm">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
-          Modifier (opsional)
-        </p>
-
-        {category === "delivery" && !(subtype as DeliveryDimensions | null)?.weight && (
-          <ToggleBlock
-            label="Add-KG (surcharge berat)"
-            hint="Biaya tambahan berdasarkan berat, bertingkat. Nonaktif otomatis kalau dimensi Weight sudah dipakai (biar gak double-count)."
-            on={f.addKgOn}
-            onToggle={(on) => patch({ addKgOn: on })}
-          >
-            <StepTierEditor unit="kg" value={f.addKg} onChange={(v) => patch({ addKg: v })} />
-          </ToggleBlock>
-        )}
-
-        {category === "delivery" && (
-          <ToggleBlock
-            label="Multi-drop (kiriman ke-2 dst)"
-            hint="Otomatis mulai kiriman ke-2 dalam hari yang sama, per rider."
-            on={f.multiDropOn}
-            onToggle={(on) => patch({ multiDropOn: on })}
-          >
-            <div className="flex flex-col gap-1.5 max-w-xs">
-              <FieldLabel>Fee per kiriman ekstra (Rp)</FieldLabel>
-              <RupiahInput value={f.multiDropFee} onChange={(v) => patch({ multiDropFee: v })} />
-            </div>
-          </ToggleBlock>
-        )}
-
-        {schemeFor === "client" && (
-          <ToggleBlock
-            label="Billing Add-ons (khusus client)"
-            hint="Urutan hitung: min charge (lantai) → + management fee (% operational) → + admin fee → × (1 + PPN%). PPN paling akhir. Management/PPN kosong = gak muncul di invoice."
-            on={f.billingOn}
-            onToggle={(on) => patch({ billingOn: on })}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <FieldLabel>Min Charge (Rp)</FieldLabel>
-                <RupiahInput
-                  value={f.billing.min_charge}
-                  onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <FieldLabel>Management Fee (%)</FieldLabel>
-                <TextInput
-                  value={f.billing.management_fee_percent}
-                  inputMode="decimal"
-                  onChange={(e) =>
-                    patch({ billing: { ...f.billing, management_fee_percent: e.target.value } })
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <FieldLabel>Admin Fee (Rp)</FieldLabel>
-                <RupiahInput
-                  value={f.billing.admin_fee_flat}
-                  onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <FieldLabel>PPN (%)</FieldLabel>
-                <TextInput
-                  value={f.billing.ppn_percent}
-                  inputMode="decimal"
-                  onChange={(e) =>
-                    patch({ billing: { ...f.billing, ppn_percent: e.target.value } })
-                  }
-                />
-              </div>
-            </div>
-          </ToggleBlock>
-        )}
+        </div>
       </div>
 
       {/* Footer */}
@@ -600,6 +610,7 @@ function PricingFormInner({
           <Save className="w-4 h-4" />
           {saving ? "Menyimpan…" : "Simpan Skema"}
         </button>
+      </div>
       </div>
     </AdminLayout>
   );

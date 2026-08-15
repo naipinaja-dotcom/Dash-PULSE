@@ -39,18 +39,28 @@ export interface PnlResult {
   totMarginPct: number;
 }
 
-// skema aktif: harus emang berlaku hari ini (effective_from..effective_to),
+// skema aktif: harus emang berlaku pas `asOfDate` (effective_from..effective_to),
 // lalu yang khusus client itu diutamakan atas "semua client", lalu yang
 // effective_from/created_at paling baru menang kalau masih ada dobel.
-export function pickPricingScheme(schemes: PricingScheme[], clientId: string, kind: SchemeFor) {
-  const today = new Date().toISOString().slice(0, 10);
+// `asOfDate` default hari ini (perilaku lama, dipakai dashboard on-demand yang
+// emang mau tau skema yang berlaku SEKARANG) — tapi buat laporan periode
+// historis (mis. Weekly PNL Push yang di-rerun/backfill), caller WAJIB kirim
+// akhir periode laporannya di sini, bukan biarin default ke hari ini. Kalau
+// enggak, rerun buat minggu lama bisa kehitung pakai rate yang udah berubah
+// sekarang, bukan rate yang beneran berlaku pas minggu itu.
+export function pickPricingScheme(
+  schemes: PricingScheme[],
+  clientId: string,
+  kind: SchemeFor,
+  asOfDate: string = new Date().toISOString().slice(0, 10),
+) {
   const cands = schemes.filter(
     (s) =>
       s.scheme_for === kind &&
       s.params?.version === 1 &&
       (s.client_id === clientId || s.client_id === null) &&
-      s.effective_from <= today &&
-      (!s.effective_to || s.effective_to >= today)
+      s.effective_from <= asOfDate &&
+      (!s.effective_to || s.effective_to >= asOfDate)
   );
   return cands.sort((a, b) => {
     const aSpecific = a.client_id === clientId;
@@ -94,6 +104,10 @@ export function computePnl(
   // Biaya molis yang charge_target='client_revenue' (lihat molis-cost.ts) —
   // rider gratis, tapi ini tetap ngurangin margin client-nya di sini.
   molisCostByClient: Map<string, number> = new Map(),
+  // Skema yang dipakai adalah skema yang berlaku pas tanggal ini (lihat
+  // pickPricingScheme) — default hari ini, TAPI caller yang ngitung periode
+  // historis (mis. Weekly PNL Push) wajib kirim akhir periode laporannya.
+  asOfDate?: string,
 ): PnlResult {
   const byClient = new Map<string, DeliveryRow[]>();
   for (const r of rows) {
@@ -118,8 +132,8 @@ export function computePnl(
   for (const cid of allClientIds) {
     const crows = byClient.get(cid) ?? [];
     const cattendance = attByClient.get(cid) ?? [];
-    const riderS = pickPricingScheme(schemes, cid, "rider");
-    const clientS = pickPricingScheme(schemes, cid, "client");
+    const riderS = pickPricingScheme(schemes, cid, "rider", asOfDate);
+    const clientS = pickPricingScheme(schemes, cid, "client", asOfDate);
     const costResult = calcForScheme(riderS, crows, cattendance);
     const revResult = calcForScheme(clientS, crows, cattendance);
     const cost = (costResult?.grandTotal ?? 0) + (molisCostByClient.get(cid) ?? 0);

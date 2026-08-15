@@ -368,24 +368,34 @@ export type Database = {
       }
       deduction_type_riders: {
         Row: {
+          client_id: string | null
           created_at: string
           deduction_type_id: string
           id: string
           rider_id: string
         }
         Insert: {
+          client_id?: string | null
           created_at?: string
           deduction_type_id: string
           id?: string
           rider_id: string
         }
         Update: {
+          client_id?: string | null
           created_at?: string
           deduction_type_id?: string
           id?: string
           rider_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "deduction_type_riders_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "deduction_type_riders_deduction_type_id_fkey"
             columns: ["deduction_type_id"]
@@ -1277,6 +1287,7 @@ export type Database = {
         Row: {
           active: boolean
           charge_target: string
+          client_id: string | null
           created_at: string
           cycle_start_day: number | null
           daily_rate: number | null
@@ -1296,6 +1307,7 @@ export type Database = {
         Insert: {
           active?: boolean
           charge_target?: string
+          client_id?: string | null
           created_at?: string
           cycle_start_day?: number | null
           daily_rate?: number | null
@@ -1315,6 +1327,7 @@ export type Database = {
         Update: {
           active?: boolean
           charge_target?: string
+          client_id?: string | null
           created_at?: string
           cycle_start_day?: number | null
           daily_rate?: number | null
@@ -1332,6 +1345,13 @@ export type Database = {
           total_amount?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "rider_installments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "rider_installments_deduction_type_id_fkey"
             columns: ["deduction_type_id"]

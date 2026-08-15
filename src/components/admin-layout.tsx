@@ -28,6 +28,8 @@ import {
   Moon,
   Sun,
   Sparkles,
+  Palette,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
@@ -38,6 +40,8 @@ type NavMode = "payroll" | "intelligence";
 const NAV_MODE_KEY = "dash-admin-nav-mode";
 const COLLAPSED_KEY = "dash-admin-sidebar-collapsed";
 const THEME_KEY = "dash-theme";
+const DESIGN_KEY = "dash-design";
+type Design = "brutal" | "classic";
 
 const NAV_PAYROLL = [
   { to: "/admin/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, sectionKey: "section.operations" },
@@ -92,6 +96,13 @@ function initTheme() {
   document.documentElement.classList.toggle("dark", dark);
 }
 
+// ── Design toggle (data-design attribute on <html>) ────────────────────────
+function initDesign() {
+  if (typeof window === "undefined") return;
+  const stored = localStorage.getItem(DESIGN_KEY) as Design | null;
+  document.documentElement.setAttribute("data-design", stored ?? "brutal");
+}
+
 export function AdminLayout({
   children,
   title,
@@ -125,6 +136,11 @@ export function AdminLayout({
     return s ? s === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
 
+  const [design, setDesign] = useState<Design>(() => {
+    if (typeof window === "undefined") return "brutal";
+    return (localStorage.getItem(DESIGN_KEY) as Design | null) ?? "brutal";
+  });
+
   // Sync mode when navigating via back/forward
   useEffect(() => {
     setMode(modeForPath(pathname));
@@ -142,9 +158,15 @@ export function AdminLayout({
     localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
   }, [dark]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-design", design);
+    localStorage.setItem(DESIGN_KEY, design);
+  }, [design]);
+
   // Apply theme on first mount (handles SSR/hydration gap)
   useEffect(() => {
     initTheme();
+    initDesign();
   }, []);
 
   const switchMode = useCallback(
@@ -192,7 +214,7 @@ export function AdminLayout({
       {/* Mode toggle */}
       {!collapsed || mobile ? (
         <div className="px-3 pt-3">
-          <div className="admin-mode-switch grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted">
+          <div className="admin-mode-switch grid grid-cols-2">
             {(
               [
                 ["payroll", "Payroll"],
@@ -204,10 +226,10 @@ export function AdminLayout({
                 type="button"
                 onClick={() => switchMode(m)}
                 className={
-                  "text-[12px] font-semibold py-1.5 rounded-md transition-all duration-200 " +
+                  "text-[12px] font-bold py-1.5 transition-colors duration-150 " +
                   (mode === m
-                    ? "admin-mode-active bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(124,92,252,0.3)]"
-                    : "text-muted-foreground hover:text-foreground")
+                    ? "admin-mode-active bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground")
                 }
               >
                 {label}
@@ -246,7 +268,7 @@ export function AdminLayout({
         {navGroups.map(({ sectionKey, items }) => (
           <div key={sectionKey}>
             {(!collapsed || mobile) && (
-              <div className="admin-section-label px-3 pb-1 pt-0.5 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+              <div className="admin-section-label px-3 pb-1 pt-0.5 text-[10px] font-extrabold text-primary uppercase tracking-widest">
                 {t(sectionKey as any)}
               </div>
             )}
@@ -261,18 +283,16 @@ export function AdminLayout({
                     onClick={() => setMobileOpen(false)}
                     title={collapsed && !mobile ? t(it.labelKey as any) : undefined}
                     className={
-                      "admin-nav-item flex items-center rounded-md text-[13px] transition-all duration-150 " +
+                      "admin-nav-item flex items-center rounded-md text-[13px] transition-colors duration-150 " +
                       (collapsed && !mobile
-                        ? "justify-center px-0 py-2.5"
+                        ? "justify-center px-0 py-2"
                         : "gap-2.5 px-3 py-[7px]") +
                       " " +
-                      (active
-                        ? "admin-nav-active bg-primary-soft text-primary-soft-foreground font-semibold"
-                        : "text-foreground/65 hover:bg-muted/80 hover:text-foreground")
+                      (active ? "admin-nav-active" : "text-foreground/70")
                     }
                   >
                     <Icon
-                      className={`flex-shrink-0 ${collapsed && !mobile ? "w-[18px] h-[18px]" : "w-4 h-4"} ${active ? "text-primary" : ""}`}
+                      className={`flex-shrink-0 ${collapsed && !mobile ? "w-[18px] h-[18px]" : "w-4 h-4"}`}
                     />
                     {(!collapsed || mobile) && <span>{t(it.labelKey as any)}</span>}
                   </Link>
@@ -284,7 +304,7 @@ export function AdminLayout({
       </nav>
 
       {/* User footer */}
-      <div className="admin-sidebar-footer border-t border-border p-3">
+      <div className="admin-sidebar-footer p-3">
         {!collapsed || mobile ? (
           <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/60 transition-colors">
             <div className="admin-avatar-orb w-7 h-7 rounded-full bg-primary text-primary-foreground grid place-items-center text-[11px] font-bold flex-shrink-0">
@@ -328,7 +348,7 @@ export function AdminLayout({
       </div>
       {/* Desktop sidebar */}
       <aside
-        className={`admin-sidebar hidden lg:flex flex-col border-r border-border bg-sidebar shadow-[1px_0_0_0_var(--color-border)] flex-shrink-0 transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? "w-[72px]" : "w-60"}`}
+        className={`admin-sidebar hidden lg:flex flex-col bg-sidebar flex-shrink-0 transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? "w-[72px]" : "w-60"}`}
       >
         <SidebarContent />
       </aside>
@@ -351,7 +371,7 @@ export function AdminLayout({
 
       {/* Main area */}
       <div className="admin-main flex-1 flex flex-col min-w-0">
-        <header className="admin-header sticky top-0 z-10 h-14 border-b border-border bg-card/85 backdrop-blur-md flex items-center px-4 lg:px-6 gap-3">
+        <header className="admin-header sticky top-0 z-10 h-14 flex items-center px-4 lg:px-6 gap-3">
           {/* Mobile hamburger */}
           <button
             className="lg:hidden p-1.5 -ml-1 rounded-md hover:bg-muted"
@@ -372,8 +392,8 @@ export function AdminLayout({
 
           <div className="min-w-0 flex-1">
             <h1
-              className="admin-page-title text-[16px] font-bold leading-tight truncate tracking-tight"
-              style={{ fontFamily: "'Bahnschrift','Sora','Segoe UI',sans-serif" }}
+              className="admin-page-title text-[17px] font-bold leading-tight truncate"
+              style={{ fontFamily: "'Sora','Manrope','Segoe UI',sans-serif" }}
             >
               {title}
             </h1>
@@ -391,7 +411,7 @@ export function AdminLayout({
           {mode === "payroll" && overdue.overdue && (
             <Link
               to="/admin/payroll"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors flex-shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-warning px-3 py-1.5 text-xs font-bold text-warning-foreground hover:brightness-105 transition-[filter] flex-shrink-0"
               title={`Payroll run belum dibuat. Period terakhir berakhir ${overdue.lastPeriodEnd}.`}
             >
               <Bell className="w-3.5 h-3.5 animate-pulse" />
@@ -401,6 +421,17 @@ export function AdminLayout({
           )}
 
           <LangToggle />
+
+          {/* Design toggle: Neo Brutalism vs Glass */}
+          <button
+            onClick={() => setDesign((d) => (d === "brutal" ? "classic" : "brutal"))}
+            className="flex items-center justify-center w-8 h-8 rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            aria-label={design === "brutal" ? "Tema Neo Brutal aktif — ganti ke tema Glass" : "Tema Glass aktif — ganti ke tema Neo Brutal"}
+            aria-pressed={design === "brutal"}
+            title={design === "brutal" ? "Tema: Neo Brutal — ganti ke Glass" : "Tema: Glass — ganti ke Neo Brutal"}
+          >
+            {design === "brutal" ? <Palette className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+          </button>
 
           {/* Dark mode toggle */}
           <button

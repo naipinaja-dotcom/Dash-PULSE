@@ -13,6 +13,7 @@ import {
   isAttendanceOnlyRun, attendanceDetailRows, attendanceSummaryRows,
 } from "@/lib/attendance-worksheet-export";
 import { getClientExportTemplate, ALL_EXPORT_COLUMN_KEYS } from "@/lib/export-template";
+import { allocateKasbonByRecipient, type KasbonDeductionRow } from "@/lib/kasbon-allocation";
 import { toast } from "sonner";
 import { Download, Loader2, ChevronRight, FileSpreadsheet, ChevronDown } from "lucide-react";
 import {
@@ -78,10 +79,15 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         const detailIds = (details ?? []).map((d: { id: string }) => d.id);
         const dedByDetail = new Map<string, Record<string, number>>();
         const typeSet = new Set<string>();
+        // Dikumpulin sekalian dari query yang sama (bukan query terpisah) buat
+        // allocateKasbonByRecipient() di bawah — recipient mana yang kebagian
+        // berapa dari kasbon rider ini (lihat lib/kasbon-allocation.ts).
+        const kasbonDeductionRows: KasbonDeductionRow[] = [];
         for (let i = 0; i < detailIds.length; i += 200) {
           const chunk = detailIds.slice(i, i + 200);
           const { data: deds, error: e2 } = await sb.from("payroll_deductions")
-            .select("detail_id, amount, deduction_types(name)").in("detail_id", chunk);
+            .select("detail_id, amount, deduction_types(name, code), kasbon_recipient_id, kasbon_recipients(name, bank_name, account_number, account_holder, no_transfer_needed)")
+            .in("detail_id", chunk);
           if (e2) throw e2;
           for (const d of deds ?? []) {
             const name = d.deduction_types?.name ?? "Potongan";
@@ -89,7 +95,27 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
             const m = dedByDetail.get(d.detail_id) ?? {};
             m[name] = (m[name] ?? 0) + Number(d.amount || 0);
             dedByDetail.set(d.detail_id, m);
+            kasbonDeductionRows.push(d);
           }
+        }
+        const grossByDetail = new Map((details ?? []).map((d: { id: string; gross_earning: number }) => [d.id, Number(d.gross_earning)]));
+        const riderNameByDetail = new Map(
+          (details ?? []).map((d: { id: string; rider_name?: string | null }) => [d.id, d.rider_name ?? "(tanpa nama)"]),
+        );
+        const kasbonAllocations = allocateKasbonByRecipient(grossByDetail, kasbonDeductionRows, riderNameByDetail);
+
+        // Payment hold (lihat payroll_payment_holds di admin.payroll.tsx) —
+        // rider yang di-hold gak ikut Bulk Payment reguler, jadi worksheet ini
+        // harus nunjukkin itu juga (badge + di-exclude dari GRAND TOTAL),
+        // bukan diem-diem nampilin kayak rider normal yang bakal dibayar.
+        const holdByDetail = new Map<string, { status: string; reason: string }>();
+        {
+          const { data: holds, error: eHold } = await sb
+            .from("payroll_payment_holds")
+            .select("detail_id, status, reason")
+            .in("detail_id", detailIds);
+          if (eHold && eHold.code !== "42P01") throw eHold;
+          for (const h of holds ?? []) holdByDetail.set(h.detail_id, h);
         }
 
         // detail mentah periode ini (buat drill-down + active dates)
@@ -98,15 +124,26 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           // — FAILED/PENDING_PICKUP dkk selalu fee=0 di sini, cuma numpuk baris
           // Rp0 di worksheet finance tanpa guna. Tetap kesimpen apa adanya di
           // delivery_records buat BCR Analytics, cuma di-exclude dari view ini.
+          // client_id di-filter kalau run ini scoped ke 1 client — kalau enggak,
+          // rider yang narik buat >1 client di periode sama ikut kebawa kiriman
+          // client LAIN ke drill-down "Kiriman" run ini (lihat RiderDetail).
           fetchAllRows<{ rider_id: string | null; delivery_date: string; distance_km: number | null; weight_kg: number | null; delivery_type: string | null; district: string | null; fee: number }>(
-            (c, from, to) => c.from("delivery_records" as any)
-              .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
-              .ilike("status", "completed")
-              .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end).range(from, to)),
+            (c, from, to) => {
+              let q = c.from("delivery_records" as any)
+                .select("rider_id, delivery_date, distance_km, weight_kg, delivery_type, district, fee")
+                .ilike("status", "completed")
+                .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end);
+              if (run.client_id) q = q.eq("client_id", run.client_id);
+              return q.range(from, to);
+            }),
           fetchAllRows<{ rider_id: string | null; client_id: string | null; pitstop_name: string | null; log_date: string; clock_in: string | null; clock_out: string | null; duration_minutes: number | null; is_late: boolean; is_absent: boolean; fee: number }>(
-            (c, from, to) => (c as any).from("attendance_logs")
-              .select("rider_id, client_id, pitstop_name, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee")
-              .gte("log_date", run.period_start).lte("log_date", run.period_end).range(from, to)),
+            (c, from, to) => {
+              let q = (c as any).from("attendance_logs")
+                .select("rider_id, client_id, pitstop_name, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee")
+                .gte("log_date", run.period_start).lte("log_date", run.period_end);
+              if (run.client_id) q = q.eq("client_id", run.client_id);
+              return q.range(from, to);
+            }),
         ]);
 
         // Replay base/overtime/insentif-ontime per baris pakai config skema
@@ -178,10 +215,43 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           remarks: d.remarks ?? "",
           deliv: (delivByRider.get(d.rider_id) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
           att: (attByRider.get(d.rider_id) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
-        })).sort((a: RiderRow, b: RiderRow) => b.total - a.total);
+          held: holdByDetail.get(d.id)?.status === "held",
+          holdReason: holdByDetail.get(d.id)?.status === "held" ? holdByDetail.get(d.id)!.reason : null,
+          isKasbonRow: false,
+          kasbonNoTransfer: false,
+        }));
+
+        // Kasbon ke penerima pihak ke-3 motong net_pay rider, tapi duitnya
+        // harus BENERAN ditransfer ke rekening penerima itu — jadi ikut
+        // ditampilin sebagai baris sendiri di Ringkasan (bukan cuma raib jadi
+        // potongan), dengan GRAND TOTAL yang ikut nambah (net_pay rider SUDAH
+        // net dari kasbon, jadi kasbon transfer itu tambahan terpisah, bukan
+        // dobel-hitung). Penerima no_transfer_needed (rekening internal
+        // perusahaan) tetap ditampilin buat transparansi, tapi TIDAK ikut
+        // GRAND TOTAL (gak ada transfer keluar beneran).
+        const kasbonRows: RiderRow[] = kasbonAllocations.map((a) => ({
+          detailId: `kasbon-${a.recipientId}`,
+          rider_id: a.recipientId,
+          name: a.recipientName,
+          employeeId: "",
+          clientName: built[0]?.clientName ?? "",
+          orderCount: 0,
+          feeRider: 0,
+          activeDates: 0,
+          ded: {},
+          incentive: 0,
+          total: a.amount,
+          remarks: `Kasbon dari ${a.riderNames.join(", ")}` + (a.noTransferNeeded ? " — rekening internal, gak perlu transfer" : ""),
+          deliv: [],
+          att: [],
+          held: false,
+          holdReason: null,
+          isKasbonRow: true,
+          kasbonNoTransfer: a.noTransferNeeded,
+        }));
 
         setDedTypes([...typeSet].sort());
-        setRows(built);
+        setRows([...built, ...kasbonRows].sort((a, b) => b.total - a.total));
 
         // Rate card: schemes udah di-fetch di atas (riderSchemes) — reuse, gak query lagi.
         setRateCards(riderSchemes.map(describeScheme));
@@ -199,7 +269,14 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     if (error) toast.error("Gagal simpan remarks: " + error.message);
   };
 
-  const t = useMemo(() => rows.reduce((s, r) => ({
+  // Rider yang di-hold di-exclude dari GRAND TOTAL — dia gak ikut Bulk
+  // Payment reguler, jadi total di sini harus nyambung sama yang beneran
+  // ditransfer, bukan ikut ngitung duit yang masih ditahan. Baris penerima
+  // kasbon dengan rekening internal (kasbonNoTransfer) di-exclude juga —
+  // gak ada transfer keluar beneran buat itu.
+  const heldRows = useMemo(() => rows.filter((r) => r.held), [rows]);
+  const internalKasbonRows = useMemo(() => rows.filter((r) => r.isKasbonRow && r.kasbonNoTransfer), [rows]);
+  const t = useMemo(() => rows.filter((r) => !r.held && !r.kasbonNoTransfer).reduce((s, r) => ({
     order: s.order + r.orderCount, fee: s.fee + r.feeRider, total: s.total + r.total,
     ded: dedTypes.reduce((m, ty) => ({ ...m, [ty]: (m[ty] ?? 0) + (r.ded[ty] ?? 0) }), s.ded),
   }), { order: 0, fee: 0, total: 0, ded: {} as Record<string, number> }), [rows, dedTypes]);
@@ -220,15 +297,18 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
     if (c.has("remarks")) header.push("Remarks");
 
     const body: Cell[][] = rows.map((r) => {
-      const row: Cell[] = [r.name];
+      const label = r.isKasbonRow
+        ? `→ ${r.name} (Penerima Kasbon${r.kasbonNoTransfer ? ", internal" : ""})`
+        : r.held ? `${r.name} (DITAHAN)` : r.name;
+      const row: Cell[] = [label];
       if (c.has("employee_id")) row.push(r.employeeId);
       if (c.has("client")) row.push(r.clientName);
-      if (c.has("order_count")) row.push(r.orderCount);
-      if (c.has("fee_rider")) row.push(r.feeRider);
-      if (c.has("active_date")) row.push(r.activeDates);
-      if (c.has("deductions")) row.push(...dedTypes.map((ty) => r.ded[ty] ?? 0));
+      if (c.has("order_count")) row.push(r.isKasbonRow ? "" : r.orderCount);
+      if (c.has("fee_rider")) row.push(r.isKasbonRow ? "" : r.feeRider);
+      if (c.has("active_date")) row.push(r.isKasbonRow ? "" : r.activeDates);
+      if (c.has("deductions")) row.push(...dedTypes.map((ty) => (r.isKasbonRow ? "" : (r.ded[ty] ?? 0))));
       if (c.has("total_fee")) row.push(r.total);
-      if (c.has("remarks")) row.push(r.remarks);
+      if (c.has("remarks")) row.push(r.held ? `[DITAHAN: ${r.holdReason}] ${r.remarks}` : r.remarks);
       return row;
     });
 
@@ -247,7 +327,9 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
   const detailRows = (): Cell[][] => {
     const header: Cell[] = ["Driver Name", "Kode Mitra", "Client", "Tanggal", "Jenis", "Jarak (km)", "Berat (kg)", "District", "OTP / Status", "Fee"];
     const out: Cell[][] = [header];
-    for (const r of rows) {
+    // Baris penerima kasbon gak punya kiriman/absensi mentah buat di-itemize
+    // di sheet Detail — cukup muncul di Ringkasan (summaryRows).
+    for (const r of rows.filter((row) => !row.isKasbonRow)) {
       for (const d of r.deliv) out.push([r.name, r.employeeId, r.clientName, d.date, "Kiriman", d.km ?? "", d.kg ?? "", d.district ?? "", d.type ?? "", d.fee]);
       for (const a of r.att) out.push([r.name, r.employeeId, r.clientName, a.date, "Absensi", "", "", "", otpLabel(a), a.fee]);
       const sub = r.deliv.reduce((s, d) => s + d.fee, 0) + r.att.reduce((s, a) => s + a.fee, 0);
@@ -380,28 +462,44 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
             {rows.length === 0 ? <tr><td colSpan={visibleColCount} className="p-6 text-center text-muted-foreground">Tidak ada data — pastikan payroll run ini sudah di-Generate.</td></tr> :
               paged.map((r) => (
                 <Fragment key={r.detailId}>
-                  <tr className="border-t border-border">
+                  <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : r.isKasbonRow ? "bg-primary-soft/30" : ""}`}>
                     <td className="p-2 sticky left-0 bg-background">
-                      <button onClick={() => setExpanded(expanded === r.detailId ? null : r.detailId)} className="flex items-center gap-1.5 text-left hover:text-primary">
-                        <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded === r.detailId ? "rotate-90" : ""}`} />
+                      <button onClick={() => !r.isKasbonRow && setExpanded(expanded === r.detailId ? null : r.detailId)} className={`flex items-center gap-1.5 text-left ${r.isKasbonRow ? "cursor-default" : "hover:text-primary"}`}>
+                        {!r.isKasbonRow && <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded === r.detailId ? "rotate-90" : ""}`} />}
                         <span>
-                          <span className="font-medium block">{r.name}</span>
-                          <span className="text-xs text-muted-foreground">{r.employeeId}</span>
+                          <span className="font-medium flex items-center gap-1.5">
+                            {r.isKasbonRow ? `→ ${r.name}` : r.name}
+                            {r.held && (
+                              <span title={r.holdReason ?? ""} className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive/15 text-destructive">
+                                Ditahan
+                              </span>
+                            )}
+                            {r.isKasbonRow && (
+                              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-primary-soft text-primary-soft-foreground">
+                                {r.kasbonNoTransfer ? "Kasbon · Internal" : "Kasbon · Transfer"}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-muted-foreground block">{r.isKasbonRow ? r.remarks : r.employeeId}</span>
                         </span>
                       </button>
                     </td>
                     {enabledCols.has("client") && <td className="px-3 text-[13px] text-muted-foreground">{r.clientName}</td>}
-                    {enabledCols.has("order_count") && <td className="text-right px-3 tabular-nums">{r.orderCount}</td>}
-                    {enabledCols.has("fee_rider") && <td className="text-right px-3 tabular-nums">{rp(r.feeRider)}</td>}
-                    {enabledCols.has("active_date") && <td className="text-right px-3 tabular-nums">{r.activeDates}</td>}
+                    {enabledCols.has("order_count") && <td className="text-right px-3 tabular-nums">{r.isKasbonRow ? "—" : r.orderCount}</td>}
+                    {enabledCols.has("fee_rider") && <td className="text-right px-3 tabular-nums">{r.isKasbonRow ? "—" : rp(r.feeRider)}</td>}
+                    {enabledCols.has("active_date") && <td className="text-right px-3 tabular-nums">{r.isKasbonRow ? "—" : r.activeDates}</td>}
                     {enabledCols.has("deductions") && dedTypes.map((ty) => (
-                      <td key={ty} className="text-right px-3 tabular-nums text-destructive">{r.ded[ty] ? rp(r.ded[ty]) : "—"}</td>
+                      <td key={ty} className="text-right px-3 tabular-nums text-destructive">{r.isKasbonRow ? "—" : r.ded[ty] ? rp(r.ded[ty]) : "—"}</td>
                     ))}
                     {enabledCols.has("total_fee") && <td className="text-right px-3 font-semibold tabular-nums">{rp(r.total)}</td>}
                     {enabledCols.has("remarks") && (
                       <td className="px-2">
-                        <input defaultValue={r.remarks} onBlur={(e) => { if (e.target.value !== r.remarks) saveRemark(r.detailId, e.target.value); }}
-                          placeholder="catatan…" className="w-full min-w-[160px] rounded border border-border bg-background px-2 py-1 text-xs" />
+                        {r.isKasbonRow ? (
+                          <span className="text-xs text-muted-foreground">{r.remarks}</span>
+                        ) : (
+                          <input defaultValue={r.remarks} onBlur={(e) => { if (e.target.value !== r.remarks) saveRemark(r.detailId, e.target.value); }}
+                            placeholder="catatan…" className="w-full min-w-[160px] rounded border border-border bg-background px-2 py-1 text-xs" />
+                        )}
                       </td>
                     )}
                   </tr>
@@ -435,6 +533,21 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       <p className="text-xs text-muted-foreground mt-2">
         Klik nama rider buat lihat rincian per order/hari (bukti angkanya). Remarks ke-simpan otomatis pas pindah kolom. Excel isi 3 sheet: Rate Card, Detail, Ringkasan. GRAND TOTAL menghitung SEMUA rider, bukan cuma yang tampil di halaman ini.
       </p>
+      {heldRows.length > 0 && (
+        <p className="text-xs text-destructive mt-1">
+          {heldRows.length} rider ditandai "Ditahan" (pembayarannya di-hold) — total fee-nya ({rp(heldRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL di atas, karena gak ditransfer di Bulk Payment reguler.
+        </p>
+      )}
+      {rows.some((r) => r.isKasbonRow && !r.kasbonNoTransfer) && (
+        <p className="text-xs text-muted-foreground mt-1">
+          GRAND TOTAL sudah termasuk transfer kasbon ke penerima pihak ke-3 (baris "→ Penerima" berlabel "Kasbon · Transfer") — bukan cuma net_pay rider, karena kasbon itu juga ditransfer terpisah di Bulk Payment.
+        </p>
+      )}
+      {internalKasbonRows.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-1">
+          {internalKasbonRows.length} penerima kasbon ditandai "Internal" (rekening perusahaan sendiri) — nominalnya ({rp(internalKasbonRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL, karena gak ada transfer keluar beneran.
+        </p>
+      )}
     </>
   );
 }

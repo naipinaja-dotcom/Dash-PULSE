@@ -38,13 +38,15 @@ export function usePayrollOverdue(): OverdueStatus & { refresh: () => void } {
     }
     const { data } = await supabase
       .from("payroll_runs")
-      .select("period_end")
+      .select("period_end, status")
       .order("period_end", { ascending: false })
       .limit(1)
       .single();
 
-    const next: OverdueStatus = !data?.period_end
-      ? { overdue: false, daysLate: 0, lastPeriodEnd: null }
+    // Run terbaru udah published = udah beres, gak peduli berapa hari sejak
+    // period_end (period_end != tanggal disbursement, selalu ada lag normal).
+    const next: OverdueStatus = !data?.period_end || data.status === "published"
+      ? { overdue: false, daysLate: 0, lastPeriodEnd: data?.period_end ?? null }
       : (() => {
           const today = new Date().toISOString().slice(0, 10);
           const daysLate = diffDays(data.period_end, today) - GRACE_DAYS;

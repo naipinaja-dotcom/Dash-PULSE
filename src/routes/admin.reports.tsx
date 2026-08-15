@@ -67,18 +67,18 @@ function ReportsPage() {
 
   return (
     <AdminLayout title={t("reports.title")} subtitle={t("reports.subtitle")}>
-      <div className="mb-4 rounded-xl border border-border bg-card p-3">
-        <div className="flex w-full max-w-md rounded-lg bg-muted p-1">
+      <div className="mb-4 border-2 border-[#111827] bg-card p-3 shadow-[3px_3px_0_#111827]">
+        <div className="flex w-full max-w-md overflow-hidden border-2 border-[#111827] bg-[#FFFDF8] shadow-[2px_2px_0_#111827]">
           <button
             onClick={() => selectRunStatus("finalized")}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            className={`flex-1 border-l-2 border-[#111827] px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
           >
             Finalized
             <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "finalized").length}</span>
           </button>
           <button
             onClick={() => selectRunStatus("published")}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            className={`flex-1 border-l-2 border-[#111827] px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
           >
             Published
             <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "published").length}</span>
@@ -92,7 +92,7 @@ function ReportsPage() {
       </div>
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <PayrollRunPicker runs={visibleRuns} value={runId} onChange={setRunId} />
-        <div className="flex gap-1 p-1 bg-muted rounded-md">
+        <div className="inline-flex w-fit flex-wrap overflow-hidden border-2 border-[#111827] bg-[#FFFDF8] shadow-[2px_2px_0_#111827]">
           {(
             [
               ["rider", "Per Rider (Finance)"],
@@ -103,7 +103,7 @@ function ReportsPage() {
             <button
               key={k}
               onClick={() => setMode(k)}
-              className={`px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
+              className={`border-l-2 border-[#111827] px-3 py-1.5 text-sm font-bold first:border-l-0 transition-colors ${mode === k ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
             >
               {l}
             </button>

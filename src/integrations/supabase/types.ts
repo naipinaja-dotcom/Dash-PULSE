@@ -235,6 +235,7 @@ export type Database = {
           address: string | null
           code: string
           contact_person: string | null
+          contract: string | null
           created_at: string | null
           id: string
           name: string
@@ -247,6 +248,7 @@ export type Database = {
           address?: string | null
           code: string
           contact_person?: string | null
+          contract?: string | null
           created_at?: string | null
           id?: string
           name: string
@@ -259,6 +261,7 @@ export type Database = {
           address?: string | null
           code?: string
           contact_person?: string | null
+          contract?: string | null
           created_at?: string | null
           id?: string
           name?: string

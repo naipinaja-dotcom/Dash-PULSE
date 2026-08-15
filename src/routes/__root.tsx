@@ -137,6 +137,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:description", content: "Sistem payroll terpadu untuk operasional rider." },
     ],
     links: [
+      { rel: "icon", href: "/dash-icon.png", type: "image/png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com" },
       {

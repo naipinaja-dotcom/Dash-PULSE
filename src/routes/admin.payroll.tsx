@@ -21,6 +21,7 @@ import {
   Trash2,
   Pencil,
   AlertTriangle,
+  ArrowUpRight,
 } from "lucide-react";
 import { generatePayrollDetails, computeInstallmentAdvance, DEDUCTION_PRIORITY } from "@/lib/payroll-generate";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
@@ -31,7 +32,9 @@ import {
   downloadBulkPaymentXLS,
   type BulkPaymentRow,
 } from "@/lib/bulk-payment-export";
-import { parseRupiah } from "@/lib/format";
+import { parseRupiah, formatRupiah, BULAN } from "@/lib/format";
+import { loadApiProviders } from "@/lib/api/providers.functions";
+import { resolveBusinessUnit } from "@/lib/spend-control-mapping";
 import { useT } from "@/lib/i18n";
 import {
   DropdownMenu,
@@ -125,6 +128,31 @@ type NettingCandidate = {
   headroom: number;
 };
 
+const SPEND_CONTROL_DEPARTMENTS = [
+  "Customer Success",
+  "Engineering Product & Design",
+  "Finance",
+  "Fleet",
+  "Human Resources",
+  "Legal",
+  "Logistics",
+  "Marketing",
+  "Operations",
+  "Sales",
+];
+const SPEND_CONTROL_TITLE_LIMIT = 60;
+const SPEND_CONTROL_ATTACHMENT_URL = "https://dash-payroll-engine.vercel.app/admin/payroll";
+
+type SpendControlRow = {
+  clientId: string;
+  clientName: string;
+  title: string;
+  amount: number;
+  businessUnit: "SCHEDULED_INSTANT" | "X_DOCK" | null;
+  contract: string | null;
+  valid: boolean;
+};
+
 // Kasbon dengan penerima pihak ke-3 (kasbon_recipients, lihat add-tab.tsx)
 // motong net_pay rider tapi duitnya harus BENERAN ditransfer ke rekening
 // penerima itu, bukan cuma raib dari file bulk payment. Bulk Payment sudah
@@ -195,6 +223,10 @@ function PayrollPage() {
   const savingDeductionLock = useRef(false);
   const [addingDedForDetail, setAddingDedForDetail] = useState<string | null>(null);
   const [newDedTypeId, setNewDedTypeId] = useState<string | null>(null);
+  const [spendControlOpen, setSpendControlOpen] = useState(false);
+  const [spendControlLoading, setSpendControlLoading] = useState(false);
+  const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0]);
+  const [spendControlRows, setSpendControlRows] = useState<SpendControlRow[]>([]);
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -1007,6 +1039,81 @@ function PayrollPage() {
     }
   };
 
+  // Fase 1: hanya preview. Pengiriman ke API Spend Control baru boleh
+  // diaktifkan setelah endpoint dan service account resmi tersedia.
+  const openSpendControlPreview = async () => {
+    if (!activeRun || details.length === 0)
+      return toast.error("Belum ada detail payroll untuk run ini");
+    setSpendControlOpen(true);
+    setSpendControlLoading(true);
+    try {
+      // Samakan populasi request dengan Bulk Payment reguler: detail yang
+      // pernah di-hold dibayar lewat mekanisme susulan; net pay nol/negatif
+      // bukan pembayaran yang dapat diajukan.
+      const payableDetails = details.filter(
+        (detail) => !paymentHolds[detail.id] && Number(detail.net_pay || 0) > 0,
+      );
+      const byClient = new Map<string, number>();
+      for (const detail of payableDetails) {
+        if (!detail.client_id) continue;
+        byClient.set(detail.client_id, (byClient.get(detail.client_id) ?? 0) + Number(detail.net_pay || 0));
+      }
+      const clientIds = [...byClient.keys()];
+      if (clientIds.length === 0) {
+        setSpendControlRows([]);
+        return;
+      }
+
+      const { data: clientRows, error } = await (supabase as any)
+        .from("clients")
+        .select("id, name, contract, provider_id")
+        .in("id", clientIds);
+      if (error) throw error;
+
+      let businessUnitByProviderId = new Map<number, "SCHEDULED_INSTANT" | "X_DOCK" | null>();
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        if (token) {
+          const { providers } = await loadApiProviders({ data: { token } });
+          businessUnitByProviderId = new Map(
+            providers.map((provider) => [provider.id, resolveBusinessUnit(provider.revenueStreams)]),
+          );
+        }
+      } catch {
+        // Preview tetap bisa dibuka; provider tanpa data ditandai untuk diisi.
+      }
+
+      const end = new Date(`${activeRun.period_end}T00:00:00Z`);
+      const startDay = new Date(`${activeRun.period_start}T00:00:00Z`).getUTCDate();
+      const period = `${startDay}-${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+      const rows: SpendControlRow[] = clientIds.map((clientId) => {
+        const client = (clientRows ?? []).find((row: any) => row.id === clientId);
+        const clientName = client?.name ?? "(client tidak ditemukan)";
+        const businessUnit = client?.provider_id != null
+          ? businessUnitByProviderId.get(client.provider_id) ?? null
+          : null;
+        const contract = client?.contract ?? null;
+        return {
+          clientId,
+          clientName,
+          title: `Payroll Gaji Mitra - ${clientName} (${period})`,
+          amount: byClient.get(clientId) ?? 0,
+          businessUnit,
+          contract,
+          valid: businessUnit !== null && contract !== null,
+        };
+      });
+      rows.sort((a, b) => a.clientName.localeCompare(b.clientName));
+      setSpendControlRows(rows);
+    } catch (error) {
+      toast.error((error as Error).message);
+      setSpendControlOpen(false);
+    } finally {
+      setSpendControlLoading(false);
+    }
+  };
+
   const holdPayment = async (detail: Detail, reason: string) => {
     if (!activeRun || activeRun.status === "draft") {
       toast.error("Finalize payroll dulu sebelum menahan pembayaran.");
@@ -1462,6 +1569,14 @@ function PayrollPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    <button
+                      onClick={openSpendControlPreview}
+                      disabled={activeRun.status === "draft" || details.length === 0}
+                      title={activeRun.status === "draft" ? "Finalize dulu" : "Preview push ke Spend Control"}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 hover:border-primary-border hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" /> Push ke Spend Control
+                    </button>
                     {/* Hapus run — cuma kalau masih draft (belum Finalize) */}
                     {activeRun.status === "draft" && (
                       <button
@@ -2009,6 +2124,135 @@ function PayrollPage() {
               >
                 {paymentHoldBusyId ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
                 Tahan pembayaran
+              </button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={spendControlOpen} onOpenChange={setSpendControlOpen}>
+        <DialogContent className="max-w-4xl rounded-2xl border-border bg-card p-0 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-primary via-warning to-primary" />
+          <div className="p-6">
+            <DialogHeader>
+              <DialogTitle className="text-xl">Push ke Spend Control — Preview</DialogTitle>
+              <DialogDescription className="leading-relaxed">
+                Preview Payment Request per client untuk run {activeRun?.name}. Belum mengirim apa pun — integrasi API Spend Control masih menunggu konfirmasi tim mereka.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-4">
+              <label className="text-xs text-muted-foreground font-medium">Departemen pengaju</label>
+              <select
+                value={spendControlDept}
+                onChange={(event) => setSpendControlDept(event.target.value)}
+                className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+              >
+                {SPEND_CONTROL_DEPARTMENTS.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
+            </div>
+
+            {spendControlLoading ? (
+              <div className="mt-6 flex items-center justify-center py-10 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin mr-2" /> Menyiapkan preview...
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 max-h-96 overflow-y-auto rounded-lg border border-border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted text-muted-foreground sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">Client</th>
+                        <th className="text-left px-3 py-2 font-medium">Title</th>
+                        <th className="text-right px-3 py-2 font-medium">Amount</th>
+                        <th className="text-left px-3 py-2 font-medium">Business Unit</th>
+                        <th className="text-left px-3 py-2 font-medium">Contract</th>
+                        <th className="text-left px-3 py-2 font-medium">Lampiran</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {spendControlRows.map((row) => (
+                        <tr key={row.clientId} className="border-t border-border">
+                          <td className="px-3 py-2 whitespace-nowrap">{row.clientName}</td>
+                          <td className="px-3 py-2">
+                            <div className={row.title.length > SPEND_CONTROL_TITLE_LIMIT ? "text-destructive" : ""}>
+                              {row.title}
+                            </div>
+                            {row.title.length > SPEND_CONTROL_TITLE_LIMIT && (
+                              <div className="text-destructive text-[11px] mt-0.5">
+                                {row.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter — kepanjangan, perbaiki nama client sebelum push
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">{formatRupiah(row.amount)}</td>
+                          <td className="px-3 py-2">
+                            {row.businessUnit ?? (
+                              <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
+                                Belum ada revenue stream
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {row.contract ?? (
+                              <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
+                                Contract belum diisi
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <a
+                              href={SPEND_CONTROL_ATTACHMENT_URL}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary underline underline-offset-2 hover:text-primary/80"
+                            >
+                              Payroll detail
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                      {spendControlRows.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                            Tidak ada client dengan detail payroll yang dapat dibayarkan di run ini.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {spendControlRows.filter((row) => row.valid).length} client siap push
+                    {spendControlRows.some((row) => !row.valid)
+                      ? `, ${spendControlRows.filter((row) => !row.valid).length} di-exclude (data belum lengkap)`
+                      : ""}
+                  </span>
+                  <span className="font-medium text-foreground">
+                    Total: {formatRupiah(spendControlRows.filter((row) => row.valid).reduce((sum, row) => sum + row.amount, 0))}
+                  </span>
+                </div>
+              </>
+            )}
+
+            <DialogFooter className="mt-6 gap-2 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => setSpendControlOpen(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                disabled={spendControlLoading || spendControlRows.filter((row) => row.valid).length === 0}
+                onClick={() => toast.info("Integrasi API Spend Control masih menunggu konfirmasi tim mereka.")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ArrowUpRight className="h-4 w-4" /> Push ke Spend Control
               </button>
             </DialogFooter>
           </div>

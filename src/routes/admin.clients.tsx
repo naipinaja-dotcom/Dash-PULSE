@@ -27,6 +27,7 @@ type Client = {
   contact_person: string | null;
   phone: string | null;
   active: boolean;
+  contract: string | null;
   created_at: string;
 };
 
@@ -153,7 +154,7 @@ function ClientsPage() {
         fetchAllRows<Client>((c, from, to) =>
           c
             .from("clients")
-            .select("id, code, name, address, contact_person, phone, active, created_at")
+            .select("id, code, name, address, contact_person, phone, active, contract, created_at")
             .order("name")
             .range(from, to),
         ),
@@ -249,7 +250,7 @@ function ClientsPage() {
                 Skema Revenue
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Tanggal Dibuat
+                Contract
               </th>
               <th className="text-right text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pr-3">
                 Aksi
@@ -314,14 +315,14 @@ function ClientsPage() {
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="p-3 text-muted-foreground">
-                      {c.created_at
-                        ? new Date(c.created_at).toLocaleDateString("id-ID", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                          })
-                        : "—"}
+                    <td className="p-3">
+                      {c.contract ? (
+                        <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                          {c.contract}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">Belum diisi</span>
+                      )}
                     </td>
                     <td className="text-right pr-3">
                       <button
@@ -391,6 +392,7 @@ function ClientModal({
     contact_person: initial?.contact_person ?? "",
     phone: initial?.phone ?? "",
     active: initial?.active ?? true,
+    contract: initial?.contract ?? "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -402,6 +404,7 @@ function ClientModal({
       address: form.address || null,
       contact_person: form.contact_person || null,
       phone: form.phone || null,
+      contract: form.contract || null,
     };
     const { error } = initial
       ? await supabase.from("clients").update(payload).eq("id", initial.id)
@@ -454,6 +457,18 @@ function ClientModal({
                   />
                 </div>
               ))}
+              <div>
+                <label className="text-xs text-muted-foreground font-medium">Contract</label>
+                <select
+                  value={form.contract}
+                  onChange={(e) => setForm({ ...form, contract: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">— Belum diisi —</option>
+                  <option value="DPI">PT DPI</option>
+                  <option value="DEI">PT DEI</option>
+                </select>
+              </div>
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"

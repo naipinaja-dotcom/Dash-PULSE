@@ -163,13 +163,13 @@ function PayrollRunPicker({
 
   return (
     <div ref={pickerRef} className="relative min-w-[280px] flex-1 max-w-xl">
-      <label className="inline-flex border-2 border-[#111827] bg-[#FFD45A] px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#111827] shadow-[3px_3px_0_#111827]">Payroll Run</label>
+      <label className="inline-flex border-2 border-[#111827] bg-[#FFD45A] px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#111827] shadow-[2px_2px_0_#111827]">Payroll Run</label>
       <button
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="mt-2 flex w-full items-center justify-between gap-3 rounded-none border-[3px] border-[#111827] bg-[#FFFDF8] px-4 py-3 text-left shadow-[6px_6px_0_#111827] transition-all hover:-translate-x-px hover:-translate-y-px hover:bg-[#FFF5D6] hover:shadow-[8px_8px_0_#111827] focus:outline-none focus:ring-2 focus:ring-primary"
+        className="mt-2 flex w-full items-center justify-between gap-3 rounded-none border-2 border-[#111827] bg-[#FFFDF8] px-4 py-2.5 text-left shadow-[3px_3px_0_#111827] transition-all hover:-translate-x-px hover:-translate-y-px hover:bg-[#FFF5D6] hover:shadow-[4px_4px_0_#111827] focus:outline-none focus:ring-2 focus:ring-primary"
       >
         <span className="min-w-0">
           <span className="block truncate text-sm font-black text-[#111827]">
@@ -190,8 +190,8 @@ function PayrollRunPicker({
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-3 w-full overflow-hidden rounded-none border-[3px] border-[#111827] bg-[#FFFDF8] shadow-[8px_8px_0_#111827]">
-          <div className="border-b-[3px] border-[#111827] bg-[#F2E9FF] p-3">
+        <div className="absolute z-30 mt-3 w-full overflow-hidden rounded-none border-2 border-[#111827] bg-[#FFFDF8] shadow-[4px_4px_0_#111827]">
+          <div className="border-b-2 border-[#111827] bg-[#F2E9FF] p-2.5">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -200,7 +200,7 @@ function PayrollRunPicker({
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => event.key === "Escape" && setOpen(false)}
                 placeholder="Cari client atau periode..."
-                className="w-full rounded-none border-[3px] border-[#111827] bg-[#FFFDF8] py-2.5 pl-9 pr-3 text-sm font-semibold text-[#111827] outline-none placeholder:text-[#5B6473] focus:bg-white focus:ring-2 focus:ring-[#7C4DFF]"
+                className="w-full rounded-none border-2 border-[#111827] bg-[#FFFDF8] py-2.5 pl-9 pr-3 text-sm font-semibold text-[#111827] outline-none placeholder:text-[#5B6473] focus:bg-white focus:ring-2 focus:ring-[#7C4DFF]"
               />
             </label>
           </div>
@@ -219,7 +219,7 @@ function PayrollRunPicker({
                     setOpen(false);
                     setQuery("");
                   }}
-                  className={`flex w-full items-center gap-3 rounded-none border-[3px] px-3 py-3 text-left transition-all ${run.id === value ? "mb-2 border-[#111827] bg-[#E4D4FF] shadow-[4px_4px_0_#111827]" : "border-transparent hover:border-[#111827] hover:bg-[#FFF0B5]"}`}
+                  className={`flex w-full items-center gap-3 rounded-none border-2 px-3 py-2.5 text-left transition-all ${run.id === value ? "mb-1.5 border-[#111827] bg-[#E4D4FF] shadow-[2px_2px_0_#111827]" : "border-transparent hover:border-[#111827] hover:bg-[#FFF0B5]"}`}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-black text-[#111827]">{payrollClientName(run.name)}</span>

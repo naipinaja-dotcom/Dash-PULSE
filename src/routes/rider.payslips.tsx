@@ -281,6 +281,11 @@ function PayslipDetailModal({
   }, [slip.detail_id, slip.run_id, riderId]);
 
   const period = slip.payroll_runs;
+  const gross = Number(slip.data?.gross_earning ?? 0);
+  const totalDeduction = Number(slip.data?.total_deduction ?? 0);
+  // Ini hanya penjelasan tampilan: tidak mengubah net pay atau aturan
+  // potongan. Rider perlu tahu selisih saat gaji habis tertutup potongan.
+  const deductionShortfall = Math.max(0, totalDeduction - gross);
 
   return (
     <div
@@ -337,6 +342,18 @@ function PayslipDetailModal({
           <div className="rounded-2xl border border-border bg-card/60 p-3 dark:bg-white/[0.035]">
             <p className="mb-3 text-[10px] font-semibold tracking-[.14em] uppercase text-primary">Ringkasan perhitungan</p>
             <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 text-center"><div><span className="block text-[10px] text-muted-foreground">Gross</span><b className="block mt-1 text-[11px]">{formatRupiah(slip.data?.gross_earning)}</b></div><span className="text-primary/60">−</span><div><span className="block text-[10px] text-muted-foreground">Potongan</span><b className="block mt-1 text-[11px] text-warning">{formatRupiah(slip.data?.total_deduction)}</b></div><span className="text-primary/60">=</span><div><span className="block text-[10px] text-muted-foreground">Bersih</span><b className="block mt-1 text-[11px] text-primary">{formatRupiah(slip.data?.net_pay)}</b></div></div>
+            {deductionShortfall > 0 && (
+              <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold text-warning">Potongan lebih besar dari gaji</p>
+                    <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">Gaji periode ini habis untuk potongan, jadi gaji bersih Rp0.</p>
+                  </div>
+                  <b className="shrink-0 text-[14px] tabular-nums text-warning">{formatRupiah(deductionShortfall)}</b>
+                </div>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">Ini selisih potongan yang belum tertutup oleh gaji periode ini. Lihat rincian potongan di bawah.</p>
+              </div>
+            )}
           </div>
 
           {/* per-client detail */}

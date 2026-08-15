@@ -1050,9 +1050,12 @@ function PayrollPage() {
     setSpendControlOpen(true);
     setSpendControlLoading(true);
     try {
-      // Rider yang lagi hold dikeluarkan juga dari total push, sama seperti
-      // Bulk Payment export — duitnya belum tentu cair, jangan ikut ditagihkan.
-      const payableDetails = details.filter((d) => !paymentHolds[d.id]);
+      // Samakan populasi request dengan Bulk Payment reguler: detail hold
+      // dibayar melalui mekanisme susulan, dan net pay nol/negatif bukan
+      // pembayaran yang dapat diajukan.
+      const payableDetails = details.filter(
+        (detail) => !paymentHolds[detail.id] && Number(detail.net_pay || 0) > 0,
+      );
       const byClient = new Map<string, number>();
       for (const d of payableDetails) {
         if (!d.client_id) continue;

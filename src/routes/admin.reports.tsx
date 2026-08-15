@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toCSV, downloadCSV } from "@/lib/csv";
 import { useT } from "@/lib/i18n";
+import { formatTanggal } from "@/lib/format";
 import { toast } from "sonner";
-import { Download, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Download, Loader2, Search } from "lucide-react";
 import { FinanceWorksheet } from "@/components/finance-worksheet";
 import { DeductionSummary } from "@/components/deduction-summary";
 
@@ -90,20 +91,7 @@ function ReportsPage() {
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div>
-          <label className="text-sm font-medium">Payroll Run</label>
-          <select
-            value={runId}
-            onChange={(e) => setRunId(e.target.value)}
-            className="mt-1 block min-w-[280px] rounded-md border border-border bg-background px-3 py-2 text-sm"
-          >
-            {visibleRuns.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} ({r.period_start} → {r.period_end}) · {r.status}
-              </option>
-            ))}
-          </select>
-        </div>
+        <PayrollRunPicker runs={visibleRuns} value={runId} onChange={setRunId} />
         <div className="flex gap-1 p-1 bg-muted rounded-md">
           {(
             [
@@ -136,6 +124,120 @@ function ReportsPage() {
         <DeductionSummary runId={runId} run={run} />
       )}
     </AdminLayout>
+  );
+}
+
+function payrollClientName(name: string) {
+  return name
+    .replace(/^payroll\s+/i, "")
+    .replace(/\s+periode\s+\d{4}-\d{2}-\d{2}\s*[→-].*$/i, "")
+    .trim() || name;
+}
+
+function PayrollRunPicker({
+  runs,
+  value,
+  onChange,
+}: {
+  runs: Run[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const selected = runs.find((run) => run.id === value);
+  const filteredRuns = runs.filter((run) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return `${payrollClientName(run.name)} ${run.period_start} ${run.period_end}`.toLowerCase().includes(needle);
+  });
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, []);
+
+  return (
+    <div ref={pickerRef} className="relative min-w-[280px] flex-1 max-w-xl">
+      <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Payroll Run</label>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="mt-1 flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/45 focus:outline-none focus:ring-2 focus:ring-primary/25"
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {selected ? payrollClientName(selected.name) : "Pilih Payroll Run"}
+          </span>
+          {selected && (
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              {formatTanggal(selected.period_start)} – {formatTanggal(selected.period_end)}
+            </span>
+          )}
+        </span>
+        {selected && (
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+            {selected.status === "published" ? "Published" : "Finalized"}
+          </span>
+        )}
+        <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+          <div className="border-b border-border p-2">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => event.key === "Escape" && setOpen(false)}
+                placeholder="Cari client atau periode..."
+                className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary/25"
+              />
+            </label>
+          </div>
+          <div role="listbox" className="max-h-72 overflow-y-auto p-1.5">
+            {filteredRuns.length === 0 ? (
+              <p className="px-3 py-5 text-center text-xs text-muted-foreground">Payroll tidak ditemukan.</p>
+            ) : (
+              filteredRuns.map((run) => (
+                <button
+                  key={run.id}
+                  type="button"
+                  role="option"
+                  aria-selected={run.id === value}
+                  onClick={() => {
+                    onChange(run.id);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${run.id === value ? "bg-primary-soft text-foreground" : "hover:bg-muted"}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{payrollClientName(run.name)}</span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {formatTanggal(run.period_start)} – {formatTanggal(run.period_end)}
+                    </span>
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${run.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+                    {run.status === "published" ? "Published" : "Finalized"}
+                  </span>
+                  {run.id === value && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

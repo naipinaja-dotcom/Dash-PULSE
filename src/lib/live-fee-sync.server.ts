@@ -52,21 +52,27 @@ import { upsertLiveAttendance } from "./sync-live-attendance";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
-// Fallback kalau {from,to} gak dikirim: rolling 2 hari (kemarin + hari ini,
-// kalender Asia/Jakarta) — bukan coba pas-in ke batas periode payroll (itu
-// urusan payroll-workflow yang jalan setelahnya). Overlap antar-run aman
-// karena upsertLiveDeliveries/upsertLiveAttendance idempotent (dedup by dash
-// id / overwrite by date range).
-// ponytail: fallback window fix 2 hari, kalau cron sempat mati >2 hari data
-// yang terlewat gak ke-backfill otomatis — perlu jalanin manual dari Hitung Fee.
+// Fallback kalau {from,to} gak dikirim (mis. trigger manual tanpa param):
+// rolling 8 hari (kalender Asia/Jakarta) — bukan coba pas-in ke batas periode
+// payroll (itu urusan payroll-workflow yang jalan setelahnya). Overlap
+// antar-run aman karena upsertLiveDeliveries/upsertLiveAttendance idempotent
+// (dedup by dash id / overwrite by date range).
+// ponytail: dulu 2 hari, kegores kasus client dengan batch mingguan (mis.
+// Jumat-Senin) — order-nya baru "muncul" (COMPLETED) di mgmt API pas batch
+// ditutup Senin, tapi delivery_date-nya balik ke Jumat; window 2 hari selalu
+// mepet Senin doang jadi Jumat-nya kebuang permanen di filter delivery_date
+// (lihat inPeriod di live-fee-deliveries.functions.ts). 8 hari = 2x siklus
+// mingguan terpanjang yang ada sekarang (Jumat-Senin, 4 hari) — kalau ada
+// client dengan siklus lebih panjang lagi, lebarin lagi angkanya di sini.
 const JKT_OFFSET_MS = 7 * 60 * 60 * 1000;
+const SYNC_WINDOW_DAYS = 8;
 function jktToday(): string {
   return new Date(Date.now() + JKT_OFFSET_MS).toISOString().slice(0, 10);
 }
 function defaultWindow(): { from: string; to: string } {
   const to = jktToday();
   const fromDt = new Date(`${to}T00:00:00Z`);
-  fromDt.setUTCDate(fromDt.getUTCDate() - 1);
+  fromDt.setUTCDate(fromDt.getUTCDate() - SYNC_WINDOW_DAYS);
   return { from: fromDt.toISOString().slice(0, 10), to };
 }
 

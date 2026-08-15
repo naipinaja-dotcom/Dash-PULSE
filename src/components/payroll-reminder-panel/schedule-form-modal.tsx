@@ -73,15 +73,20 @@ export function ScheduleFormModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 grid place-items-center z-50 p-4" onClick={onClose}>
+    <div className="reminder-modal-backdrop fixed inset-0 grid place-items-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-card rounded-lg w-full max-w-md p-5 max-h-[85vh] overflow-y-auto"
+        className="reminder-schedule-modal w-full max-w-lg max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold mb-4">Jadwal Reminder Baru</h2>
-        <div className="space-y-3 text-sm">
-          <div>
-            <label className="font-medium">Label</label>
+        <div className="reminder-modal-header">
+          <span data-eyebrow>Disbursement / reminder</span>
+          <h2>Jadwal Reminder Baru</h2>
+          <p>Susun pengingat untuk batch pembayaran agar tim ops tahu siapa yang perlu ditindaklanjuti.</p>
+          <span className="reminder-modal-number" aria-hidden="true">01</span>
+        </div>
+        <div className="reminder-modal-body space-y-4 text-sm">
+          <div className="reminder-field">
+            <label className="font-medium">Nama batch</label>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -93,7 +98,7 @@ export function ScheduleFormModal({
               client, submit terpisah.
             </p>
           </div>
-          <div>
+          <div className="reminder-field reminder-picker">
             <label className="font-medium">
               Client{" "}
               <span className="font-normal text-muted-foreground">
@@ -127,11 +132,11 @@ export function ScheduleFormModal({
             </div>
             {clientIds.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                {clientIds.length} client dipilih.
+                <span className="reminder-selection-chip">{clientIds.length} client dipilih</span>
               </p>
             )}
           </div>
-          <div>
+          <div className="reminder-field reminder-picker">
             <label className="font-medium">
               Rider{" "}
               <span className="font-normal text-muted-foreground">
@@ -168,18 +173,19 @@ export function ScheduleFormModal({
               )}
             </div>
             {riderIds.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">{riderIds.length} rider dipilih.</p>
+              <p className="text-xs text-muted-foreground mt-1"><span className="reminder-selection-chip">{riderIds.length} rider dipilih</span></p>
             )}
           </div>
-          <div>
-            <label className="font-medium">Hari Berulang</label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
+          <div className="reminder-field reminder-weekdays">
+            <label className="font-medium">Hari kirim reminder</label>
+            <p className="text-xs text-muted-foreground mt-0.5">Pilih hari ketika pengingat harus muncul ke tim.</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {WEEKDAYS.map((name, d) => (
                 <button
                   key={d}
                   type="button"
                   onClick={() => toggleDay(d)}
-                  className={`px-2.5 py-1 rounded text-xs border ${weekdays.includes(d) ? "bg-primary text-primary-foreground border-primary" : "border-border"}`}
+                  className={`reminder-weekday px-2.5 py-1 rounded text-xs border ${weekdays.includes(d) ? "bg-primary text-primary-foreground border-primary" : "border-border"}`}
                 >
                   {name}
                 </button>
@@ -187,7 +193,7 @@ export function ScheduleFormModal({
             </div>
           </div>
           {clientIds.length > 0 && (
-            <div className="rounded-md border border-border p-3">
+            <div className="reminder-period-panel rounded-md border border-border p-3">
               <label className="flex items-center gap-2 font-medium cursor-pointer">
                 <input type="checkbox" checked={periodOn} onChange={(e) => setPeriodOn(e.target.checked)} />
                 Periode perhitungan payroll custom
@@ -241,14 +247,14 @@ export function ScheduleFormModal({
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded border border-border">
+        <div className="reminder-modal-footer flex justify-end gap-2">
+          <button onClick={onClose} className="reminder-cancel-button px-3 py-1.5 text-sm rounded border border-border">
             Batal
           </button>
           <button
             onClick={submit}
             disabled={saving}
-            className="px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground disabled:opacity-50"
+            className="reminder-save-button px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground disabled:opacity-50"
           >
             {saving
               ? "Menyimpan…"

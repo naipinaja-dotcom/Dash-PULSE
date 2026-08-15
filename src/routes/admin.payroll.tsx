@@ -128,6 +128,7 @@ type NettingCandidate = {
   headroom: number;
 };
 
+// 10 opsi Department persis dropdown Spend Control (basecamp.dashelectric.co).
 const SPEND_CONTROL_DEPARTMENTS = [
   "Customer Success",
   "Engineering Product & Design",
@@ -227,6 +228,8 @@ function PayrollPage() {
   const [spendControlLoading, setSpendControlLoading] = useState(false);
   const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0]);
   const [spendControlRows, setSpendControlRows] = useState<SpendControlRow[]>([]);
+  const spendControlValidRows = spendControlRows.filter((r) => r.valid);
+  const spendControlValidTotal = spendControlValidRows.reduce((s, r) => s + r.amount, 0);
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -1039,24 +1042,24 @@ function PayrollPage() {
     }
   };
 
-  // Fase 1: hanya preview. Pengiriman ke API Spend Control baru boleh
-  // diaktifkan setelah endpoint dan service account resmi tersedia.
+  // Fase 1 (prd-spend-control-push.md): preview-only, TIDAK memanggil API Spend
+  // Control beneran (Fase 2, terblokir nunggu API key/service account mereka).
   const openSpendControlPreview = async () => {
     if (!activeRun || details.length === 0)
       return toast.error("Belum ada detail payroll untuk run ini");
     setSpendControlOpen(true);
     setSpendControlLoading(true);
     try {
-      // Samakan populasi request dengan Bulk Payment reguler: detail yang
-      // pernah di-hold dibayar lewat mekanisme susulan; net pay nol/negatif
-      // bukan pembayaran yang dapat diajukan.
+      // Samakan populasi request dengan Bulk Payment reguler: detail hold
+      // dibayar melalui mekanisme susulan, dan net pay nol/negatif bukan
+      // pembayaran yang dapat diajukan.
       const payableDetails = details.filter(
         (detail) => !paymentHolds[detail.id] && Number(detail.net_pay || 0) > 0,
       );
       const byClient = new Map<string, number>();
-      for (const detail of payableDetails) {
-        if (!detail.client_id) continue;
-        byClient.set(detail.client_id, (byClient.get(detail.client_id) ?? 0) + Number(detail.net_pay || 0));
+      for (const d of payableDetails) {
+        if (!d.client_id) continue;
+        byClient.set(d.client_id, (byClient.get(d.client_id) ?? 0) + Number(d.net_pay || 0));
       }
       const clientIds = [...byClient.keys()];
       if (clientIds.length === 0) {
@@ -1064,50 +1067,55 @@ function PayrollPage() {
         return;
       }
 
-      const { data: clientRows, error } = await (supabase as any)
-        .from("clients")
-        .select("id, name, contract, provider_id")
-        .in("id", clientIds);
+      let businessUnitByProviderId = new Map<number, "SCHEDULED_INSTANT" | "X_DOCK" | null>();
+      const [{ data: clientRows, error }, sess] = await Promise.all([
+        (supabase as any).from("clients").select("id, name, contract, provider_id").in("id", clientIds),
+        supabase.auth.getSession(),
+      ]);
       if (error) throw error;
 
-      let businessUnitByProviderId = new Map<number, "SCHEDULED_INSTANT" | "X_DOCK" | null>();
       try {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-        if (token) {
-          const { providers } = await loadApiProviders({ data: { token } });
-          businessUnitByProviderId = new Map(
-            providers.map((provider) => [provider.id, resolveBusinessUnit(provider.revenueStreams)]),
-          );
-        }
-      } catch {
-        // Preview tetap bisa dibuka; provider tanpa data ditandai untuk diisi.
+        const token = sess.data.session?.access_token;
+        if (!token) throw new Error("Sesi tidak ditemukan, coba login ulang");
+        const { providers } = await loadApiProviders({ data: { token } });
+        businessUnitByProviderId = new Map(
+          providers.map((p) => [p.id, resolveBusinessUnit(p.revenueStreams)]),
+        );
+      } catch (e) {
+        toast.error(`Gagal ambil Business Unit dari mgmt API: ${(e as Error).message}`);
       }
 
+      // period_start/period_end bisa beda bulan (mis. 28 Jul - 3 Agu) —
+      // jangan paksa keduanya pakai bulan period_end.
+      const start = new Date(`${activeRun.period_start}T00:00:00Z`);
       const end = new Date(`${activeRun.period_end}T00:00:00Z`);
-      const startDay = new Date(`${activeRun.period_start}T00:00:00Z`).getUTCDate();
-      const period = `${startDay}-${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+      const sameMonth = start.getUTCMonth() === end.getUTCMonth() && start.getUTCFullYear() === end.getUTCFullYear();
+      const period = sameMonth
+        ? `${start.getUTCDate()}-${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`
+        : `${start.getUTCDate()} ${BULAN[start.getUTCMonth()]} ${start.getUTCFullYear()} - ${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+
       const rows: SpendControlRow[] = clientIds.map((clientId) => {
-        const client = (clientRows ?? []).find((row: any) => row.id === clientId);
+        const client = (clientRows ?? []).find((c: any) => c.id === clientId);
         const clientName = client?.name ?? "(client tidak ditemukan)";
         const businessUnit = client?.provider_id != null
           ? businessUnitByProviderId.get(client.provider_id) ?? null
           : null;
         const contract = client?.contract ?? null;
+        const title = `Payroll Gaji Mitra - ${clientName} (${period})`;
         return {
           clientId,
           clientName,
-          title: `Payroll Gaji Mitra - ${clientName} (${period})`,
+          title,
           amount: byClient.get(clientId) ?? 0,
           businessUnit,
           contract,
-          valid: businessUnit !== null && contract !== null,
+          valid: businessUnit !== null && contract !== null && title.length <= SPEND_CONTROL_TITLE_LIMIT,
         };
       });
       rows.sort((a, b) => a.clientName.localeCompare(b.clientName));
       setSpendControlRows(rows);
-    } catch (error) {
-      toast.error((error as Error).message);
+    } catch (e) {
+      toast.error((e as Error).message);
       setSpendControlOpen(false);
     } finally {
       setSpendControlLoading(false);
@@ -1569,13 +1577,19 @@ function PayrollPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    {/* Push ke Spend Control — Fase 1: preview-only (lihat prd-spend-control-push.md) */}
                     <button
                       onClick={openSpendControlPreview}
-                      disabled={activeRun.status === "draft" || details.length === 0}
+                      disabled={activeRun.status === "draft" || details.length === 0 || spendControlLoading}
                       title={activeRun.status === "draft" ? "Finalize dulu" : "Preview push ke Spend Control"}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 hover:border-primary-border hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
                     >
-                      <ArrowUpRight className="w-3.5 h-3.5" /> Push ke Spend Control
+                      {spendControlLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      )}{" "}
+                      Push ke Spend Control
                     </button>
                     {/* Hapus run — cuma kalau masih draft (belum Finalize) */}
                     {activeRun.status === "draft" && (
@@ -2137,7 +2151,7 @@ function PayrollPage() {
             <DialogHeader>
               <DialogTitle className="text-xl">Push ke Spend Control — Preview</DialogTitle>
               <DialogDescription className="leading-relaxed">
-                Preview Payment Request per client untuk run {activeRun?.name}. Belum mengirim apa pun — integrasi API Spend Control masih menunggu konfirmasi tim mereka.
+                Preview Payment Request per client untuk run {activeRun?.name}. Belum mengirim apa pun — integrasi API Spend Control masih menunggu konfirmasi tim mereka (lihat spend-control-integration-request.md).
               </DialogDescription>
             </DialogHeader>
 
@@ -2145,11 +2159,11 @@ function PayrollPage() {
               <label className="text-xs text-muted-foreground font-medium">Departemen pengaju</label>
               <select
                 value={spendControlDept}
-                onChange={(event) => setSpendControlDept(event.target.value)}
+                onChange={(e) => setSpendControlDept(e.target.value)}
                 className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
               >
-                {SPEND_CONTROL_DEPARTMENTS.map((department) => (
-                  <option key={department} value={department}>{department}</option>
+                {SPEND_CONTROL_DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>{d}</option>
                 ))}
               </select>
             </div>
@@ -2169,54 +2183,43 @@ function PayrollPage() {
                         <th className="text-right px-3 py-2 font-medium">Amount</th>
                         <th className="text-left px-3 py-2 font-medium">Business Unit</th>
                         <th className="text-left px-3 py-2 font-medium">Contract</th>
-                        <th className="text-left px-3 py-2 font-medium">Lampiran</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {spendControlRows.map((row) => (
-                        <tr key={row.clientId} className="border-t border-border">
-                          <td className="px-3 py-2 whitespace-nowrap">{row.clientName}</td>
+                      {spendControlRows.map((r) => (
+                        <tr key={r.clientId} className="border-t border-border">
+                          <td className="px-3 py-2 whitespace-nowrap">{r.clientName}</td>
                           <td className="px-3 py-2">
-                            <div className={row.title.length > SPEND_CONTROL_TITLE_LIMIT ? "text-destructive" : ""}>
-                              {row.title}
+                            <div className={r.title.length > SPEND_CONTROL_TITLE_LIMIT ? "text-destructive" : ""}>
+                              {r.title}
                             </div>
-                            {row.title.length > SPEND_CONTROL_TITLE_LIMIT && (
+                            {r.title.length > SPEND_CONTROL_TITLE_LIMIT && (
                               <div className="text-destructive text-[11px] mt-0.5">
-                                {row.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter — kepanjangan, perbaiki nama client sebelum push
+                                {r.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter — kepanjangan, perbaiki nama client sebelum push
                               </div>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right whitespace-nowrap">{formatRupiah(row.amount)}</td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">{formatRupiah(r.amount)}</td>
                           <td className="px-3 py-2">
-                            {row.businessUnit ?? (
+                            {r.businessUnit ?? (
                               <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
                                 Belum ada revenue stream
                               </span>
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            {row.contract ?? (
+                            {r.contract ?? (
                               <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
                                 Contract belum diisi
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2">
-                            <a
-                              href={SPEND_CONTROL_ATTACHMENT_URL}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-primary underline underline-offset-2 hover:text-primary/80"
-                            >
-                              Payroll detail
-                            </a>
-                          </td>
                         </tr>
                       ))}
                       {spendControlRows.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
-                            Tidak ada client dengan detail payroll yang dapat dibayarkan di run ini.
+                          <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                            Tidak ada client dengan detail payroll di run ini.
                           </td>
                         </tr>
                       )}
@@ -2226,15 +2229,18 @@ function PayrollPage() {
 
                 <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {spendControlRows.filter((row) => row.valid).length} client siap push
-                    {spendControlRows.some((row) => !row.valid)
-                      ? `, ${spendControlRows.filter((row) => !row.valid).length} di-exclude (data belum lengkap)`
+                    {spendControlValidRows.length} client siap push
+                    {spendControlValidRows.length !== spendControlRows.length
+                      ? `, ${spendControlRows.length - spendControlValidRows.length} di-exclude (data belum lengkap/judul kepanjangan)`
                       : ""}
                   </span>
                   <span className="font-medium text-foreground">
-                    Total: {formatRupiah(spendControlRows.filter((row) => row.valid).reduce((sum, row) => sum + row.amount, 0))}
+                    Total: {formatRupiah(spendControlValidTotal)}
                   </span>
                 </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Attachment: <a href={SPEND_CONTROL_ATTACHMENT_URL} target="_blank" rel="noreferrer" className="underline">{SPEND_CONTROL_ATTACHMENT_URL}</a>
+                </p>
               </>
             )}
 
@@ -2248,8 +2254,12 @@ function PayrollPage() {
               </button>
               <button
                 type="button"
-                disabled={spendControlLoading || spendControlRows.filter((row) => row.valid).length === 0}
-                onClick={() => toast.info("Integrasi API Spend Control masih menunggu konfirmasi tim mereka.")}
+                disabled={spendControlLoading || spendControlValidRows.length === 0}
+                onClick={() =>
+                  toast.info(
+                    `Integrasi API Spend Control masih menunggu konfirmasi tim mereka (departemen "${spendControlDept}", ${spendControlValidRows.length} client) — lihat spend-control-integration-request.md`,
+                  )
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ArrowUpRight className="h-4 w-4" /> Push ke Spend Control

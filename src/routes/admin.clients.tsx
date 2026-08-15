@@ -318,10 +318,10 @@ function ClientsPage() {
                     <td className="p-3">
                       {c.contract ? (
                         <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                          {c.contract}
+                          PT {c.contract}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-muted-foreground">Belum diisi</span>
+                        <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="text-right pr-3">

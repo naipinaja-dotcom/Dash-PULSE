@@ -391,7 +391,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
               <div key={i} className="rounded-lg border border-border overflow-hidden">
                 <div className="px-3 py-2 bg-muted flex items-center gap-2">
                   <span className="text-[13px] font-semibold truncate">{c.schemeName}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-soft text-primary-soft-foreground ml-auto flex-shrink-0">{c.calcLabel}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground border-2 border-border-strong ml-auto flex-shrink-0">{c.calcLabel}</span>
                 </div>
                 <table className="w-full text-xs">
                   <tbody>
@@ -462,7 +462,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
             {rows.length === 0 ? <tr><td colSpan={visibleColCount} className="p-6 text-center text-muted-foreground">Tidak ada data — pastikan payroll run ini sudah di-Generate.</td></tr> :
               paged.map((r) => (
                 <Fragment key={r.detailId}>
-                  <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : r.isKasbonRow ? "bg-primary-soft/30" : ""}`}>
+                  <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : r.isKasbonRow ? "bg-secondary" : ""}`}>
                     <td className="p-2 sticky left-0 bg-background">
                       <button onClick={() => !r.isKasbonRow && setExpanded(expanded === r.detailId ? null : r.detailId)} className={`flex items-center gap-1.5 text-left ${r.isKasbonRow ? "cursor-default" : "hover:text-primary"}`}>
                         {!r.isKasbonRow && <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${expanded === r.detailId ? "rotate-90" : ""}`} />}
@@ -470,12 +470,12 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
                           <span className="font-medium flex items-center gap-1.5">
                             {r.isKasbonRow ? `→ ${r.name}` : r.name}
                             {r.held && (
-                              <span title={r.holdReason ?? ""} className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive/15 text-destructive">
+                              <span title={r.holdReason ?? ""} className="rounded border-2 border-border-strong px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive text-destructive-foreground">
                                 Ditahan
                               </span>
                             )}
                             {r.isKasbonRow && (
-                              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-primary-soft text-primary-soft-foreground">
+                              <span className="rounded border-2 border-border-strong px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-primary text-primary-foreground">
                                 {r.kasbonNoTransfer ? "Kasbon · Internal" : "Kasbon · Transfer"}
                               </span>
                             )}

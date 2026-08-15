@@ -250,7 +250,7 @@ function ClientsPage() {
                 Skema Revenue
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Tanggal Dibuat
+                Contract
               </th>
               <th className="text-right text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pr-3">
                 Aksi
@@ -315,14 +315,14 @@ function ClientsPage() {
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="p-3 text-muted-foreground">
-                      {c.created_at
-                        ? new Date(c.created_at).toLocaleDateString("id-ID", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                          })
-                        : "—"}
+                    <td className="p-3">
+                      {c.contract ? (
+                        <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                          PT {c.contract}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="text-right pr-3">
                       <button

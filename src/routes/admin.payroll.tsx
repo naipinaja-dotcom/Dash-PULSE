@@ -228,6 +228,8 @@ function PayrollPage() {
   const [spendControlLoading, setSpendControlLoading] = useState(false);
   const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0]);
   const [spendControlRows, setSpendControlRows] = useState<SpendControlRow[]>([]);
+  const spendControlValidRows = spendControlRows.filter((r) => r.valid);
+  const spendControlValidTotal = spendControlValidRows.reduce((s, r) => s + r.amount, 0);
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -1048,8 +1050,11 @@ function PayrollPage() {
     setSpendControlOpen(true);
     setSpendControlLoading(true);
     try {
+      // Rider yang lagi hold dikeluarkan juga dari total push, sama seperti
+      // Bulk Payment export — duitnya belum tentu cair, jangan ikut ditagihkan.
+      const payableDetails = details.filter((d) => !paymentHolds[d.id]);
       const byClient = new Map<string, number>();
-      for (const d of details) {
+      for (const d of payableDetails) {
         if (!d.client_id) continue;
         byClient.set(d.client_id, (byClient.get(d.client_id) ?? 0) + Number(d.net_pay || 0));
       }
@@ -1059,29 +1064,32 @@ function PayrollPage() {
         return;
       }
 
-      const { data: clientRows, error } = await (supabase as any)
-        .from("clients")
-        .select("id, name, contract, provider_id")
-        .in("id", clientIds);
+      let businessUnitByProviderId = new Map<number, "SCHEDULED_INSTANT" | "X_DOCK" | null>();
+      const [{ data: clientRows, error }, sess] = await Promise.all([
+        (supabase as any).from("clients").select("id, name, contract, provider_id").in("id", clientIds),
+        supabase.auth.getSession(),
+      ]);
       if (error) throw error;
 
-      let businessUnitByProviderId = new Map<number, "SCHEDULED_INSTANT" | "X_DOCK" | null>();
       try {
-        const { data: sess } = await supabase.auth.getSession();
-        const token = sess.session?.access_token;
-        if (token) {
-          const { providers } = await loadApiProviders({ data: { token } });
-          businessUnitByProviderId = new Map(
-            providers.map((p) => [p.id, resolveBusinessUnit(p.revenueStreams)]),
-          );
-        }
-      } catch {
-        /* businessUnit tampil "belum ada revenue stream" kalau mgmt API gagal ditarik */
+        const token = sess.data.session?.access_token;
+        if (!token) throw new Error("Sesi tidak ditemukan, coba login ulang");
+        const { providers } = await loadApiProviders({ data: { token } });
+        businessUnitByProviderId = new Map(
+          providers.map((p) => [p.id, resolveBusinessUnit(p.revenueStreams)]),
+        );
+      } catch (e) {
+        toast.error(`Gagal ambil Business Unit dari mgmt API: ${(e as Error).message}`);
       }
 
+      // period_start/period_end bisa beda bulan (mis. 28 Jul - 3 Agu) —
+      // jangan paksa keduanya pakai bulan period_end.
+      const start = new Date(`${activeRun.period_start}T00:00:00Z`);
       const end = new Date(`${activeRun.period_end}T00:00:00Z`);
-      const startDay = new Date(`${activeRun.period_start}T00:00:00Z`).getUTCDate();
-      const period = `${startDay}-${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+      const sameMonth = start.getUTCMonth() === end.getUTCMonth() && start.getUTCFullYear() === end.getUTCFullYear();
+      const period = sameMonth
+        ? `${start.getUTCDate()}-${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`
+        : `${start.getUTCDate()} ${BULAN[start.getUTCMonth()]} ${start.getUTCFullYear()} - ${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
 
       const rows: SpendControlRow[] = clientIds.map((clientId) => {
         const client = (clientRows ?? []).find((c: any) => c.id === clientId);
@@ -1090,14 +1098,15 @@ function PayrollPage() {
           ? businessUnitByProviderId.get(client.provider_id) ?? null
           : null;
         const contract = client?.contract ?? null;
+        const title = `Payroll Gaji Mitra - ${clientName} (${period})`;
         return {
           clientId,
           clientName,
-          title: `Payroll Gaji Mitra - ${clientName} (${period})`,
+          title,
           amount: byClient.get(clientId) ?? 0,
           businessUnit,
           contract,
-          valid: businessUnit !== null && contract !== null,
+          valid: businessUnit !== null && contract !== null && title.length <= SPEND_CONTROL_TITLE_LIMIT,
         };
       });
       rows.sort((a, b) => a.clientName.localeCompare(b.clientName));
@@ -1568,11 +1577,16 @@ function PayrollPage() {
                     {/* Push ke Spend Control — Fase 1: preview-only (lihat prd-spend-control-push.md) */}
                     <button
                       onClick={openSpendControlPreview}
-                      disabled={activeRun.status === "draft" || details.length === 0}
+                      disabled={activeRun.status === "draft" || details.length === 0 || spendControlLoading}
                       title={activeRun.status === "draft" ? "Finalize dulu" : "Preview push ke Spend Control"}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 hover:border-primary-border hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
                     >
-                      <ArrowUpRight className="w-3.5 h-3.5" /> Push ke Spend Control
+                      {spendControlLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      )}{" "}
+                      Push ke Spend Control
                     </button>
                     {/* Hapus run — cuma kalau masih draft (belum Finalize) */}
                     {activeRun.status === "draft" && (
@@ -2212,13 +2226,13 @@ function PayrollPage() {
 
                 <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {spendControlRows.filter((r) => r.valid).length} client siap push
-                    {spendControlRows.some((r) => !r.valid)
-                      ? `, ${spendControlRows.filter((r) => !r.valid).length} di-exclude (data belum lengkap)`
+                    {spendControlValidRows.length} client siap push
+                    {spendControlValidRows.length !== spendControlRows.length
+                      ? `, ${spendControlRows.length - spendControlValidRows.length} di-exclude (data belum lengkap/judul kepanjangan)`
                       : ""}
                   </span>
                   <span className="font-medium text-foreground">
-                    Total: {formatRupiah(spendControlRows.filter((r) => r.valid).reduce((s, r) => s + r.amount, 0))}
+                    Total: {formatRupiah(spendControlValidTotal)}
                   </span>
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
@@ -2237,10 +2251,10 @@ function PayrollPage() {
               </button>
               <button
                 type="button"
-                disabled={spendControlLoading || spendControlRows.filter((r) => r.valid).length === 0}
+                disabled={spendControlLoading || spendControlValidRows.length === 0}
                 onClick={() =>
                   toast.info(
-                    "Integrasi API Spend Control masih menunggu konfirmasi tim mereka — lihat spend-control-integration-request.md",
+                    `Integrasi API Spend Control masih menunggu konfirmasi tim mereka (departemen "${spendControlDept}", ${spendControlValidRows.length} client) — lihat spend-control-integration-request.md`,
                   )
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"

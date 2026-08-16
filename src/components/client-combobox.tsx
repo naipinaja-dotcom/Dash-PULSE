@@ -13,6 +13,9 @@ export function ClientCombobox({
   disabled = false,
   placeholder = "Pilih client",
   className = "min-w-[180px]",
+  searchPlaceholder = "Cari client...",
+  emptyText = "Client tidak ditemukan",
+  itemLabel = "client",
 }: {
   options: { value: string; label: string }[];
   value: string;
@@ -20,6 +23,9 @@ export function ClientCombobox({
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  itemLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -50,14 +56,14 @@ export function ClientCombobox({
       <PopoverContent className="client-combobox-content w-[260px] p-0" align="start">
         <Command className="client-combobox-command" shouldFilter={false}>
           <CommandInput
-            placeholder="Cari client..."
+            placeholder={searchPlaceholder}
             value={search}
             onValueChange={setSearch}
             className="text-[12px]"
           />
           <CommandList className="max-h-[280px]">
             <CommandEmpty className="py-4 text-[12px] text-muted-foreground">
-              Client tidak ditemukan
+              {emptyText}
             </CommandEmpty>
             <CommandGroup>
               {filtered.map((o) => (
@@ -78,7 +84,7 @@ export function ClientCombobox({
             </CommandGroup>
             {options.length > MAX_VISIBLE && filtered.length === MAX_VISIBLE && (
               <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t border-border">
-                Ketik buat cari yang lain — {options.length - MAX_VISIBLE} client lagi belum tampil.
+                Ketik buat cari yang lain — {options.length - MAX_VISIBLE} {itemLabel} lagi belum tampil.
               </div>
             )}
           </CommandList>

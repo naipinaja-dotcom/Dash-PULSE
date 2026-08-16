@@ -9,6 +9,7 @@ import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
 import { Loader2, Trash2, Pencil } from "lucide-react";
 import { ClientCombobox } from "@/components/client-combobox";
+import { DatePicker } from "@/components/date-picker";
 import type { Client, DType, Inst, Rider } from "./types";
 
 export function ActiveTab() {
@@ -542,13 +543,10 @@ export function ActiveTab() {
                             <label className="text-xs font-medium text-muted-foreground">
                               Potong Berikutnya
                             </label>
-                            <input
-                              type="date"
+                            <DatePicker
                               value={ef.next_deduction_date}
-                              onChange={(e) =>
-                                setEf({ ...ef, next_deduction_date: e.target.value })
-                              }
-                              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                              onChange={(v) => setEf({ ...ef, next_deduction_date: v })}
+                              className="mt-1 w-full"
                             />
                           </div>
                           <div>

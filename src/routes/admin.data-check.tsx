@@ -7,6 +7,7 @@ import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import { ClientCombobox } from "@/components/client-combobox";
+import { DatePicker } from "@/components/date-picker";
 
 // Search params opsional — diisi otomatis kalau dibuka dari link "Cek Data"
 // di Payroll Run (bawa periode run aktif), biar gak perlu pilih ulang manual.
@@ -133,13 +134,11 @@ function DataCheckPage() {
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Dari Tanggal <span className="font-normal">(opsional)</span></label>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
+          <DatePicker value={from} onChange={setFrom} className="w-full" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Sampai Tanggal <span className="font-normal">(opsional)</span></label>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
+          <DatePicker value={to} onChange={setTo} className="w-full" />
         </div>
         <div className="md:col-span-2">
           <button onClick={() => fetchPage(1)} disabled={loading}

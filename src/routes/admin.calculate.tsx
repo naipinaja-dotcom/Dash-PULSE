@@ -24,6 +24,7 @@ import { formatRupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { ClientCombobox } from "@/components/client-combobox";
+import { DatePicker } from "@/components/date-picker";
 import { resolveRiderIdentities } from "@/lib/rider-lookup";
 import { findOrCreatePayrollRun, generatePayrollDetails } from "@/lib/payroll-generate";
 import { loadLiveFeeDeliveries } from "@/lib/api/live-fee-deliveries.functions";
@@ -619,7 +620,7 @@ function CalculatePage() {
       subtitle="Hitung fee dari data pengiriman pakai skema pricing (preview sebelum simpan)"
     >
       {/* Kontrol */}
-      <div className="rounded-lg border border-border bg-card p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <div className="rounded-xl border-2 border-border-strong bg-card shadow-[5px_5px_0_0_var(--color-border-strong)] p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Client</label>
           <ClientCombobox
@@ -635,19 +636,19 @@ function CalculatePage() {
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Skema</label>
-          <select
+          <ClientCombobox
             value={schemeId}
-            onChange={(e) => setSchemeId(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="">— pilih skema —</option>
-            {matchingSchemes.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.scheme_for === "client" ? "Client" : "Rider"} ·{" "}
-                {pricingLabel(s.category, s.subtype)}
-              </option>
-            ))}
-          </select>
+            onChange={setSchemeId}
+            placeholder="— pilih skema —"
+            className="w-full text-sm py-2"
+            searchPlaceholder="Cari skema..."
+            emptyText="Skema tidak ditemukan"
+            itemLabel="skema"
+            options={matchingSchemes.map((s) => ({
+              value: s.id,
+              label: `${s.name} · ${s.scheme_for === "client" ? "Client" : "Rider"} · ${pricingLabel(s.category, s.subtype)}`,
+            }))}
+          />
         </div>
 
         {/* Status integrasi API (mapping di-set di menu Clients) — Hitung SELALU
@@ -692,21 +693,11 @@ function CalculatePage() {
 
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Dari Tanggal</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
-          />
+          <DatePicker value={from} onChange={setFrom} className="w-full" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Sampai Tanggal</label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
-          />
+          <DatePicker value={to} onChange={setTo} className="w-full" />
         </div>
         <div className="md:col-span-2">
           <button

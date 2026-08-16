@@ -638,7 +638,7 @@ function CalculatePage() {
           <select
             value={schemeId}
             onChange={(e) => setSchemeId(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">— pilih skema —</option>
             {matchingSchemes.map((s) => (

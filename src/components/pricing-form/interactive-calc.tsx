@@ -195,10 +195,10 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
   const p = (patch: Partial<CalcInputs>) => setInp((prev) => ({ ...prev, ...patch }));
   const result = useMemo(() => computeInteractive(props, inp), [props, inp]);
   return (
-    <div className="rounded-lg border border-primary-border/60 bg-primary-soft/40 px-4 py-3.5 mt-4">
+    <div className="rounded-md border-2 border-border-strong bg-card shadow-[3px_3px_0_0_var(--color-border-strong)] px-4 py-3.5 mt-4">
       <div className="flex items-center gap-2 mb-3">
         <Calculator className="w-4 h-4 text-primary" />
-        <p className="text-xs font-semibold text-primary-soft-foreground">Kalkulator</p>
+        <p className="text-xs font-semibold text-foreground">Kalkulator</p>
         <span className="text-[10px] text-muted-foreground">(ubah input → hasil update otomatis)</span>
       </div>
 
@@ -250,8 +250,8 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
             <div className="flex gap-1 pb-0.5">
               {([{ v: false, l: "Ontime" }, { v: true, l: "Late" }] as const).map((opt) => (
                 <button key={String(opt.v)} type="button" onClick={() => p({ isLate: opt.v })}
-                  className={"text-xs px-2.5 py-1.5 rounded border transition-colors " +
-                    (inp.isLate === opt.v ? "bg-primary-soft border-primary-border text-primary-soft-foreground font-medium" : "bg-card border-border text-muted-foreground hover:bg-muted")}>
+                  className={"text-xs px-2.5 py-1.5 rounded border-2 border-border-strong transition-colors " +
+                    (inp.isLate === opt.v ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
                   {opt.l}
                 </button>
               ))}
@@ -261,14 +261,14 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
       </div>
 
       {/* ── Result ── */}
-      <div className="border-t border-primary-border/40 pt-2.5 space-y-1">
+      <div className="border-t border-border-strong pt-2.5 space-y-1">
         {result.steps.map((s, i) => (
           <div key={i} className="flex items-baseline justify-between gap-3 text-xs">
             <span className="text-muted-foreground">{s.text}</span>
             {s.amount !== undefined && <span className="font-medium tabular-nums whitespace-nowrap">{formatRupiah(s.amount)}</span>}
           </div>
         ))}
-        <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-primary-border/50">
+        <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-border-strong">
           <span className="text-xs font-semibold">{result.total.label}</span>
           <span className="text-base font-bold text-primary tabular-nums">{formatRupiah(result.total.amount)}</span>
         </div>

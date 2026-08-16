@@ -236,7 +236,7 @@ function ClientsPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+      <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-auto">
         <table className="w-full text-[12px] whitespace-nowrap">
           <thead>
             <tr className="border-b border-border">
@@ -280,7 +280,7 @@ function ClientsPage() {
                   >
                     <td className="p-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-primary-soft grid place-items-center text-[11px] font-semibold text-primary flex-shrink-0">
+                        <div className="w-8 h-8 rounded-md bg-primary text-primary-foreground border-2 border-border-strong grid place-items-center text-[11px] font-semibold flex-shrink-0">
                           {clientInitials(c.name)}
                         </div>
                         <div>
@@ -298,7 +298,7 @@ function ClientsPage() {
                       {(() => {
                         const bu = buOf.get(c.name.trim().toLowerCase());
                         return bu ? (
-                          <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                          <span className="text-[11px] font-medium bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 rounded-full">
                             {bu}
                           </span>
                         ) : (
@@ -308,7 +308,7 @@ function ClientsPage() {
                     </td>
                     <td className="p-3">
                       {scheme ? (
-                        <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        <span className="text-[11px] font-medium bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 rounded-full">
                           {scheme}
                         </span>
                       ) : (
@@ -317,11 +317,11 @@ function ClientsPage() {
                     </td>
                     <td className="p-3">
                       {c.contract ? (
-                        <span className="text-[11px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                          PT {c.contract}
+                        <span className="inline-flex rounded-full border-2 border-border-strong bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">
+                          {c.contract}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-muted-foreground">—</span>
+                        <span className="text-[11px] font-medium text-warning">Belum diisi</span>
                       )}
                     </td>
                     <td className="text-right pr-3">
@@ -337,7 +337,7 @@ function ClientsPage() {
                       </button>
                       <button
                         onClick={() => remove(c.id)}
-                        className="p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-md transition-colors"
+                        className="p-1.5 text-muted-foreground hover:bg-destructive hover:text-destructive-foreground rounded-md transition-colors"
                         title="Hapus"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -422,7 +422,7 @@ function ClientModal({
 
         {/* Tab — Export Template cuma relevan buat client yang udah ada (perlu client_id) */}
         {initial && (
-          <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 mt-3">
+          <div className="flex w-full border-2 border-border-strong rounded-md bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] mb-4 mt-3 overflow-hidden">
             {(
               [
                 ["info", "Info"],
@@ -433,7 +433,7 @@ function ClientModal({
                 key={k}
                 type="button"
                 onClick={() => setTab(k)}
-                className={`flex-1 px-3 py-1.5 text-xs rounded ${tab === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
+                className={`flex-1 px-3 py-1.5 text-xs font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${tab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
               >
                 {l}
               </button>
@@ -549,9 +549,9 @@ function ExportTemplateTab({ clientId, onClose }: { clientId: string; onClose: (
 
   return (
     <>
-      <div className="flex items-start gap-2 rounded-md border border-primary-border bg-primary-soft px-3 py-2.5 mb-3">
-        <FileSpreadsheet className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-primary-soft-foreground leading-relaxed">
+      <div className="flex items-start gap-2 rounded-md border-2 border-border-strong bg-secondary px-3 py-2.5 mb-3">
+        <FileSpreadsheet className="w-4 h-4 text-foreground mt-0.5 flex-shrink-0" />
+        <p className="text-xs text-foreground leading-relaxed">
           Kolom yang dicentang akan muncul di export "Ringkasan" Finance Worksheet — berlaku
           otomatis tiap kali export payroll run yang di-scope ke client ini. Kolom "Driver Name"
           selalu tampil.

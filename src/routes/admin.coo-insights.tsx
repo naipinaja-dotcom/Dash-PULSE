@@ -61,8 +61,8 @@ function shiftWeek({ weekStart, weekEnd }: { weekStart: string; weekEnd: string 
 }
 
 const SEVERITY_STYLE: Record<Severity, string> = {
-  HIGH: "bg-destructive/10 text-destructive",
-  MEDIUM: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  HIGH: "border-2 border-border-strong bg-destructive text-destructive-foreground",
+  MEDIUM: "border-2 border-border-strong bg-warning text-warning-foreground",
   LOW: "bg-muted text-muted-foreground",
 };
 
@@ -210,7 +210,7 @@ function CooInsightsPage() {
                     </span>
                     <button
                       onClick={() => removeIncident(i.id)}
-                      className="p-1 hover:bg-destructive/10 text-destructive rounded"
+                      className="p-1 text-destructive hover:bg-destructive hover:text-destructive-foreground rounded"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -277,7 +277,7 @@ function CooInsightsPage() {
                     ) => (
                       <li key={i} className="text-sm flex items-start gap-2">
                         <span
-                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${a.approve === "YES" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${a.approve === "YES" ? "border-2 border-border-strong bg-success text-success-foreground" : "bg-muted text-muted-foreground"}`}
                         >
                           {a.approve}
                         </span>
@@ -392,7 +392,7 @@ function CooInsightsPage() {
                     <div key={label} className="rounded-lg border border-border p-3">
                       <p className="text-xs text-muted-foreground">{label}</p>
                       <p
-                        className={`text-lg font-semibold flex items-center gap-1 ${v.amount < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
+                        className={`text-lg font-semibold flex items-center gap-1 ${v.amount < 0 ? "text-destructive" : "text-success"}`}
                       >
                         {v.amount < 0 ? (
                           <TrendingDown className="w-4 h-4" />

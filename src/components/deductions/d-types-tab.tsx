@@ -368,7 +368,7 @@ export function DTypesTab() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-hidden">
         <table className="w-full text-[12px]">
           <thead>
             <tr className="border-b border-border">
@@ -446,7 +446,7 @@ export function DTypesTab() {
                           <button
                             onClick={() => toggleAppliesToAll(r)}
                             title="Klik untuk ganti"
-                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${r.applies_to_all ? "border-border text-muted-foreground bg-muted hover:bg-muted/70" : "border-primary/40 text-primary bg-primary-soft hover:bg-primary-soft/70"}`}
+                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full border-2 transition-colors ${r.applies_to_all ? "border-border text-muted-foreground bg-muted hover:bg-muted/70" : "border-border-strong text-primary-foreground bg-primary hover:bg-primary/90"}`}
                           >
                             {r.applies_to_all ? "Semua rider" : "Rider tertentu"}
                           </button>
@@ -468,7 +468,7 @@ export function DTypesTab() {
                     <button
                       onClick={() => toggleActive(r)}
                       title="Klik untuk aktif/nonaktif"
-                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${r.active ? "border-success/40 text-success bg-success/10 hover:bg-success/20" : "border-border text-muted-foreground bg-muted hover:bg-muted/70"}`}
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border-2 transition-colors ${r.active ? "border-border-strong bg-success text-success-foreground hover:brightness-105" : "border-border text-muted-foreground bg-muted hover:bg-muted/70"}`}
                     >
                       {r.active ? "Aktif" : "Nonaktif"}
                     </button>

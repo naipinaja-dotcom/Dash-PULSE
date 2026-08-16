@@ -143,10 +143,10 @@ export function AttendanceDeliveryCompFields({
               type="button"
               onClick={() => patch({ method: t.k })}
               className={
-                "text-xs px-3 py-1.5 rounded-md border transition-colors " +
+                "text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " +
                 (value.method === t.k
-                  ? "bg-primary-soft text-primary-soft-foreground border-primary-border font-medium"
-                  : "bg-card border-border text-muted-foreground hover:bg-muted")
+                  ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium"
+                  : "bg-card text-foreground hover:bg-muted")
               }
             >
               {t.l}
@@ -161,7 +161,7 @@ export function AttendanceDeliveryCompFields({
           <div className="flex gap-1.5">
             {([{ k: "distance", l: "Jarak (km)" }, { k: "weight", l: "Berat (kg)" }] as const).map((t) => (
               <button key={t.k} type="button" onClick={() => patch({ orderBy: t.k })}
-                className={"text-xs px-3 py-1.5 rounded-md border transition-colors " + (value.orderBy === t.k ? "bg-primary-soft border-primary-border font-medium" : "bg-card border-border text-muted-foreground hover:bg-muted")}>
+                className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.orderBy === t.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
                 {t.l}
               </button>
             ))}
@@ -179,7 +179,7 @@ export function AttendanceDeliveryCompFields({
             <div className="flex gap-1.5">
               {([{ k: "awb", l: "Per Paket (AWB)" }, { k: "unique_address", l: "Per Alamat Unik" }] as const).map((t) => (
                 <button key={t.k} type="button" onClick={() => patch({ unit: t.k })}
-                  className={"text-xs px-3 py-1.5 rounded-md border transition-colors " + (value.unit === t.k ? "bg-primary-soft border-primary-border font-medium" : "bg-card border-border text-muted-foreground hover:bg-muted")}>
+                  className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.unit === t.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
                   {t.l}
                 </button>
               ))}
@@ -190,7 +190,7 @@ export function AttendanceDeliveryCompFields({
             <div className="flex gap-1.5 mb-2">
               {([{ k: "flat", l: "Flat (1 tarif)" }, { k: "column", l: "Per Area/Tipe" }] as const).map((t) => (
                 <button key={t.k} type="button" onClick={() => patch({ rateBy: t.k })}
-                  className={"text-xs px-3 py-1.5 rounded-md border transition-colors " + (value.rateBy === t.k ? "bg-primary-soft border-primary-border font-medium" : "bg-card border-border text-muted-foreground hover:bg-muted")}>
+                  className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.rateBy === t.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
                   {t.l}
                 </button>
               ))}

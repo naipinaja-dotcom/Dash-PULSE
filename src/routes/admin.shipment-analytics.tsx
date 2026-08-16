@@ -89,31 +89,43 @@ function ShipmentAnalyticsPage() {
             <Kpi label={t("shipment.return")} value={(byType.get("RETURN") ?? 0).toLocaleString("id-ID")} />
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-5 mb-4">
+          <div className="admin-chart-card rounded-xl p-5 mb-4">
             <h3 className="text-sm font-semibold mb-3">{t("shipment.dailyTrend")}</h3>
             {trend.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 {t("analytics.noTrendData")}
               </p>
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} width={40} />
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={trend} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="shipmentBarGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-grad-from)" />
+                      <stop offset="100%" stopColor="var(--chart-grad-to)" />
+                    </linearGradient>
+                  </defs>
+                  {/* Warna & opacity garis grid diatur di .admin-chart-card (styles.css). */}
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "var(--border)", strokeOpacity: 0.35 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
                   <Tooltip
+                    cursor={{ fill: "var(--primary)", opacity: 0.08 }}
                     contentStyle={{
                       background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
+                      border: "2px solid var(--border-strong)",
+                      borderRadius: 6,
+                      boxShadow: "4px 4px 0 0 var(--border-strong)",
                       fontSize: 12,
                     }}
                   />
                   <Bar
                     dataKey="count"
                     name="Shipment"
-                    fill="var(--primary)"
+                    fill="url(#shipmentBarGrad)"
+                    stroke="var(--border-strong)"
+                    strokeWidth={2}
                     radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -146,9 +158,10 @@ function BreakdownCard({
   data: Map<string, number>;
   total: number;
 }) {
+  const { t } = useT();
   const entries = [...data.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
+    <div className="rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)]">
       <h3 className="text-sm font-semibold mb-3">{title}</h3>
       {entries.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("analytics.noData")}</p>
@@ -179,16 +192,9 @@ function BreakdownCard({
 
 function Kpi({ label, value, accent }: { label: string; value: string; accent?: "success" }) {
   return (
-    <div
-      className={
-        "rounded-xl border p-4 " +
-        (accent === "success" ? "border-success/30 bg-success/5" : "border-border bg-card")
-      }
-    >
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={"text-lg font-semibold mt-1 " + (accent === "success" ? "text-success" : "")}>
-        {value}
-      </div>
+    <div className="admin-kpi-card p-4" data-variant={accent === "success" ? "success" : "default"}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</div>
+      <div className="admin-metric-value text-[26px] font-bold font-mono tracking-tight">{value}</div>
     </div>
   );
 }

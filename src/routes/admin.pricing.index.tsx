@@ -175,7 +175,7 @@ function PricingListPage() {
         </span>
       </td>
       <td className="px-4 py-3">
-        <span className="inline-flex items-center rounded-md bg-primary-soft text-primary-soft-foreground px-2 py-0.5 text-[11px] font-medium">
+        <span className="inline-flex items-center rounded-md bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 text-[11px] font-medium">
           {pricingLabel(s.category, s.subtype)}
         </span>
       </td>
@@ -254,7 +254,7 @@ function PricingListPage() {
                     <div key={s.id} className="border-t border-border first:border-t-0">
                       <div className="px-3 py-2 flex items-center gap-2 bg-muted/40">
                         <span className="text-[12px] font-medium truncate">{rc.schemeName}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-soft text-primary-soft-foreground flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground border-2 border-border-strong flex-shrink-0">
                           {rc.calcLabel}
                         </span>
                         <Link
@@ -319,7 +319,7 @@ function PricingListPage() {
                     <div key={s.id} className="border-t border-border first:border-t-0">
                       <div className="px-3 py-2 flex items-center gap-2 bg-muted/40">
                         <span className="text-[12px] font-medium truncate">{rc.schemeName}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-soft text-primary-soft-foreground flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground border-2 border-border-strong flex-shrink-0">
                           {rc.calcLabel}
                         </span>
                         <Link
@@ -373,7 +373,7 @@ function PricingListPage() {
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         {filtered.length === 0 ? (
           <div className="p-10 text-center">
-            <div className="w-12 h-12 rounded-full bg-primary-soft text-primary grid place-items-center mx-auto mb-3">
+            <div className="w-12 h-12 rounded-full border-2 border-border-strong bg-card text-foreground grid place-items-center mx-auto mb-3">
               <Tag className="w-5 h-5" />
             </div>
             <div className="text-sm font-medium">Belum ada skema pricing</div>

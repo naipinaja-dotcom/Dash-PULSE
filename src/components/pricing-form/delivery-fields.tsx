@@ -379,7 +379,7 @@ function RangeTableEditor({
                   <span
                     className={
                       "inline-block text-[11px] font-medium px-2 py-0.5 rounded " +
-                      (r.type === "flat" ? "bg-primary-soft text-primary-soft-foreground" : "bg-warning/15 text-warning")
+                      (r.type === "flat" ? "border-2 border-border-strong bg-primary text-primary-foreground" : "border-2 border-border-strong bg-warning text-warning-foreground")
                     }
                   >
                     {r.type === "flat" ? "Flat" : "Tier"}
@@ -470,10 +470,10 @@ function AccumulateToggle({ value, onChange }: { value: "per_order" | "daily"; o
           type="button"
           onClick={() => onChange(opt.k)}
           className={
-            "text-xs px-3 py-1.5 rounded-md border transition-colors " +
+            "text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " +
             (value === opt.k
-              ? "bg-primary-soft text-primary-soft-foreground border-primary-border font-medium"
-              : "bg-card border-border text-muted-foreground hover:bg-muted")
+              ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium"
+              : "bg-card text-foreground hover:bg-muted")
           }
         >
           {opt.l}
@@ -599,7 +599,7 @@ export function DeliveryFields({
             <AccumulateToggle value={value.distance.accumulate} onChange={(v) => patchDistance({ accumulate: v })} />
           </div>
           {value.distance.accumulate === "daily" && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs text-warning">
+            <div className="rounded-md border-2 border-border-strong bg-warning text-warning-foreground px-3.5 py-2.5 text-xs">
               Akumulasi harian: jarak semua kiriman 1 rider dalam 1 hari dijumlah dulu, baru dicocokkan ke band.
             </div>
           )}
@@ -667,7 +667,7 @@ export function DeliveryFields({
                 <AccumulateToggle value={value.weight.accumulate} onChange={(v) => patchWeight({ accumulate: v })} />
               </div>
               {value.weight.accumulate === "daily" && (
-                <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs text-warning">
+                <div className="rounded-md border-2 border-border-strong bg-warning text-warning-foreground px-3.5 py-2.5 text-xs">
                   Akumulasi harian: berat semua kiriman 1 rider dalam 1 hari dijumlah dulu, baru dicocokkan ke band.
                 </div>
               )}

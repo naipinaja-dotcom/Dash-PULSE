@@ -271,7 +271,7 @@ export function RecapTab() {
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="rounded-md border-2 border-border-strong bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
           >
             {months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
@@ -279,7 +279,7 @@ export function RecapTab() {
         <button
           onClick={exportCSV}
           disabled={!rows.length}
-          className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-3 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
         >
           <Download className="w-4 h-4" /> Export CSV
         </button>

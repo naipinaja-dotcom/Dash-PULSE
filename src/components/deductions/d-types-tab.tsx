@@ -501,9 +501,9 @@ export function DTypesTab() {
                         placeholder="Cari nama / kode rider…"
                         value={riderSearch}
                         onChange={(e) => setRiderSearch(e.target.value)}
-                        className="w-full max-w-sm rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                        className="w-full max-w-sm rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                       />
-                      <div className="mt-2 max-h-56 max-w-sm overflow-y-auto rounded-md border border-border divide-y divide-border">
+                      <div className="mt-2 max-h-56 max-w-sm overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
                         {filteredRiders.length === 0 ? (
                           <div className="px-3 py-2 text-muted-foreground text-xs">Ga ada rider cocok</div>
                         ) : (
@@ -525,7 +525,7 @@ export function DTypesTab() {
                                 <select
                                   value={enrolledClient.get(rd.id) ?? ""}
                                   onChange={(e) => setEnrolledClient(r.id, rd.id, e.target.value)}
-                                  className="rounded-md border border-border bg-background px-1.5 py-1 text-xs"
+                                  className="rounded-md border-2 border-border-strong bg-background px-1.5 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
                                   title="Client prioritas — null pakai client rumah rider"
                                 >
                                   <option value="">— client rumah rider —</option>

@@ -124,12 +124,12 @@ export function ArrearsTab() {
           placeholder={t("dedarrears.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm w-56"
+          className="rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm w-56 outline-none focus:ring-1 focus:ring-ring"
         />
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+          className="rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">{t("dedarrears.allTypes")}</option>
           {typeOptions.map((t) => (

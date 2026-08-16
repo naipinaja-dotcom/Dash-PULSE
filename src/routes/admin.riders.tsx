@@ -130,18 +130,18 @@ function RidersPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("riders.searchPlaceholder")}
-            className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-[12px] outline-none focus:border-primary transition-colors"
+            className="w-full rounded-lg border-2 border-border-strong bg-card pl-9 pr-3 py-2 text-[12px] outline-none focus:ring-1 focus:ring-ring transition-colors"
           />
         </div>
         <div ref={statusRef} className="relative">
           <button onClick={() => setStatusOpen((p) => !p)}
-            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[12px] hover:border-primary/50 transition-colors min-w-[160px]">
+            className="flex items-center gap-2 rounded-lg border-2 border-border-strong bg-card px-3 py-2 text-[12px] font-medium hover:bg-muted transition-colors min-w-[160px]">
             <span className={`w-2 h-2 rounded-full ${STATUS_DOT[filter]}`} />
             <span className="font-medium">{filter === "all" ? t("btn.all") : STATUS_LABEL[filter]}</span>
             <ChevronDown className={`w-3.5 h-3.5 ml-auto text-muted-foreground transition-transform ${statusOpen ? "rotate-180" : ""}`} />
           </button>
           {statusOpen && (
-            <div className="absolute top-full left-0 mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-20 py-1">
+            <div className="absolute top-full left-0 mt-1 w-48 rounded-lg border-2 border-border-strong bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] z-20 py-1">
               {(["all", ...STATUS_ORDER] as const).map((s) => (
                 <button key={s} onClick={() => { setFilter(s); setStatusOpen(false); }}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left transition-colors ${filter === s ? "bg-primary text-primary-foreground border-2 border-border-strong font-medium" : "text-foreground hover:bg-muted"}`}>
@@ -155,11 +155,11 @@ function RidersPage() {
         <div className="flex gap-2 items-center ml-auto">
           <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />
           <button onClick={() => setImportOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground hover:border-primary-border hover:text-primary transition-colors">
+            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-card px-3 py-1.5 text-[11px] text-muted-foreground hover:text-primary hover:bg-muted transition-colors">
             <Upload className="w-3.5 h-3.5" /> {t("btn.importCsv")}
           </button>
           <button onClick={() => { setEdit(null); setOpen(true); }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-medium hover:opacity-90 transition-opacity">
+            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]">
             <Plus className="w-3.5 h-3.5" /> {t("btn.addRider")}
           </button>
         </div>

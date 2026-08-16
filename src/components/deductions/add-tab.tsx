@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
 import { toast } from "sonner";
+import { ClientCombobox } from "@/components/client-combobox";
 import type { Client, DType, MolisType, Rider } from "./types";
 
 export function AddTab() {
@@ -132,7 +133,7 @@ export function AddTab() {
           placeholder="Cari nama / kode rider…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+          className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
         />
         <div className="mt-1.5 flex items-center gap-3 text-xs">
           <button
@@ -155,7 +156,7 @@ export function AddTab() {
             Hapus pilihan
           </button>
         </div>
-        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-border divide-y divide-border">
+        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-muted-foreground text-xs">Ga ada rider cocok</div>
           ) : (
@@ -191,7 +192,7 @@ export function AddTab() {
               kasbon_recipient_id: "",
             });
           }}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+          className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">— pilih jenis —</option>
           {types.map((t) => (
@@ -205,18 +206,13 @@ export function AddTab() {
         <label className="font-medium">
           Client Prioritas <span className="font-normal text-muted-foreground">(opsional)</span>
         </label>
-        <select
+        <ClientCombobox
           value={f.client_id}
-          onChange={(e) => setF({ ...f, client_id: e.target.value })}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
-        >
-          <option value="">— pakai client rumah rider —</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setF({ ...f, client_id: v })}
+          placeholder="— pakai client rumah rider —"
+          className="mt-1 w-full text-sm py-2"
+          options={clients.map((c) => ({ value: c.id, label: c.name }))}
+        />
         <p className="text-xs text-muted-foreground mt-1">
           Potongan ini cuma kepotong di payroll run client ini. Kalau fee rider di client ini gak
           cukup, sisa kurangnya bisa "dititip" ke client lain lewat netting manual di Payroll Run
@@ -227,7 +223,7 @@ export function AddTab() {
         <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2">
           <div>
             <label className="font-medium">Pemberi Kasbon</label>
-            <select value={f.kasbon_recipient_id} onChange={(e) => setF({ ...f, kasbon_recipient_id: e.target.value })} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2">
+            <select value={f.kasbon_recipient_id} onChange={(e) => setF({ ...f, kasbon_recipient_id: e.target.value })} className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring">
               <option value="">— pilih penerima transfer —</option>
               {recipients.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.bank_name} · {r.account_number}</option>)}
             </select>
@@ -279,7 +275,7 @@ export function AddTab() {
             placeholder="0"
             value={f.total_amount ? f.total_amount.toLocaleString("id-ID") : ""}
             onChange={(e) => setF({ ...f, total_amount: parseRupiah(e.target.value) })}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+            className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
       ) : (
@@ -298,7 +294,7 @@ export function AddTab() {
                     daily_rate: mt ? mt.default_daily_rate : f.daily_rate,
                   });
                 }}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+                className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="">— bukan molis / manual —</option>
                 {molisTypes.map((m) => (
@@ -316,7 +312,7 @@ export function AddTab() {
               placeholder="mis. 38.000"
               value={f.daily_rate ? f.daily_rate.toLocaleString("id-ID") : ""}
               onChange={(e) => setF({ ...f, daily_rate: parseRupiah(e.target.value) })}
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
             />
             {f.mode === "daily" ? (
               <p className="text-xs text-muted-foreground mt-1">
@@ -379,7 +375,7 @@ export function AddTab() {
           type="date"
           value={f.start_date}
           onChange={(e) => setF({ ...f, start_date: e.target.value })}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+          className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
       {f.mode === "fixed" &&
@@ -414,7 +410,7 @@ export function AddTab() {
             min={1}
             value={f.installment_count}
             onChange={(e) => setF({ ...f, installment_count: +e.target.value })}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+            className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
           />
           <p className="text-xs text-muted-foreground mt-1">
             Per periode: Rp
@@ -427,7 +423,7 @@ export function AddTab() {
         <input
           value={f.notes}
           onChange={(e) => setF({ ...f, notes: e.target.value })}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+          className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
       <div className="deduction-save-area" aria-live="polite">

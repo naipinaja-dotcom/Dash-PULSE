@@ -91,7 +91,7 @@ export function ScheduleFormModal({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="mis. Batch Senin & Kamis"
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Dipakai buat semua client/rider yang dipilih di bawah — kalau mau label beda per
@@ -109,9 +109,9 @@ export function ScheduleFormModal({
               value={clientSearch}
               onChange={(e) => setClientSearch(e.target.value)}
               placeholder="Cari client…"
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs"
+              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
             />
-            <div className="mt-1 max-h-32 overflow-y-auto rounded-md border border-border divide-y divide-border">
+            <div className="mt-1 max-h-32 overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
               {visibleClients.length === 0 ? (
                 <p className="p-2 text-xs text-muted-foreground">Tidak ada match</p>
               ) : (
@@ -147,9 +147,9 @@ export function ScheduleFormModal({
               value={riderSearch}
               onChange={(e) => setRiderSearch(e.target.value)}
               placeholder="Cari nama / kode rider…"
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs"
+              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
             />
-            <div className="mt-1 max-h-32 overflow-y-auto rounded-md border border-border divide-y divide-border">
+            <div className="mt-1 max-h-32 overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
               {riderSearch.trim() === "" ? (
                 <p className="p-2 text-xs text-muted-foreground">
                   Ketik buat cari rider ({riders.length} total)
@@ -185,7 +185,7 @@ export function ScheduleFormModal({
                   key={d}
                   type="button"
                   onClick={() => toggleDay(d)}
-                  className={`reminder-weekday px-2.5 py-1 rounded text-xs border ${weekdays.includes(d) ? "bg-primary text-primary-foreground border-primary" : "border-border"}`}
+                  className={`reminder-weekday px-2.5 py-1 rounded text-xs border-2 ${weekdays.includes(d) ? "bg-primary text-primary-foreground border-border-strong" : "border-border-strong"}`}
                 >
                   {name}
                 </button>
@@ -193,7 +193,7 @@ export function ScheduleFormModal({
             </div>
           </div>
           {clientIds.length > 0 && (
-            <div className="reminder-period-panel rounded-md border border-border p-3">
+            <div className="reminder-period-panel rounded-md border-2 border-border-strong p-3">
               <label className="flex items-center gap-2 font-medium cursor-pointer">
                 <input type="checkbox" checked={periodOn} onChange={(e) => setPeriodOn(e.target.checked)} />
                 Periode perhitungan payroll custom
@@ -208,7 +208,7 @@ export function ScheduleFormModal({
                   <select
                     value={periodStartWeekday}
                     onChange={(e) => setPeriodStartWeekday(Number(e.target.value))}
-                    className="rounded-md border border-border bg-background px-2 py-1.5"
+                    className="rounded-md border-2 border-border-strong bg-background px-2 py-1.5 outline-none focus:ring-1 focus:ring-ring"
                   >
                     {WEEKDAYS.map((name, d) => (
                       <option key={d} value={d}>{name}</option>
@@ -218,7 +218,7 @@ export function ScheduleFormModal({
                   <select
                     value={periodEndWeekday}
                     onChange={(e) => setPeriodEndWeekday(Number(e.target.value))}
-                    className="rounded-md border border-border bg-background px-2 py-1.5"
+                    className="rounded-md border-2 border-border-strong bg-background px-2 py-1.5 outline-none focus:ring-1 focus:ring-ring"
                   >
                     {WEEKDAYS.map((name, d) => (
                       <option key={d} value={d}>{name}</option>
@@ -248,7 +248,7 @@ export function ScheduleFormModal({
           )}
         </div>
         <div className="reminder-modal-footer flex justify-end gap-2">
-          <button onClick={onClose} className="reminder-cancel-button px-3 py-1.5 text-sm rounded border border-border">
+          <button onClick={onClose} className="reminder-cancel-button px-3 py-1.5 text-sm rounded border-2 border-border-strong">
             Batal
           </button>
           <button

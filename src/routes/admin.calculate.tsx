@@ -696,7 +696,7 @@ function CalculatePage() {
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -705,7 +705,7 @@ function CalculatePage() {
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <div className="md:col-span-2">

@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
 import { toast } from "sonner";
 import { ClientCombobox } from "@/components/client-combobox";
+import { DatePicker } from "@/components/date-picker";
 import type { Client, DType, MolisType, Rider } from "./types";
 
 export function AddTab() {
@@ -371,12 +372,7 @@ export function AddTab() {
       )}
       <div>
         <label className="font-medium">Tanggal Mulai</label>
-        <input
-          type="date"
-          value={f.start_date}
-          onChange={(e) => setF({ ...f, start_date: e.target.value })}
-          className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
-        />
+        <DatePicker value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} className="mt-1 w-full" />
       </div>
       {f.mode === "fixed" &&
         (() => {

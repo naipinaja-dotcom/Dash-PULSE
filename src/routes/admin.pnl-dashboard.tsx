@@ -15,9 +15,8 @@ import { useIntelligenceDate } from "@/lib/use-intelligence-date";
 import { triggerWeeklyPnlPushManual } from "@/lib/api/pnl-push.functions";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, TrendingUp, ArrowRight, AlertTriangle, Send, CheckCircle2, XCircle, DollarSign, TrendingDown, Percent, Activity, Trash2, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
+import { DatePicker } from "@/components/date-picker";
+import { Loader2, TrendingUp, ArrowRight, AlertTriangle, Send, CheckCircle2, XCircle, DollarSign, TrendingDown, Percent, Activity, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, Line, LineChart, ReferenceLine } from "recharts";
 
 function autoGranularity(from: string, to: string): TrendGranularity {
@@ -32,43 +31,6 @@ export const Route = createFileRoute("/admin/pnl-dashboard")({ component: Execut
 type ClientLite = { id: string; name: string };
 
 const jt = (n: number) => "Rp " + (n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " jt";
-
-function dateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function ExecutiveDatePicker({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const selected = value ? new Date(`${value}T00:00:00`) : undefined;
-  const displayValue = selected?.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) ?? "Pilih tanggal";
-
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="exec-period-label text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button type="button" className="exec-period-input exec-date-trigger rounded-lg border border-border px-3 py-2 text-sm cursor-pointer">
-            <span>{displayValue}</span><CalendarDays className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="exec-date-popover w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={selected}
-            onSelect={(date) => {
-              if (!date) return;
-              onChange(dateKey(date));
-              setOpen(false);
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
 
 type PnlSnapshot = {
   id: string;
@@ -236,8 +198,8 @@ function ExecutiveDashboard() {
 
       {/* ── Date range control ── */}
       <div className="exec-period-filter rounded-xl bg-card border-[3px] border-border-strong shadow-[6px_6px_0_0_var(--color-border-strong)] p-4 mb-5 flex flex-wrap items-end gap-3 text-sm">
-        <ExecutiveDatePicker label="Dari" value={from} onChange={setFrom} />
-        <ExecutiveDatePicker label="Sampai" value={to} onChange={setTo} />
+        <DatePicker label="Dari" value={from} onChange={setFrom} />
+        <DatePicker label="Sampai" value={to} onChange={setTo} />
         <button
           type="button" onClick={resetToDefault}
           className="exec-period-reset rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"

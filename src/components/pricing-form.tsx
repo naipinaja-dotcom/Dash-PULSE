@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { usePostHog } from "@posthog/react";
 import { AdminLayout } from "@/components/admin-layout";
 import { ClientCombobox } from "@/components/client-combobox";
+import { DatePicker } from "@/components/date-picker";
 import {
   PRICING_CATEGORIES,
   DELIVERY_DIMENSIONS,
@@ -357,13 +358,13 @@ function PricingFormInner({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <FieldLabel>Berlaku Dari</FieldLabel>
-              <TextInput type="date" value={effFrom} onChange={(e) => setEffFrom(e.target.value)} />
+              <DatePicker value={effFrom} onChange={setEffFrom} className="w-full" />
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel>
                 Sampai <span className="font-normal">(opsional)</span>
               </FieldLabel>
-              <TextInput type="date" value={effTo} onChange={(e) => setEffTo(e.target.value)} />
+              <DatePicker value={effTo} onChange={setEffTo} className="w-full" />
             </div>
           </div>
 

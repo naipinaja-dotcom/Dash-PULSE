@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatRupiah } from "@/lib/format";
 import { BadgeCheck, Download, FileText, Loader2, Search } from "lucide-react";
 import { EarningsRecapPrint } from "@/components/earnings-recap-print";
+import { DatePicker } from "@/components/date-picker";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -82,13 +83,11 @@ export function EarningsChecker({ riderId, riderReady, riderName, employeeId }: 
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex-1 min-w-[120px]">
           <label className="text-[10px] text-muted-foreground">Dari</label>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring" />
+          <DatePicker value={from} onChange={setFrom} className="w-full text-xs py-1.5" />
         </div>
         <div className="flex-1 min-w-[120px]">
           <label className="text-[10px] text-muted-foreground">Sampai</label>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-            className="w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring" />
+          <DatePicker value={to} onChange={setTo} className="w-full text-xs py-1.5" />
         </div>
         <button onClick={check} disabled={loading || !riderReady}
           className="px-4 py-2 rounded-xl border-2 border-border-strong bg-primary text-primary-foreground text-xs font-bold disabled:opacity-50 disabled:shadow-none shadow-[3px_3px_0_0_var(--color-border-strong)] hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]">

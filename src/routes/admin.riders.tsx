@@ -7,6 +7,7 @@ import { usePagination } from "@/lib/use-pagination";
 import { parseCSV, toCSV, downloadCSV } from "@/lib/csv";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { DatePicker } from "@/components/date-picker";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { activateRiderLogin, activateRiderLoginsBulk, resetRiderLogin, unlinkRiderLogin } from "@/lib/api/rider-auth.functions";
@@ -601,8 +602,12 @@ function Field({ label, value, onChange, placeholder, type }: { label: string; v
   return (
     <div>
       <label className="font-medium">{label}</label>
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} type={type}
-        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2" />
+      {type === "date" ? (
+        <DatePicker value={value} onChange={onChange} className="mt-1 w-full" />
+      ) : (
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} type={type}
+          className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
+      )}
     </div>
   );
 }

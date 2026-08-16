@@ -34,6 +34,7 @@ const CALC_LABEL: Record<PricingEnvelope["type"], string> = {
   modular_v2: "Distance / Weight",
   attendance: "Daily / Attendance",
   combined: "Combined (Daily + Per Order)",
+  revenue_share: "Revenue Share (% Client)",
 };
 
 // StepTier → baris band yang kebaca. `unit` mis "km" / "kg".
@@ -208,6 +209,19 @@ export function describeScheme(scheme: PricingScheme): RateCard {
           })),
         });
       }
+      break;
+    }
+    case "revenue_share": {
+      sections.push({
+        rows: [
+          {
+            variable: "Fee Rider",
+            rate: `${num(cfg.percent_to_rider)}%`,
+            unit: "dari revenue Client",
+            remarks: "Revenue diambil dari skema Client aktif saat Hitung Fee, bukan tabel tarif di sini",
+          },
+        ],
+      });
       break;
     }
     case "combined": {

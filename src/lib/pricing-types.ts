@@ -134,7 +134,17 @@ export type PricingCalcType =
   | "threshold_multiple"
   | "attendance"
   | "combined"
-  | "modular_v2";
+  | "modular_v2"
+  | "revenue_share";
+
+/** Fee rider = persentase dari revenue client per AWB (mis. rider dapat 80%
+ * dari yang ditagihkan ke client, sisanya margin). Revenue-nya sendiri BUKAN
+ * diisi di sini — diambil dari hasil kalkulasi skema Client (scheme_for=
+ * "client") yang aktif untuk client+periode yang sama, lihat
+ * `calcScheme(env, rows, clientRevenueByRow)` di pricing-calc.ts. */
+export interface RevenueShareConfig {
+  percent_to_rider: number; // 0-100
+}
 
 export type SchemeFor = "rider" | "client";
 
@@ -204,6 +214,8 @@ export function calcTypeToCategory(calcType: string): { category: PricingCategor
       return { category: "delivery", subtype: { distance: false, weight: true } };
     case "modular_v2":
       return { category: "delivery", subtype: { distance: true, weight: true } }; // detail sebenarnya dibaca dari config
+    case "revenue_share":
+      return { category: "delivery", subtype: null };
     case "attendance":
       return { category: "attendance", subtype: null };
     case "combined":

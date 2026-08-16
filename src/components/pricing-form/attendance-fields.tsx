@@ -1,7 +1,7 @@
 // Kategori 2 — Per Kehadiran. Dipecah dari pricing-form.tsx.
 // v2: delivery_component toggle menggantikan kategori "Kombinasi" lama.
 import { parseRupiah } from "@/lib/format";
-import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock } from "./shared";
+import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, TimeInput, Th, RowDeleteBtn, ToggleBlock } from "./shared";
 import {
   AttendanceDeliveryCompFields,
   buildDeliveryCompConfig,
@@ -183,15 +183,15 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
               <div className="grid grid-cols-5 gap-2">
                 <div>
                   <FieldLabel>Clock-in Dari</FieldLabel>
-                  <TextInput type="time" value={s.start_time} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, start_time: e.target.value } : x)) })} />
+                  <TimeInput value={s.start_time} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, start_time: v } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Sampai (eksklusif)</FieldLabel>
-                  <TextInput type="time" value={s.end_time} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, end_time: e.target.value } : x)) })} />
+                  <TimeInput value={s.end_time} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, end_time: v } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Batas Ontime</FieldLabel>
-                  <TextInput type="time" value={s.late_after} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, late_after: e.target.value } : x)) })} />
+                  <TimeInput value={s.late_after} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, late_after: v } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Fee Penuh (Rp)</FieldLabel>

@@ -89,6 +89,10 @@ export interface CalcResult {
   skippedPerRider: SkippedRiderLine[];
   warnings: string[];
   anomalies: RowAnomaly[]; // ga bikin gagal komputasi, cuma diflag buat dicek manual
+  // Hanya keisi kalau env.type === "revenue_share" — total revenue client
+  // (sebelum di-cut persentase) & margin (revenue - fee rider), buat
+  // transparansi di preview (lihat calcScheme).
+  revenueShare?: { totalRevenue: number; totalMargin: number };
 }
 
 // Billing add-ons (min charge → +admin fee → ×(1+PPN%)) berlaku di level
@@ -326,20 +330,54 @@ export function calcThresholdComponent(rows: DeliveryRow[], cfg: any): number[] 
 // base_fee (+ step kalau tipe "tier") BAND ITU SAJA — band lain diabaikan
 // total. Cocok buat rate-card ala kurir (tiap zona jarak punya tarif
 // sendiri, bukan akumulasi).
+export function bandFeeAt(band: RangeRow, v: number): number {
+  if (band.type === "flat") return Number(band.base_fee) || 0;
+  const lo = Number(band.from) || 0;
+  const step = Number(band.step) || 1;
+  const addPerStep = Number(band.add_per_step) || 0;
+  const span = v - lo;
+  return (Number(band.base_fee) || 0) + Math.ceil(span / step) * addPerStep;
+}
+
 export function bandLookupFee(rows: RangeRow[], value: number): { fee: number; band: RangeRow | null } {
   const v = Number(value) || 0;
   for (const band of rows) {
     const lo = Number(band.from) || 0;
     const hi = band.to === null || band.to === undefined ? Infinity : Number(band.to);
-    if (v >= lo && v < hi) {
-      if (band.type === "flat") return { fee: Number(band.base_fee) || 0, band };
-      const step = Number(band.step) || 1;
-      const addPerStep = Number(band.add_per_step) || 0;
-      const span = v - lo;
-      return { fee: (Number(band.base_fee) || 0) + Math.ceil(span / step) * addPerStep, band };
+    if (v >= lo && v < hi) return { fee: bandFeeAt(band, v), band };
+  }
+  // Value gak masuk band manapun — biasanya CELAH antar band (mis. band A
+  // berlaku sampai 10, band B baru mulai 10.1: v=10 kejepit di tengah) atau
+  // tabelnya emang belum nutup sampai situ. Ini dianggap "belum lewatin
+  // batas minimum band berikutnya", jadi masih kena tarif band SEBELUMNYA
+  // (dihitung di titik PALING ATAS band itu — bukan Rp0 diam-diam, yang
+  // bikin admin bingung kenapa jarak 10km fee-nya nol padahal ada tarifnya).
+  // Kalau v di BAWAH band pertama (belum ada band sebelumnya buat fallback),
+  // tetap Rp0 — itu beda kasus (tabelnya emang belum dimulai dari situ).
+  let fallback: RangeRow | null = null;
+  let fallbackHi = -Infinity;
+  for (const band of rows) {
+    const hi = band.to === null || band.to === undefined ? Infinity : Number(band.to);
+    if (hi <= v && hi > fallbackHi) {
+      fallback = band;
+      fallbackHi = hi;
     }
   }
-  return { fee: 0, band: null };
+  if (!fallback) return { fee: 0, band: null };
+  // Fallback band itu band PALING ATAS di SELURUH tabel (gak ada band lain
+  // yang nutup lebih tinggi) → tabelnya emang berhenti di situ, bukan celah
+  // di tengah. Kalau dipatok di titik puncaknya (fallbackHi) doang, fee-nya
+  // MENTOK gak peduli seberapa besar v (52kg dan 500kg sama-sama kena angka
+  // band 50kg) — jadi diteruskan pakai v aslinya (band-nya "jalan terus"
+  // ngikutin rumus tier, seolah `to`-nya gak terbatas).
+  const maxHiInTable = Math.max(...rows.map((b) => (b.to === null || b.to === undefined ? Infinity : Number(b.to))));
+  if (fallbackHi === maxHiInTable) return { fee: bandFeeAt(fallback, v), band: fallback };
+  // Kalau bukan band paling atas (masih ada band lain yang menutup lebih
+  // tinggi), ini beneran celah DI TENGAH tabel (band berikutnya cuma keselip
+  // sedikit, mis. mulai 10.1 padahal band ini nutup di 10) — tetap dipatok
+  // di titik puncak band ini, jangan diterusin ngikutin v (yang udah masuk
+  // "wilayah" band berikutnya).
+  return { fee: bandFeeAt(fallback, fallbackHi), band: fallback };
 }
 
 export function calcRangeComponent(
@@ -484,7 +522,13 @@ export function calcModularDeliveryComponent(
 }
 
 // ---------------- main ----------------
-export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResult {
+// `clientRevenueByRow` hanya dipakai kalau env.type === "revenue_share": fee
+// PER BARIS dari hasil calcScheme(clientEnv, rows) (skema Client yang sama
+// periode & client-nya), index-aligned ke `rows` setelah difilter COMPLETED
+// — valid karena `isCompleted` filter-nya sama persis buat kedua skema atas
+// array `rows` yang sama. Diisi oleh caller (lihat admin.calculate.tsx),
+// bukan di-fetch di sini — engine ini tetap murni, tanpa DB.
+export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientRevenueByRow?: number[]): CalcResult {
   const warnings: string[] = [];
   const completed = rows.filter(isCompleted);
   const skipped = rows.length - completed.length;
@@ -509,6 +553,14 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResul
     baseByRow = calcThresholdComponent(completed, cfg);
   } else if (env.type === "modular_v2") {
     baseByRow = calcModularDeliveryComponent(completed, cfg as ModularDeliveryConfig, modStats);
+  } else if (env.type === "revenue_share") {
+    const pct = (Number(cfg.percent_to_rider) || 0) / 100;
+    if (!clientRevenueByRow || clientRevenueByRow.length !== completed.length) {
+      warnings.push("Revenue client belum dihitung — fee rider tidak bisa dihitung (0 semua).");
+      baseByRow = new Array(completed.length).fill(0);
+    } else {
+      baseByRow = clientRevenueByRow.map((rev) => Math.round((Number(rev) || 0) * pct));
+    }
   } else {
     baseByRow = new Array(completed.length).fill(0);
   }
@@ -600,7 +652,15 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[]): CalcResul
 
   if (skipped > 0) warnings.push(`${skipped} baris di-skip (status bukan COMPLETED).`);
 
-  return { perRow, perRider, subtotal, billing, grandTotal, completedRows: completed.length, skippedRows: skipped, skippedPerRider, warnings, anomalies };
+  const revenueShare =
+    env.type === "revenue_share" && clientRevenueByRow?.length === completed.length
+      ? {
+          totalRevenue: clientRevenueByRow.reduce((s, v) => s + (Number(v) || 0), 0),
+          totalMargin: clientRevenueByRow.reduce((s, v) => s + (Number(v) || 0), 0) - baseByRow.reduce((s, v) => s + v, 0),
+        }
+      : undefined;
+
+  return { perRow, perRider, subtotal, billing, grandTotal, completedRows: completed.length, skippedRows: skipped, skippedPerRider, warnings, anomalies, revenueShare };
 }
 
 // =========================================================

@@ -4,6 +4,8 @@ import {
   calcScheme,
   calcAttendanceScheme,
   calcHybridScheme,
+  bandLookupFee,
+  bandFeeAt,
   type DeliveryRow,
 } from "@/lib/pricing-calc";
 import type { PricingEnvelope, StepTier } from "@/lib/pricing-types";
@@ -75,6 +77,73 @@ describe("stepTierFee", () => {
     const t = stepTier(1000, [{ from: 0, to: null, step: 0 as unknown as number, add_per_step: 500 }]);
     // step 0 -> defaults to 1
     expect(stepTierFee(t, 3)).toBe(1000 + 3 * 500);
+  });
+});
+
+describe("bandLookupFee", () => {
+  it("matches the band whose [from,to) contains the value", () => {
+    const rows = [
+      { type: "flat" as const, from: 0, to: 10, base_fee: 20000, step: 0, add_per_step: 0 },
+      { type: "tier" as const, from: 10, to: 1000, base_fee: 20000, step: 1, add_per_step: 2000 },
+    ];
+    expect(bandLookupFee(rows, 5).fee).toBe(20000);
+    expect(bandLookupFee(rows, 15).fee).toBe(20000 + 5 * 2000); // ceil((15-10)/1)*2000
+  });
+
+  it("falls back to the previous band's rate (capped at its own upper edge) when the value lands in a gap between bands", () => {
+    // Gap: band 1 berlaku sampai 10 (eksklusif), band 2 baru mulai 10.1 —
+    // jarak persis 10 gak masuk band manapun secara harfiah.
+    const rows = [
+      { type: "flat" as const, from: 0, to: 10, base_fee: 20000, step: 0, add_per_step: 0 },
+      { type: "tier" as const, from: 10.1, to: 1000, base_fee: 20000, step: 1, add_per_step: 2000 },
+    ];
+    const res = bandLookupFee(rows, 10);
+    expect(res.fee).toBe(20000); // baserate band 1, bukan Rp0
+    expect(res.band?.from).toBe(0);
+  });
+
+  it("still returns 0 when the value is below the very first band (no lower band to fall back to)", () => {
+    const rows = [{ type: "flat" as const, from: 5, to: 10, base_fee: 20000, step: 0, add_per_step: 0 }];
+    expect(bandLookupFee(rows, 2).fee).toBe(0);
+  });
+
+  it("keeps growing with the actual value (not capped) when the value is beyond the LAST band in the table (table simply stops there, not a gap)", () => {
+    // Flat 0-20, Tier 20.1-50 (base 0, +2000/kg) — nothing defined above 50.
+    // Weight 52 dan 100 harus tetap beda (numpuk terus), bukan mentok di
+    // angka yang sama kayak weight 50.
+    const rows = [
+      { type: "flat" as const, from: 0, to: 20, base_fee: 0, step: 0, add_per_step: 0 },
+      { type: "tier" as const, from: 20.1, to: 50, base_fee: 0, step: 1, add_per_step: 2000 },
+    ];
+    // ceil((52-20.1)/1)*2000 = ceil(31.9)*2000 = 32*2000 = 64000
+    expect(bandLookupFee(rows, 52).fee).toBe(64000);
+    // ceil((100-20.1)/1)*2000 = 80*2000 = 160000 — beda dari 52kg, gak mentok
+    expect(bandLookupFee(rows, 100).fee).toBe(160000);
+  });
+
+  it("still caps at the boundary for a gap in the MIDDLE of the table (a higher band exists further up)", () => {
+    const rows = [
+      { type: "flat" as const, from: 0, to: 10, base_fee: 20000, step: 0, add_per_step: 0 },
+      { type: "tier" as const, from: 10.1, to: 1000, base_fee: 20000, step: 1, add_per_step: 2000 },
+    ];
+    // v=10 kejepit di celah — ini bukan "tabel berhenti di situ" (masih ada
+    // band Tier 10.1-1000 di atasnya), jadi tetap dipatok, bukan ikut v.
+    expect(bandLookupFee(rows, 10).fee).toBe(20000);
+  });
+});
+
+describe("bandFeeAt (dipakai delivery-fields.tsx buat auto-continue base fee baris baru)", () => {
+  it("computes a tier band's fee at its own upper edge — the continuation value for the NEXT band's base_fee", () => {
+    // Tier 20-50, base 0, +2000/kg -> di titik paling atas (50), fee harusnya
+    // 60000 (bukan 0) — ini angka yang mestinya diwarisin baris berikutnya
+    // waktu admin klik "Add Tier" (lihat delivery-fields.tsx addRow).
+    const band = { type: "tier" as const, from: 20, to: 50, base_fee: 0, step: 1, add_per_step: 2000 };
+    expect(bandFeeAt(band, 50)).toBe(60000);
+  });
+
+  it("returns base_fee as-is for a flat band regardless of value", () => {
+    const band = { type: "flat" as const, from: 0, to: 10, base_fee: 15000, step: 0, add_per_step: 0 };
+    expect(bandFeeAt(band, 10)).toBe(15000);
   });
 });
 
@@ -231,6 +300,24 @@ describe("calcScheme / threshold_multiple", () => {
     ];
     const res = calcScheme(e, rows);
     expect(res.subtotal).toBe(60000);
+  });
+});
+
+describe("calcScheme / revenue_share", () => {
+  it("rider fee = percent of client revenue per row; rest is margin", () => {
+    const e = env({ type: "revenue_share", config: { percent_to_rider: 80 } });
+    const rows = [row({ rider_id: "R1" }), row({ rider_id: "R1" })];
+    const res = calcScheme(e, rows, [10000, 5000]);
+    expect(res.perRow[0].fee).toBe(8000);
+    expect(res.perRow[1].fee).toBe(4000);
+    expect(res.revenueShare).toEqual({ totalRevenue: 15000, totalMargin: 3000 });
+  });
+
+  it("flags 0 fee and warns when client revenue isn't provided", () => {
+    const e = env({ type: "revenue_share", config: { percent_to_rider: 80 } });
+    const res = calcScheme(e, [row({ rider_id: "R1" })]);
+    expect(res.perRow[0].fee).toBe(0);
+    expect(res.warnings).toContain("Revenue client belum dihitung — fee rider tidak bisa dihitung (0 semua).");
   });
 });
 

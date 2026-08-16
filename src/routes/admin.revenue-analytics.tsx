@@ -91,21 +91,23 @@ function RevenueAnalyticsPage() {
             <Kpi label={t("revenue.noSchemeClient")} value={String(withoutRevenue.length)} />
           </div>
 
-          <div className="rounded-lg border border-border bg-card p-5 mb-4">
+          <div className="admin-chart-card rounded-xl p-5 mb-4">
             <h3 className="text-sm font-semibold mb-3">{t("revenue.trendTitle")}</h3>
             {trend.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">{t("analytics.noTrendData")}</p>
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => jt(v)} width={70} />
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={trend} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                  <defs><linearGradient id="revenueAreaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-grad-from)" stopOpacity={0.42} /><stop offset="100%" stopColor="var(--chart-grad-from)" stopOpacity={0.04} /></linearGradient></defs>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="bucket" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "var(--border)", strokeOpacity: 0.35 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => jt(v)} width={70} />
                   <Tooltip
-                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                    cursor={{ stroke: "var(--primary)", strokeWidth: 1, strokeOpacity: 0.4 }}
+                    contentStyle={{ background: "var(--card)", border: "2px solid var(--border-strong)", borderRadius: 6, boxShadow: "4px 4px 0 0 var(--border-strong)", fontSize: 12 }}
                     formatter={(value: number) => formatRupiah(value)}
                   />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.15} strokeWidth={2} />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="var(--chart-grad-from)" strokeWidth={3} fill="url(#revenueAreaGrad)" dot={{ fill: "var(--chart-grad-from)", stroke: "var(--card)", strokeWidth: 2, r: 4 }} activeDot={{ r: 6, stroke: "var(--border-strong)", strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -150,9 +152,9 @@ function RevenueAnalyticsPage() {
 
 function Kpi({ label, value, accent }: { label: string; value: string; accent?: "success" }) {
   return (
-    <div className={"rounded-xl border p-4 " + (accent === "success" ? "border-success/30 bg-success/5" : "border-border bg-card")}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={"text-lg font-semibold mt-1 " + (accent === "success" ? "text-success" : "")}>{value}</div>
+    <div className="admin-kpi-card p-4" data-variant={accent === "success" ? "success" : "default"}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</div>
+      <div className="admin-metric-value text-[26px] font-bold font-mono tracking-tight">{value}</div>
     </div>
   );
 }

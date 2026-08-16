@@ -176,9 +176,9 @@ function PnlPage() {
 
 function Kpi({ label, value, accent }: { label: string; value: string; accent?: "success" }) {
   return (
-    <div className={"rounded-xl border p-4 " + (accent === "success" ? "border-success/30 bg-success/5" : "border-border bg-card")}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={"text-lg font-semibold mt-1 " + (accent === "success" ? "text-success" : "")}>{value}</div>
+    <div className="admin-kpi-card p-4" data-variant={accent === "success" ? "success" : "default"}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</div>
+      <div className="admin-metric-value text-[26px] font-bold font-mono tracking-tight">{value}</div>
     </div>
   );
 }

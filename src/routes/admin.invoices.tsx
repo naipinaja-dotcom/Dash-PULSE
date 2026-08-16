@@ -129,7 +129,7 @@ function InvoicesPage() {
                 <td className="px-3 text-right tabular-nums">Rp{Number(i.surcharge_amount).toLocaleString("id-ID")}</td>
                 <td className="px-3 text-right font-semibold tabular-nums">Rp{Number(i.total_amount).toLocaleString("id-ID")}</td>
                 <td className="px-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${i.status === "finalized" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${i.status === "finalized" ? "border-2 border-border-strong bg-success text-success-foreground" : "bg-muted text-muted-foreground"}`}>
                     {i.status === "finalized" ? "Final" : "Draft"}
                   </span>
                 </td>
@@ -140,12 +140,12 @@ function InvoicesPage() {
                   </button>
                   {i.status !== "finalized" && (
                     <button onClick={() => finalize(i)} disabled={busyId === i.id} title="Kunci sebagai final"
-                      className="p-1.5 hover:bg-success/10 text-success rounded disabled:opacity-50 mr-1">
+                      className="p-1.5 text-success hover:bg-success hover:text-success-foreground rounded disabled:opacity-50 mr-1">
                       {busyId === i.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                     </button>
                   )}
                   <button onClick={() => remove(i)} disabled={busyId === i.id} title="Hapus"
-                    className="p-1.5 hover:bg-destructive/10 text-destructive rounded disabled:opacity-50">
+                    className="p-1.5 text-destructive hover:bg-destructive hover:text-destructive-foreground rounded disabled:opacity-50">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </td>

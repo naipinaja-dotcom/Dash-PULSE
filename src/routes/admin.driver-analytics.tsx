@@ -128,10 +128,10 @@ function DriverAnalyticsPage() {
           </div>
 
           <div className="flex items-center justify-between mb-3">
-            <div className="flex gap-1 p-1 bg-muted rounded-md">
+            <div className="inline-flex flex-wrap border-2 border-border-strong rounded-md bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] w-fit overflow-hidden">
               {([["earning", t("driver.earning")], ["deliveries", t("driver.deliveries")], ["onTime", "On-Time %"]] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setSortBy(k)}
-                  className={`px-3 py-1.5 text-xs rounded ${sortBy === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>{l}</button>
+                  className={`px-3 py-1.5 text-xs font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${sortBy === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{l}</button>
               ))}
             </div>
             {sorted.length > 0 && <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />}
@@ -195,11 +195,11 @@ function DriverAnalyticsPage() {
 }
 
 function Kpi({ label, value, accent }: { label: string; value: string; accent?: "success" | "warning" }) {
-  const cls = accent === "success" ? "border-success/30 bg-success/5 text-success" : accent === "warning" ? "border-warning/30 bg-warning/5 text-warning" : "border-border bg-card";
+  const variant = accent === "success" ? "success" : accent === "warning" ? "warning" : "default";
   return (
-    <div className={"rounded-xl border p-4 " + cls}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
+    <div className="admin-kpi-card p-4" data-variant={variant}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</div>
+      <div className="admin-metric-value text-[26px] font-bold font-mono tracking-tight">{value}</div>
     </div>
   );
 }

@@ -685,7 +685,13 @@
     font-weight: 800;
   }
   .exec-period-reset:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--color-border-strong); }
-  .exec-date-trigger { display: inline-flex; min-width: 10.25rem; align-items: center; justify-content: space-between; gap: .8rem; text-align: left; }
+  /* No min-width here on purpose — this class is shared by DatePicker
+     everywhere (Executive Dashboard's wide row AND narrow 2-up grids like
+     pricing-form.tsx's Berlaku Dari/Sampai). A fixed min-width sized for the
+     Executive Dashboard forced the button wider than its column in tighter
+     layouts, pushing it (and its shadow) past the card edge. Callers that
+     want a minimum width set it via the `className` prop instead. */
+  .exec-date-trigger { display: inline-flex; min-width: 0; align-items: center; justify-content: space-between; gap: .8rem; text-align: left; }
   .exec-date-popover {
     border: 2px solid var(--color-border-strong) !important;
     border-radius: var(--radius-md) !important;

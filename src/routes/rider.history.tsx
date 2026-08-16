@@ -102,7 +102,7 @@ function HistoryPage() {
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : cards.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-primary/30 bg-primary-soft/35 p-8 text-center shadow-sm">
+        <div className="rounded-2xl border-2 border-dashed border-border-strong bg-primary-soft/35 p-8 text-center">
           <History className="w-6 h-6 mx-auto mb-2 text-primary/60" />
           <div className="text-sm font-medium">{t("history.empty")}</div>
         </div>
@@ -116,7 +116,7 @@ function HistoryPage() {
             const remainingDebt = Math.max(0, totalDebt - paidTotal);
             const hasOutstandingDebt = c.mode === "fixed" && remainingDebt > 0.5;
             return (
-              <div key={c.id} className="rounded-2xl border border-border bg-card/80 overflow-hidden shadow-sm dark:bg-white/[.035]">
+              <div key={c.id} className="rounded-2xl border-2 border-border-strong bg-card overflow-hidden shadow-[5px_5px_0_0_var(--color-border-strong)]">
                 <button
                   onClick={() => setExpanded((prev) => { const n = new Set(prev); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
                   className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-primary-soft/30 transition-colors"
@@ -124,7 +124,7 @@ function HistoryPage() {
                   <div className="flex items-center gap-2 min-w-0">
                     {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
                     <span className="text-[13px] font-medium truncate">{c.typeName}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground flex-shrink-0">{modeLabel}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border-strong bg-muted text-muted-foreground font-medium flex-shrink-0">{modeLabel}</span>
                   </div>
                   {c.mode === "fixed" && (
                     <span className={`text-[11px] font-semibold flex-shrink-0 ml-2 ${hasOutstandingDebt ? "text-warning" : "text-success"}`}>
@@ -133,7 +133,7 @@ function HistoryPage() {
                   )}
                 </button>
                 {c.mode === "fixed" && (
-                  <div className={`mx-3 mb-3 rounded-xl border p-3 ${hasOutstandingDebt ? "border-warning/40 bg-warning/10" : "border-success/30 bg-success/10"}`}>
+                  <div className={`mx-3 mb-3 rounded-xl border-2 border-border-strong p-3 ${hasOutstandingDebt ? "bg-warning/10" : "bg-success/10"}`}>
                     <div className={`text-[11px] font-bold ${hasOutstandingDebt ? "text-warning" : "text-success"}`}>
                       {hasOutstandingDebt ? "Masih ada tunggakan" : "Tunggakan sudah selesai"}
                     </div>

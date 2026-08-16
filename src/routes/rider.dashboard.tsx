@@ -153,31 +153,31 @@ function DashboardPage() {
 
   return (
     <RiderLayout title={t("nav.beranda")}>
-      <div className="rider-enter relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-[#5b21b6] via-primary to-[#312e81] text-primary-foreground p-6 mb-4 shadow-xl shadow-primary/25">
+      <div className="rider-enter relative overflow-hidden rounded-[1.75rem] border-2 border-border-strong bg-gradient-to-br from-[#5b21b6] via-primary to-[#312e81] text-primary-foreground p-6 mb-4 shadow-[8px_8px_0_0_var(--color-border-strong)]">
         <div className="absolute -right-10 -top-14 h-44 w-44 rounded-full bg-white/20 blur-2xl" />
         <div className="rider-orb absolute -left-14 -bottom-16 h-40 w-40 rounded-full bg-fuchsia-300/25 blur-2xl" />
         <div className="rider-pulse-line absolute left-0 right-0 bottom-14 h-px opacity-70" />
-        <div className="relative"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold tracking-[.16em] uppercase text-primary-foreground/70">{t("rider.latestPayslip")}</div><span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold">PULSE</span></div>
+        <div className="relative"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold tracking-[.16em] uppercase text-primary-foreground/70">{t("rider.latestPayslip")}</div><span className="rounded-full border-2 border-white/40 bg-white/10 px-2.5 py-1 text-[10px] font-semibold">PULSE</span></div>
         <div className="text-3xl font-bold tracking-tight mt-3">{formatRupiah(latest?.net_pay ?? 0)}</div>
         <div className="text-[11px] text-primary-foreground/75 mt-1">{latest ? runName ?? "" : t("rider.noPayslip")}</div>
-        <Link to="/rider/payslips" className="mt-5 inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-[11px] font-semibold hover:bg-white/20 transition-colors">Lihat rincian slip <ChevronRight className="w-3.5 h-3.5" /></Link></div>
+        <Link to="/rider/payslips" className="mt-5 inline-flex items-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 px-3 py-2 text-[11px] font-bold hover:bg-white/20 active:translate-x-[1px] active:translate-y-[1px] transition-[background-color,transform]">Lihat rincian slip <ChevronRight className="w-3.5 h-3.5" /></Link></div>
       </div>
-      <div className="rider-enter rider-enter-delay-1 rounded-2xl border border-border bg-card/75 p-4 shadow-sm dark:bg-white/[.035] mb-4">
+      <div className="rider-enter rider-enter-delay-1 rounded-2xl border-2 border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)] mb-4">
         <div className="flex items-center justify-between mb-3"><p className="text-[10px] font-semibold tracking-[.14em] text-primary uppercase">Alur penghasilan</p><p className="text-[10px] text-muted-foreground">Periode terbaru</p></div>
         <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 text-center"><div><p className="text-[10px] text-muted-foreground">Fee kotor</p><b className="mt-1 block text-xs tabular-nums">{latest ? formatRupiah(latest.gross_earning) : "—"}</b></div><span className="text-primary/60">−</span><div><p className="text-[10px] text-muted-foreground">Potongan</p><b className="mt-1 block text-xs tabular-nums text-warning">{latest ? formatRupiah(latest.total_deduction) : "—"}</b></div><span className="text-primary/60">=</span><div><p className="text-[10px] text-muted-foreground">Bersih</p><b className="mt-1 block text-xs tabular-nums text-primary">{formatRupiah(latest?.net_pay ?? 0)}</b></div></div>
       </div>
       <div className="rider-enter rider-enter-delay-2 grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:bg-white/[.035]">
+        <div className="rounded-2xl border-2 border-border-strong bg-card p-4 shadow-[5px_5px_0_0_var(--color-border-strong)] transition-transform hover:-translate-y-0.5">
           <CircleDollarSign className="w-4 h-4 text-primary mb-3" /><div className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">{t("rider.grossFee")}</div>
           <div className="text-sm font-bold mt-1">{latest ? formatRupiah(latest.gross_earning) : "—"}</div>
         </div>
-        <div className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:bg-white/[.035]">
+        <div className="rounded-2xl border-2 border-border-strong bg-card p-4 shadow-[5px_5px_0_0_var(--color-border-strong)] transition-transform hover:-translate-y-0.5">
           <ReceiptText className="w-4 h-4 text-warning mb-3" /><div className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">{t("rider.totalDeduction")}</div>
           <div className="text-sm font-bold mt-1">{latest ? formatRupiah(latest.total_deduction) : "—"}</div>
         </div>
       </div>
       {installmentTotal > 0 && (
-        <div className="rider-enter rider-enter-delay-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 mt-3">
+        <div className="rider-enter rider-enter-delay-3 rounded-2xl border-2 border-border-strong bg-warning/10 p-4 mt-3 shadow-[5px_5px_0_0_var(--color-border-strong)]">
           <div className="text-[11px] text-warning">{t("rider.activeInstallment")}</div>
           <div className="text-sm font-semibold mt-0.5 text-warning">{formatRupiah(installmentTotal)}</div>
         </div>
@@ -189,7 +189,7 @@ function DashboardPage() {
             {dedTypes.map((d) => {
               const isOpen = dedExpanded.has(d.typeName);
               return (
-                <div key={d.typeName} className="rounded-2xl border border-border bg-card/80 overflow-hidden shadow-sm transition-colors hover:border-primary/35 dark:bg-white/[.035]">
+                <div key={d.typeName} className="rounded-2xl border-2 border-border-strong bg-card overflow-hidden shadow-[5px_5px_0_0_var(--color-border-strong)] transition-colors hover:border-primary/60">
                   <button
                     onClick={() => setDedExpanded((prev) => { const n = new Set(prev); n.has(d.typeName) ? n.delete(d.typeName) : n.add(d.typeName); return n; })}
                     className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-primary-soft/30 transition-colors"
@@ -197,11 +197,11 @@ function DashboardPage() {
                     <div className="flex items-center gap-2">
                       {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                       <span className="text-[13px] font-medium">{d.typeName}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border-strong bg-muted text-muted-foreground font-medium">
                         {d.mode === "daily" ? t("rider.daily") : d.mode === "fixed" ? t("rider.installment") : t("rider.auto")}
                       </span>
                       {d.tunggakan > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-medium">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border-strong bg-warning/15 text-warning font-medium">
                           {t("rider.hasArrears")}
                         </span>
                       )}

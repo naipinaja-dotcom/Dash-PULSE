@@ -101,7 +101,7 @@ function PayslipsPage() {
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : slips.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-primary/30 bg-primary-soft/35 p-8 text-center shadow-sm">
+        <div className="rounded-2xl border-2 border-dashed border-border-strong bg-primary-soft/35 p-8 text-center">
           <div className="text-sm font-medium">{t("slip.empty")}</div>
           <p className="text-xs text-muted-foreground mt-1">{t("slip.emptyDesc")}</p>
         </div>
@@ -117,7 +117,7 @@ function PayslipsPage() {
                   net_pay: s.data?.net_pay ?? null,
                 });
               }}
-              className={`rider-enter relative overflow-hidden flex items-center justify-between gap-3 rounded-2xl border px-4 py-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md ${index === 0 ? "border-primary/25 bg-gradient-to-br from-primary-soft via-card to-card dark:from-primary/15 dark:via-card dark:to-card" : "border-border bg-card hover:bg-primary-soft/30 dark:bg-card/90"}`}
+              className={`rider-enter relative overflow-hidden flex items-center justify-between gap-3 rounded-2xl border-2 border-border-strong px-4 py-4 text-left shadow-[5px_5px_0_0_var(--color-border-strong)] transition-all hover:-translate-y-0.5 hover:shadow-[7px_7px_0_0_var(--color-border-strong)] ${index === 0 ? "bg-gradient-to-br from-primary-soft via-card to-card" : "bg-card hover:bg-primary-soft/30"}`}
               style={{ animationDelay: `${Math.min(index, 5) * 45}ms` }}
             >
               <span className="absolute inset-y-0 left-0 w-1 bg-primary opacity-0 transition-opacity group-hover:opacity-100" />
@@ -133,12 +133,12 @@ function PayslipsPage() {
                   {s.data?.delivery_count != null && ` · ${s.data.delivery_count} order`}
                 </div>
                 {paymentHolds[s.detail_id] === "held" && (
-                  <span className="mt-2 inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
+                  <span className="mt-2 inline-flex rounded-full border border-border-strong bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
                     Pembayaran ditahan
                   </span>
                 )}
                 {paymentHolds[s.detail_id] === "released" && (
-                  <span className="mt-2 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  <span className="mt-2 inline-flex rounded-full border border-border-strong bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                     Pembayaran susulan diproses
                   </span>
                 )}
@@ -293,11 +293,11 @@ function PayslipDetailModal({
       onClick={onClose}
     >
       <div
-        className="relative bg-card rounded-t-[1.75rem] sm:rounded-3xl w-full sm:max-w-sm max-h-[88vh] overflow-auto border border-white/10 shadow-2xl dark:bg-[#16132a]"
+        className="relative bg-card rounded-t-[1.75rem] sm:rounded-3xl w-full sm:max-w-sm max-h-[88vh] overflow-auto border-2 border-border-strong shadow-[8px_8px_0_0_var(--color-border-strong)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
-        <div className="relative flex items-center justify-between gap-3 px-5 py-4 border-b border-border sticky top-0 bg-card/95 backdrop-blur-xl z-10 dark:bg-[#16132a]/95">
+        <div className="relative flex items-center justify-between gap-3 px-5 py-4 border-b-2 border-border-strong sticky top-0 bg-card/95 backdrop-blur-xl z-10">
           <div className="absolute top-2 left-1/2 -translate-x-1/2 h-1 w-9 rounded-full bg-border sm:hidden" />
           <div className="min-w-0">
             <div className="text-sm font-semibold truncate">{period?.name ?? "Payroll"}</div>
@@ -322,7 +322,7 @@ function PayslipDetailModal({
 
         <div className="p-5 space-y-5 text-sm">
           {/* summary */}
-          <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary via-violet-600 to-[#4c1d95] p-5 text-primary-foreground shadow-lg shadow-primary/20">
+          <div className="relative overflow-hidden rounded-2xl border-2 border-border-strong bg-gradient-to-br from-primary via-violet-600 to-[#4c1d95] p-5 text-primary-foreground shadow-[6px_6px_0_0_var(--color-border-strong)]">
             <div className="absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
             <div className="relative">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">
@@ -335,15 +335,15 @@ function PayslipDetailModal({
                 <div><span className="block text-primary-foreground/65">{t("slip.ordersCompleted")}</span><b>{slip.data?.delivery_count ?? 0}</b></div>
                 <div><span className="block text-primary-foreground/65">{t("slip.grossFee")}</span><b>{formatRupiah(slip.data?.gross_earning)}</b></div>
               </div>
-              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-primary-foreground"><span className="w-1.5 h-1.5 rounded-full bg-success" /> Slip telah dipublikasikan</div>
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-primary-foreground"><span className="w-1.5 h-1.5 rounded-full bg-success" /> Slip telah dipublikasikan</div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card/60 p-3 dark:bg-white/[0.035]">
+          <div className="rounded-2xl border-2 border-border-strong bg-card p-3 shadow-[4px_4px_0_0_var(--color-border-strong)]">
             <p className="mb-3 text-[10px] font-semibold tracking-[.14em] uppercase text-primary">Ringkasan perhitungan</p>
             <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 text-center"><div><span className="block text-[10px] text-muted-foreground">Gross</span><b className="block mt-1 text-[11px]">{formatRupiah(slip.data?.gross_earning)}</b></div><span className="text-primary/60">−</span><div><span className="block text-[10px] text-muted-foreground">Potongan</span><b className="block mt-1 text-[11px] text-warning">{formatRupiah(slip.data?.total_deduction)}</b></div><span className="text-primary/60">=</span><div><span className="block text-[10px] text-muted-foreground">Bersih</span><b className="block mt-1 text-[11px] text-primary">{formatRupiah(slip.data?.net_pay)}</b></div></div>
             {deductionShortfall > 0 && (
-              <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5">
+              <div className="mt-3 rounded-xl border-2 border-border-strong bg-warning/10 px-3 py-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold text-warning">Potongan lebih besar dari gaji</p>
@@ -387,7 +387,7 @@ function PayslipDetailModal({
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary mb-2">
               {t("slip.incentives")}
             </p>
-            <div className="rounded-2xl border border-border bg-card/60 p-3 dark:bg-white/[0.035]">
+            <div className="rounded-2xl border-2 border-border-strong bg-card p-3 shadow-[4px_4px_0_0_var(--color-border-strong)]">
               {incError ? (
                 <p className="text-xs text-destructive py-1">{incError}</p>
               ) : loadingInc ? (
@@ -409,7 +409,7 @@ function PayslipDetailModal({
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary mb-2">
               {t("slip.deductions")}
             </p>
-            <div className="rounded-2xl border border-border bg-card/60 p-3 dark:bg-white/[0.035]">
+            <div className="rounded-2xl border-2 border-border-strong bg-card p-3 shadow-[4px_4px_0_0_var(--color-border-strong)]">
               {dedError ? (
                 <p className="text-xs text-destructive py-1">{dedError}</p>
               ) : loadingDed ? (
@@ -427,7 +427,7 @@ function PayslipDetailModal({
           </div>
 
           {/* take-home */}
-          <div className="rounded-2xl border border-primary/25 bg-primary-soft/45 px-4 py-3 flex items-baseline justify-between gap-3 dark:bg-primary/15">
+          <div className="rounded-2xl border-2 border-border-strong bg-primary-soft/45 px-4 py-3 flex items-baseline justify-between gap-3 shadow-[4px_4px_0_0_var(--color-border-strong)]">
             <span className="text-xs text-muted-foreground flex-shrink-0">
               {t("slip.takeHome")}
             </span>
@@ -495,7 +495,7 @@ function ClientCard({
   const initials = client.client_name.slice(0, 3).toUpperCase();
 
   return (
-    <div className="rounded-2xl border border-border bg-muted/30 overflow-hidden transition-colors hover:border-primary/35 dark:bg-white/[0.025]">
+    <div className="rounded-2xl border-2 border-border-strong bg-muted/30 overflow-hidden transition-colors hover:border-primary/60">
       <button
         onClick={toggle}
         className="w-full flex items-center gap-3 px-3.5 py-3 text-left hover:bg-primary-soft/35 transition-colors"

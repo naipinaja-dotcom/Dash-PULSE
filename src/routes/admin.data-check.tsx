@@ -115,7 +115,7 @@ function DataCheckPage() {
 
   return (
     <AdminLayout title={t("dataCheck.title")} subtitle={t("dataCheck.subtitle")}>
-      <div className="rounded-lg border border-border bg-card p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <div className="rounded-xl border-2 border-border-strong bg-card shadow-[5px_5px_0_0_var(--color-border-strong)] p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Client <span className="font-normal">(opsional)</span></label>
           <ClientCombobox
@@ -129,21 +129,21 @@ function DataCheckPage() {
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Kode Rider <span className="font-normal">(opsional, mis. MTR0006460)</span></label>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ketik sebagian kode rider…"
-            className="w-full rounded-md border border-border bg-background px-3 py-2" />
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Dari Tanggal <span className="font-normal">(opsional)</span></label>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2" />
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="font-medium text-muted-foreground">Sampai Tanggal <span className="font-normal">(opsional)</span></label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2" />
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
         </div>
         <div className="md:col-span-2">
           <button onClick={() => fetchPage(1)} disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
+            className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-4 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} {loading ? "Mencari…" : "Cari di Database"}
           </button>
         </div>
@@ -161,7 +161,7 @@ function DataCheckPage() {
           <div className="flex justify-end mb-2">
             <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />
           </div>
-          <div className="rounded-lg border border-border overflow-x-auto relative">
+          <div className="rounded-xl border-2 border-border-strong shadow-[5px_5px_0_0_var(--color-border-strong)] overflow-x-auto relative">
             {loading && (
               <div className="absolute inset-0 bg-background/60 grid place-items-center z-10">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />

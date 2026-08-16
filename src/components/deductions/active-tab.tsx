@@ -8,6 +8,7 @@ import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
 import { Loader2, Trash2, Pencil } from "lucide-react";
+import { ClientCombobox } from "@/components/client-combobox";
 import type { Client, DType, Inst, Rider } from "./types";
 
 export function ActiveTab() {
@@ -232,12 +233,12 @@ export function ActiveTab() {
           placeholder="Cari nama / kode rider…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm w-56"
+          className="rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm w-56 outline-none focus:ring-1 focus:ring-ring"
         />
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+          className="rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">Semua jenis potongan</option>
           {typeOptions.map((t) => (
@@ -252,7 +253,7 @@ export function ActiveTab() {
           <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />
         </div>
       )}
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-hidden">
         <table className="w-full text-[12px]">
           <thead>
             <tr className="border-b border-border">
@@ -401,7 +402,7 @@ export function ActiveTab() {
                             <select
                               value={ef.deduction_type_id}
                               onChange={(e) => setEf({ ...ef, deduction_type_id: e.target.value })}
-                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                             >
                               {/* Jenis yang lagi kepake tapi udah nonaktif/gak-bisa-dicicil tetep
                                 ditampilin (biar select-nya gak diam-diam kosong), taruh di atas. */}
@@ -418,7 +419,7 @@ export function ActiveTab() {
                           {r.type?.code === "KASBON" && (
                             <div>
                               <label className="text-xs font-medium text-muted-foreground">Pemberi Kasbon</label>
-                              <select value={(ef as any).kasbon_recipient_id} onChange={(e) => setEf({ ...ef, kasbon_recipient_id: e.target.value } as any)} className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm">
+                              <select value={(ef as any).kasbon_recipient_id} onChange={(e) => setEf({ ...ef, kasbon_recipient_id: e.target.value } as any)} className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring">
                                 <option value="">— belum dipetakan —</option>
                                 {recipients.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.bank_name} · {x.account_number}</option>)}
                               </select>
@@ -428,18 +429,13 @@ export function ActiveTab() {
                             <label className="text-xs font-medium text-muted-foreground">
                               Client Prioritas
                             </label>
-                            <select
+                            <ClientCombobox
                               value={ef.client_id}
-                              onChange={(e) => setEf({ ...ef, client_id: e.target.value })}
-                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-                            >
-                              <option value="">— pakai client rumah rider —</option>
-                              {clients.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(v) => setEf({ ...ef, client_id: v })}
+                              placeholder="— pakai client rumah rider —"
+                              className="mt-1 w-full text-sm py-1.5"
+                              options={clients.map((c) => ({ value: c.id, label: c.name }))}
+                            />
                           </div>
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
@@ -454,7 +450,7 @@ export function ActiveTab() {
                                   : undefined
                               }
                               onChange={(e) => setEf({ ...ef, mode: e.target.value as "fixed" | "daily" | "monthly" })}
-                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm disabled:opacity-50"
+                              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
                             >
                               <option value="fixed">Cicilan (fixed)</option>
                               <option value="daily">Sewa harian (daily)</option>
@@ -471,7 +467,7 @@ export function ActiveTab() {
                                   inputMode="numeric"
                                   value={ef.daily_rate ? ef.daily_rate.toLocaleString("id-ID") : ""}
                                   onChange={(e) => setEf({ ...ef, daily_rate: parseRupiah(e.target.value) })}
-                                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                  className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                 />
                               </div>
                               {ef.mode === "monthly" && (
@@ -487,7 +483,7 @@ export function ActiveTab() {
                                     onChange={(e) =>
                                       setEf({ ...ef, cycle_start_day: Math.min(31, Math.max(1, +e.target.value || 1)) })
                                     }
-                                    className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                    className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                   />
                                 </div>
                               )}
@@ -500,7 +496,7 @@ export function ActiveTab() {
                                   onChange={(e) =>
                                     setEf({ ...ef, charge_target: e.target.value as "rider" | "client_revenue" })
                                   }
-                                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                  className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                 >
                                   <option value="rider">Rider (net pay)</option>
                                   <option value="client_revenue">Revenue Client</option>
@@ -519,7 +515,7 @@ export function ActiveTab() {
                                   onChange={(e) =>
                                     setEf({ ...ef, total_amount: parseRupiah(e.target.value) })
                                   }
-                                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                  className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                 />
                               </div>
                               <div>
@@ -531,7 +527,7 @@ export function ActiveTab() {
                                   min={r.installments_paid || 1}
                                   value={ef.installment_count}
                                   onChange={(e) => setEf({ ...ef, installment_count: +e.target.value })}
-                                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                                  className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                 />
                                 <p className="text-[11px] text-muted-foreground mt-0.5">
                                   Per periode: Rp
@@ -552,7 +548,7 @@ export function ActiveTab() {
                               onChange={(e) =>
                                 setEf({ ...ef, next_deduction_date: e.target.value })
                               }
-                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                             />
                           </div>
                           <div>
@@ -562,14 +558,14 @@ export function ActiveTab() {
                             <input
                               value={ef.notes}
                               onChange={(e) => setEf({ ...ef, notes: e.target.value })}
-                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                             />
                           </div>
                         </div>
                         <div className="flex justify-end gap-2 mt-2.5">
                           <button
                             onClick={() => setEditingId(null)}
-                            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
+                            className="rounded-md border-2 border-border-strong bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted"
                           >
                             Batal
                           </button>

@@ -459,7 +459,7 @@ function PricingFormInner({
           {category === "delivery" && schemeFor === "rider" && (
             <ToggleBlock
               label="Revenue Share (% dari revenue client)"
-              hint="Fee rider = persen dari revenue client per AWB (revenue diambil dari skema Client yang aktif saat Hitung Fee, bukan tabel tarif di sini). Nonaktifin Dimensi Pricing/Add-KG/Multi-drop kalau ini nyala."
+              hint="Fee rider = % dari revenue client per AWB, diambil dari skema Client aktif — bukan diisi manual."
               on={f.revenueShareOn}
               onToggle={(on) => patch({ revenueShareOn: on })}
             >
@@ -523,11 +523,12 @@ function PricingFormInner({
             <p className="text-xs text-foreground leading-relaxed">
               {category === "delivery"
                 ? (() => {
+                    if (f.revenueShareOn) return "Fee = % × revenue client (dari skema Client aktif), bukan dari tabel Distance/Weight.";
                     const dims = subtype as DeliveryDimensions | null;
                     if (!dims || (!dims.distance && !dims.weight)) return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
                     const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map((d) => d.name);
                     if (enabled.length === 1) return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
-                    return "Distance + Weight aktif — masing-masing punya tabel range sendiri, hasilnya dijumlah (sum).";
+                    return "Distance + Weight aktif, hasilnya dijumlah.";
                   })()
                 : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
             </p>
@@ -540,7 +541,7 @@ function PricingFormInner({
           {schemeFor === "client" && (
             <ToggleBlock
               label="Billing Add-ons"
-              hint="Urutan hitung: min charge (lantai) → + management fee (% operational) → + admin fee → × (1 + PPN%). PPN paling akhir. Management/PPN kosong = gak muncul di invoice."
+              hint="Urutan: min charge → management fee → admin fee → PPN. Kosong = gak muncul di invoice."
               on={f.billingOn}
               onToggle={(on) => patch({ billingOn: on })}
             >
@@ -612,7 +613,7 @@ function PricingFormInner({
           {category === "delivery" && !f.revenueShareOn && !(subtype as DeliveryDimensions | null)?.weight && (
             <ToggleBlock
               label="Add-KG (surcharge berat)"
-              hint="Biaya tambahan berdasarkan berat, bertingkat. Nonaktif otomatis kalau dimensi Weight sudah dipakai (biar gak double-count)."
+              hint="Biaya tambahan per berat, bertingkat. Otomatis mati kalau Weight aktif."
               on={f.addKgOn}
               onToggle={(on) => patch({ addKgOn: on })}
             >

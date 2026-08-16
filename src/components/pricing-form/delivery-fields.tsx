@@ -629,7 +629,7 @@ export function DeliveryFields({
 
           <ToggleBlock
             label="Surcharge Berat → Distance"
-            hint="Berat kiriman lewat batas ini → fee Distance (di atas) baris itu dikali N. Weight (kalau aktif di bawah) tetap dihitung normal terpisah, gak ikut kena kali — berat di sini cuma pemicu."
+            hint="Berat lewat batas → fee Distance dikali N. Weight (kalau aktif) tetap dihitung normal, gak ikut kali."
             on={value.weight_surcharge.enabled}
             onToggle={(on) => patchWeightSurcharge({ enabled: on })}
           >

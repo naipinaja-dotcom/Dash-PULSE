@@ -167,7 +167,7 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
 
       <ToggleBlock
         label="Shift Configuration (tarif beda per jam clock-in)"
-        hint="Kalau client punya beberapa shift dengan tarif beda (mis. Shift Pagi vs Shift Siang), atur di sini — pure nama, jam, & tarif. Rider otomatis kedeteksi masuk shift mana dari jam clock-in-nya. Insentif/ontime TETAP dari tabel Insentif di atas, berlaku sama buat semua shift (dan buat yang di luar semua jendela shift ini)."
+        hint="Buat client dengan beberapa shift beda tarif — rider otomatis kedeteksi dari jam clock-in. Insentif/ontime tetap dari tabel di atas."
         on={value.shiftsOn}
         onToggle={(on) => patch({ shiftsOn: on, shifts: on && value.shifts.length === 0 ? [emptyShiftRow(1)] : value.shifts })}
       >
@@ -215,7 +215,7 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
 
       <ToggleBlock
         label="Komponen per kiriman (gabung delivery + attendance)"
-        hint="Tambah fee per pengiriman ke fee absensi harian. Sumber data: delivery_records di rentang yang sama. Menggantikan tipe 'Kombinasi' lama, tapi semua metode valid (tier/flat/threshold)."
+        hint="Tambah fee per pengiriman ke fee absensi harian, dari data pengiriman di rentang yang sama."
         on={value.deliveryCompOn}
         onToggle={(on) => patch({ deliveryCompOn: on })}
       >

@@ -65,7 +65,14 @@ function RidersPage() {
   useEffect(() => { load(); }, []);
 
   const handleDelete = async (r: Rider) => {
-    if (!confirm(`Yakin mau hapus rider "${r.full_name}" (${r.employee_id})?\n\nData delivery & attendance tetap aman, cuma profil rider yang dihapus.`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Hapus rider "${r.full_name}"?`,
+        description: `(${r.employee_id}) — Data delivery & attendance tetap aman, cuma profil rider yang dihapus.`,
+        confirmText: "Hapus",
+      }))
+    )
+      return;
     setDeletingId(r.id);
     const { error } = await supabase.from("riders").delete().eq("id", r.id);
     setDeletingId(null);

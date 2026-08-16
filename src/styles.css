@@ -932,21 +932,21 @@
    mode regardless of source order. */
 :root[data-design="classic"]:not(.dark) {
   --radius: 0.75rem;
-  --background: oklch(0.975 0.004 280);
-  --card: oklch(1 0 0);
-  --popover: oklch(1 0 0);
-  --secondary: oklch(0.97 0.005 280);
-  --muted: oklch(0.96 0.005 280);
+  --background: oklch(0.982 0.002 95);
+  --card: oklch(0.995 0.001 95);
+  --popover: oklch(0.995 0.001 95);
+  --secondary: oklch(0.965 0.003 95);
+  --muted: oklch(0.955 0.003 95);
   --destructive: #e94f37;
   --destructive-foreground: #17131d;
   --success: #087f5b;
   --success-foreground: oklch(0.99 0 0);
   --warning: #f59e0b;
   --warning-foreground: #17131d;
-  --border: oklch(0.93 0.01 285);
-  --border-strong: oklch(0.86 0.015 285);
-  --input: oklch(0.975 0.004 280);
-  --sidebar: oklch(0.985 0.008 285);
+  --border: oklch(0.91 0.004 95);
+  --border-strong: oklch(0.82 0.008 95);
+  --input: oklch(0.985 0.002 95);
+  --sidebar: oklch(0.978 0.003 95);
 }
 
 .dark[data-design="classic"] {
@@ -1056,6 +1056,21 @@
   background: color-mix(in oklch, var(--color-muted) 68%, transparent);
 }
 [data-design="classic"] .admin-avatar-orb { border-width: 0 !important; box-shadow: none !important; }
+
+/* Shared client picker: vivid enough for Neo Brutal, calm and glass-safe in Classic. */
+.client-combobox-content {
+  border: 2px solid var(--color-border-strong) !important;
+  border-radius: .5rem !important;
+  background: var(--color-card) !important;
+  box-shadow: 5px 5px 0 var(--color-border-strong) !important;
+}
+.client-combobox-command [cmdk-input-wrapper] { border-bottom: 2px solid var(--color-border-strong); }
+.client-combobox-item { border-radius: .25rem; font-weight: 600; }
+.client-combobox-item[data-selected="true"] { background: var(--color-primary) !important; color: var(--color-primary-foreground) !important; }
+[data-design="classic"] .client-combobox-trigger { border-width: 1px !important; font-weight: 500; }
+[data-design="classic"] .client-combobox-content { border-width: 1px !important; box-shadow: 0 12px 28px color-mix(in oklch, var(--color-foreground) 12%, transparent) !important; }
+[data-design="classic"] .client-combobox-command [cmdk-input-wrapper] { border-bottom-width: 1px; }
+[data-design="classic"] .client-combobox-item[data-selected="true"] { background: var(--color-primary-soft) !important; color: var(--color-primary-soft-foreground) !important; }
 
 /* Stat/KPI cards: brutal paints the whole card in the tone color; classic
    keeps the card neutral and tints only the icon chip, like the pre-redesign

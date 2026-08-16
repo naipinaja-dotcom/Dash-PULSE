@@ -226,7 +226,7 @@ function PricingListPage() {
           )}
           <Link
             to="/admin/pricing/new"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
           >
             <Plus className="w-3.5 h-3.5" /> Tambah Skema
           </Link>
@@ -370,7 +370,7 @@ function PricingListPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-hidden">
         {filtered.length === 0 ? (
           <div className="p-10 text-center">
             <div className="w-12 h-12 rounded-full border-2 border-border-strong bg-card text-foreground grid place-items-center mx-auto mb-3">
@@ -382,7 +382,7 @@ function PricingListPage() {
             </p>
             <button
               onClick={() => navigate({ to: "/admin/pricing/new" })}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-primary text-primary-foreground px-3 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
             >
               <Plus className="w-4 h-4" /> Tambah Skema
             </button>

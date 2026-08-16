@@ -44,12 +44,12 @@ function UploadPage() {
   const [tab, setTab] = useState<"delivery" | "attendance">("delivery");
   return (
     <AdminLayout title={t("upload.title")} subtitle={t("upload.subtitle")}>
-      <div className="flex gap-1 p-1 bg-muted rounded-md w-fit mb-5">
+      <div className="inline-flex flex-wrap border-2 border-border-strong rounded-md bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] w-fit mb-5 overflow-hidden">
         {(["delivery", "attendance"] as const).map((k) => (
           <button
             key={k}
             onClick={() => setTab(k)}
-            className={`px-4 py-1.5 text-sm rounded ${tab === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
+            className={`px-4 py-1.5 text-sm font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${tab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
           >
             {k === "delivery" ? "Upload Delivery" : "Upload Attendance"}
           </button>

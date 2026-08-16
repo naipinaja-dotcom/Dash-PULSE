@@ -118,10 +118,10 @@ function LoginPage() {
           className="h-9 w-auto"
           style={{ filter: "brightness(0) invert(1)" }}
         />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] opacity-70">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.15em] opacity-90">
           OES Platform · Rider
         </p>
-        <p className="text-sm opacity-85 max-w-xs">
+        <p className="text-sm font-medium opacity-95 max-w-xs">
           {t("login.tagline")}
         </p>
       </div>
@@ -134,19 +134,19 @@ function LoginPage() {
             className="h-8 w-auto"
             style={{ filter: "brightness(0) invert(1)" }}
           />
-          <div className="text-xs opacity-80">PT. Dash Elektrik Indonesia</div>
+          <div className="text-xs font-semibold opacity-95">PT. Dash Elektrik Indonesia</div>
         </div>
         <div>
-          <h2 className="text-3xl font-semibold leading-tight mb-3">
+          <h2 className="text-3xl font-bold leading-tight mb-3">
             {t("login.heroTitle1")}
             <br />
             {t("login.heroTitle2")}
           </h2>
-          <p className="text-sm opacity-80 max-w-sm">
+          <p className="text-sm font-medium opacity-95 max-w-sm">
             {t("login.heroDesc")}
           </p>
         </div>
-        <div className="text-xs opacity-70">
+        <div className="text-xs opacity-85">
           © {new Date().getFullYear()} PT. Dash Elektrik Indonesia
         </div>
       </div>
@@ -159,10 +159,10 @@ function LoginPage() {
               {mode === "admin" ? t("forgot.adminDesc") : t("forgot.riderDesc")}
             </p>
 
-            <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 max-w-[220px]">
+            <div className="flex w-full max-w-[220px] border-2 border-border-strong rounded-md bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] mb-4 overflow-hidden">
               {([ ["admin", "Admin"], ["rider", "Rider"] ] as const).map(([k, l]) => (
                 <button key={k} type="button" onClick={() => setMode(k)}
-                  className={`flex-1 px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>
+                  className={`flex-1 px-3 py-1.5 text-sm font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${mode === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
                   {l}
                 </button>
               ))}
@@ -224,10 +224,10 @@ function LoginPage() {
                   : t("login.firstTimeDesc")}
             </p>
 
-            <div className="flex gap-1 p-1 bg-muted rounded-md mb-4 max-w-[220px]">
+            <div className="flex w-full max-w-[220px] border-2 border-border-strong rounded-md bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] mb-4 overflow-hidden">
               {([ ["admin", "Admin"], ["rider", "Rider"] ] as const).map(([k, l]) => (
                 <button key={k} type="button" onClick={() => { setMode(k); setRiderSubMode("login"); }}
-                  className={`flex-1 px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}>
+                  className={`flex-1 px-3 py-1.5 text-sm font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${mode === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
                   {l}
                 </button>
               ))}

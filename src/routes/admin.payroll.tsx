@@ -1281,7 +1281,7 @@ function PayrollPage() {
           <button
             onClick={loadRuns}
             disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-muted transition-colors"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-border-strong px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-muted transition-colors"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Refresh
           </button>
@@ -1426,7 +1426,7 @@ function PayrollPage() {
           ) : (
             <>
               {/* Stepper */}
-              <div className="flex items-center mb-5 rounded-xl border border-border bg-card p-4 gap-1">
+              <div className="flex items-center mb-5 rounded-xl border-2 border-border-strong bg-card shadow-[5px_5px_0_0_var(--color-border-strong)] p-4 gap-1">
                 {STEPS.map((s, i) => {
                   const done = s.n < stepNum || (s.n === 4 && activeRun.status === "published");
                   const active = s.n === stepNum && activeRun.status !== "published";
@@ -1456,7 +1456,7 @@ function PayrollPage() {
               </div>
 
               {/* Run info + step actions */}
-              <div className="rounded-xl border border-border bg-card p-4 mb-4">
+              <div className="rounded-xl border-2 border-border-strong bg-card shadow-[5px_5px_0_0_var(--color-border-strong)] p-4 mb-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-[15px] font-semibold">{activeRun.name}</div>
@@ -1469,7 +1469,7 @@ function PayrollPage() {
                     <Link
                       to="/admin/data-check"
                       search={{ from: activeRun.period_start, to: activeRun.period_end }}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground hover:bg-muted active:scale-[0.97] transition-all"
                     >
                       <ExternalLink className="w-3.5 h-3.5" /> Cek Data
                     </Link>
@@ -1477,7 +1477,7 @@ function PayrollPage() {
                     <button
                       onClick={generate}
                       disabled={loading}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] disabled:opacity-50 hover:bg-muted transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong px-3 py-1.5 text-[13px] font-medium disabled:opacity-50 hover:bg-muted active:scale-[0.97] transition-all"
                     >
                       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                       {details.length > 0 ? "Generate Ulang" : "Hitung Fee"}
@@ -1486,7 +1486,7 @@ function PayrollPage() {
                     <button
                       onClick={finalize}
                       disabled={activeRun.status !== "draft" || finalizing || details.length === 0}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-warning text-warning-foreground px-3 py-1.5 text-[13px] disabled:opacity-40 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-warning text-warning-foreground px-3 py-1.5 text-[13px] font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-40 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
                     >
                       {finalizing ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1501,7 +1501,7 @@ function PayrollPage() {
                       disabled={
                         activeRun.status === "published" || publishing || details.length === 0
                       }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[13px] disabled:opacity-40 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong bg-primary text-primary-foreground px-3 py-1.5 text-[13px] font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-40 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
                     >
                       {publishing ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1520,7 +1520,7 @@ function PayrollPage() {
                           title={
                             activeRun.status === "draft" ? "Finalize dulu" : "Download bulk payment"
                           }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 disabled:active:scale-100 hover:border-primary-border hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
+                          className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 disabled:active:scale-100 hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
                         >
                           {exportingBulk ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1582,7 +1582,7 @@ function PayrollPage() {
                       onClick={openSpendControlPreview}
                       disabled={activeRun.status === "draft" || details.length === 0 || spendControlLoading}
                       title={activeRun.status === "draft" ? "Finalize dulu" : "Preview push ke Spend Control"}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 hover:border-primary-border hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
+                      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
                     >
                       {spendControlLoading ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1655,7 +1655,7 @@ function PayrollPage() {
               {/* Riwayat Hitung Fee periode ini — review sebelum Generate/Finalize.
                   Sumber: fee_calculation_audit_log (dicatat tiap commit di Hitung Fee). */}
               {feeAuditLog.length > 0 && (
-                <div className="rounded-xl border border-border overflow-x-auto mb-4">
+                <div className="rounded-xl border-2 border-border-strong shadow-[5px_5px_0_0_var(--color-border-strong)] overflow-x-auto mb-4">
                   <div className="px-3 py-2 bg-muted/60 text-[12px] font-medium text-muted-foreground">
                     Riwayat Hitung Fee periode ini ({feeAuditLog.length}) — cek dulu sebelum
                     Generate/Finalize

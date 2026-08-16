@@ -2,6 +2,8 @@
 // Menggantikan kategori "Kombinasi" lama — semua method valid (flat/tier/threshold),
 // bukan cuma tier.
 import { parseRupiah } from "@/lib/format";
+import { useT } from "@/lib/i18n";
+import type { LangKey } from "@/lib/translations";
 import {
   AddRowBtn, FieldLabel, RupiahInput, StepTierEditor, Td, TableShell,
   TextInput, Th, RowDeleteBtn, buildStepTier, stepTierToState, emptyStepTier,
@@ -116,10 +118,10 @@ export function loadDeliveryCompState(c: any): AttendanceDeliveryCompState {
   return s;
 }
 
-const METHOD_TABS: { k: DeliveryCompMethod; l: string }[] = [
-  { k: "tier", l: "Tier Jarak/Berat" },
-  { k: "flat", l: "Flat per Unit" },
-  { k: "threshold", l: "Threshold Kelipatan" },
+const METHOD_TABS: { k: DeliveryCompMethod; labelKey: LangKey }[] = [
+  { k: "tier", labelKey: "pfAttDelivComp.methodTier" },
+  { k: "flat", labelKey: "pfAttDelivComp.methodFlat" },
+  { k: "threshold", labelKey: "pfAttDelivComp.methodThreshold" },
 ];
 
 export function AttendanceDeliveryCompFields({
@@ -129,27 +131,28 @@ export function AttendanceDeliveryCompFields({
   value: AttendanceDeliveryCompState;
   onChange: (v: AttendanceDeliveryCompState) => void;
 }) {
+  const { t } = useT();
   const patch = (p: Partial<AttendanceDeliveryCompState>) => onChange({ ...value, ...p });
 
   return (
     <div className="space-y-4 pt-2">
       {/* Method selector */}
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-2">Metode per kiriman</p>
+        <p className="text-xs font-medium text-muted-foreground mb-2">{t("pfAttDelivComp.methodLabel")}</p>
         <div className="flex gap-1.5 flex-wrap">
-          {METHOD_TABS.map((t) => (
+          {METHOD_TABS.map((opt) => (
             <button
-              key={t.k}
+              key={opt.k}
               type="button"
-              onClick={() => patch({ method: t.k })}
+              onClick={() => patch({ method: opt.k })}
               className={
                 "text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " +
-                (value.method === t.k
+                (value.method === opt.k
                   ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium"
                   : "bg-card text-foreground hover:bg-muted")
               }
             >
-              {t.l}
+              {t(opt.labelKey)}
             </button>
           ))}
         </div>
@@ -159,15 +162,15 @@ export function AttendanceDeliveryCompFields({
       {value.method === "tier" && (
         <div className="space-y-3">
           <div className="flex gap-1.5">
-            {([{ k: "distance", l: "Jarak (km)" }, { k: "weight", l: "Berat (kg)" }] as const).map((t) => (
-              <button key={t.k} type="button" onClick={() => patch({ orderBy: t.k })}
-                className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.orderBy === t.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
-                {t.l}
+            {([{ k: "distance", labelKey: "pfAttDelivComp.orderByDistance" }, { k: "weight", labelKey: "pfAttDelivComp.orderByWeight" }] as const).map((opt) => (
+              <button key={opt.k} type="button" onClick={() => patch({ orderBy: opt.k })}
+                className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.orderBy === opt.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
+                {t(opt.labelKey)}
               </button>
             ))}
           </div>
           <StepTierEditor unit={value.orderBy === "weight" ? "kg" : "km"} value={value.orderTier} onChange={(v) => patch({ orderTier: v })} />
-          <p className="text-[11px] text-muted-foreground">Fee per kiriman berdasarkan {value.orderBy === "weight" ? "berat" : "jarak"}, diakumulasikan per rider per hari sebelum dihitung tier-nya.</p>
+          <p className="text-[11px] text-muted-foreground">{t("pfAttDelivComp.tierHintPrefix")} {value.orderBy === "weight" ? t("pfAttDelivComp.byWeight") : t("pfAttDelivComp.byDistance")}{t("pfAttDelivComp.tierHintSuffix")}</p>
         </div>
       )}
 
@@ -175,36 +178,36 @@ export function AttendanceDeliveryCompFields({
       {value.method === "flat" && (
         <div className="space-y-3">
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Satuan</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">{t("pfAttDelivComp.unitLabel")}</p>
             <div className="flex gap-1.5">
-              {([{ k: "awb", l: "Per Paket (AWB)" }, { k: "unique_address", l: "Per Alamat Unik" }] as const).map((t) => (
-                <button key={t.k} type="button" onClick={() => patch({ unit: t.k })}
-                  className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.unit === t.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
-                  {t.l}
+              {([{ k: "awb", labelKey: "pfAttDelivComp.unitAwb" }, { k: "unique_address", labelKey: "pfAttDelivComp.unitUniqueAddress" }] as const).map((opt) => (
+                <button key={opt.k} type="button" onClick={() => patch({ unit: opt.k })}
+                  className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.unit === opt.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
+                  {t(opt.labelKey)}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Tarif</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">{t("pfAttDelivComp.rateLabel")}</p>
             <div className="flex gap-1.5 mb-2">
-              {([{ k: "flat", l: "Flat (1 tarif)" }, { k: "column", l: "Per Area/Tipe" }] as const).map((t) => (
-                <button key={t.k} type="button" onClick={() => patch({ rateBy: t.k })}
-                  className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.rateBy === t.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
-                  {t.l}
+              {([{ k: "flat", labelKey: "pfAttDelivComp.rateByFlat" }, { k: "column", labelKey: "pfAttDelivComp.rateByColumn" }] as const).map((opt) => (
+                <button key={opt.k} type="button" onClick={() => patch({ rateBy: opt.k })}
+                  className={"text-xs px-3 py-1.5 rounded-md border-2 border-border-strong transition-colors " + (value.rateBy === opt.k ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
+                  {t(opt.labelKey)}
                 </button>
               ))}
             </div>
             {value.rateBy === "flat" ? (
               <div className="max-w-xs flex flex-col gap-1.5">
-                <FieldLabel>Tarif per kiriman (Rp)</FieldLabel>
+                <FieldLabel>{t("pfAttDelivComp.flatRatePerDelivery")}</FieldLabel>
                 <RupiahInput value={value.flatRate} onChange={(v) => patch({ flatRate: v })} />
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-3 max-w-sm">
                   <div className="flex flex-col gap-1.5">
-                    <FieldLabel>Kolom pembeda</FieldLabel>
+                    <FieldLabel>{t("pfAttDelivComp.matchColumnLabel")}</FieldLabel>
                     <select
                       value={value.matchColumn}
                       onChange={(e) => patch({ matchColumn: e.target.value })}
@@ -216,11 +219,11 @@ export function AttendanceDeliveryCompFields({
                     </select>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <FieldLabel>Tarif default (Rp)</FieldLabel>
+                    <FieldLabel>{t("pfAttDelivComp.defaultRateLabel")}</FieldLabel>
                     <RupiahInput value={value.defaultRate} onChange={(v) => patch({ defaultRate: v })} />
                   </div>
                 </div>
-                <TableShell head={<><Th>Nilai Kolom</Th><Th className="w-36">Tarif (Rp)</Th><Th className="w-10" /></>}>
+                <TableShell head={<><Th>{t("pfAttDelivComp.colValue")}</Th><Th className="w-36">{t("pfAttDelivComp.colRate")}</Th><Th className="w-10" /></>}>
                   {value.rates.map((r, i) => (
                     <tr key={i} className="border-t border-border/60">
                       <Td><TextInput value={r.key} onChange={(e) => patch({ rates: value.rates.map((x, idx) => idx === i ? { ...x, key: e.target.value } : x) })} /></Td>
@@ -229,7 +232,7 @@ export function AttendanceDeliveryCompFields({
                     </tr>
                   ))}
                 </TableShell>
-                <AddRowBtn onClick={() => patch({ rates: [...value.rates, { key: "", rate: "" }] })}>Tambah Tarif</AddRowBtn>
+                <AddRowBtn onClick={() => patch({ rates: [...value.rates, { key: "", rate: "" }] })}>{t("pfAttDelivComp.addRate")}</AddRowBtn>
               </div>
             )}
           </div>
@@ -240,7 +243,7 @@ export function AttendanceDeliveryCompFields({
       {value.method === "threshold" && (
         <div className="space-y-3">
           <div className="max-w-xs flex flex-col gap-1.5">
-            <FieldLabel>Kolom pengelompokan</FieldLabel>
+            <FieldLabel>{t("pfAttDelivComp.groupByLabel")}</FieldLabel>
             <select
               value={value.groupBy}
               onChange={(e) => patch({ groupBy: e.target.value })}
@@ -253,15 +256,15 @@ export function AttendanceDeliveryCompFields({
           </div>
           <div className="grid grid-cols-2 gap-3 max-w-sm">
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Threshold default (kg/box)</FieldLabel>
+              <FieldLabel>{t("pfAttDelivComp.defaultThresholdLabel")}</FieldLabel>
               <TextInput type="number" value={value.defaultThreshold} onChange={(e) => patch({ defaultThreshold: e.target.value })} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Rate default (Rp/kelipatan)</FieldLabel>
+              <FieldLabel>{t("pfAttDelivComp.defaultRateThresholdLabel")}</FieldLabel>
               <RupiahInput value={value.defaultRateThreshold} onChange={(v) => patch({ defaultRateThreshold: v })} />
             </div>
           </div>
-          <TableShell head={<><Th>Store/Area</Th><Th className="w-32">Threshold</Th><Th className="w-36">Rate (Rp)</Th><Th className="w-10" /></>}>
+          <TableShell head={<><Th>{t("pfAttDelivComp.colStoreArea")}</Th><Th className="w-32">{t("pfAttDelivComp.colThreshold")}</Th><Th className="w-36">{t("pfAttDelivComp.colRateRp")}</Th><Th className="w-10" /></>}>
             {value.thresholdRules.map((r, i) => (
               <tr key={i} className="border-t border-border/60">
                 <Td><TextInput value={r.key} onChange={(e) => patch({ thresholdRules: value.thresholdRules.map((x, idx) => idx === i ? { ...x, key: e.target.value } : x) })} /></Td>
@@ -271,8 +274,8 @@ export function AttendanceDeliveryCompFields({
               </tr>
             ))}
           </TableShell>
-          <AddRowBtn onClick={() => patch({ thresholdRules: [...value.thresholdRules, { key: "", threshold: "", rate: "" }] })}>Tambah Aturan</AddRowBtn>
-          <p className="text-[11px] text-muted-foreground">Total berat/box per store per hari ÷ threshold (ceil) × rate. Kolom berat pakai field weight_kg di data pengiriman.</p>
+          <AddRowBtn onClick={() => patch({ thresholdRules: [...value.thresholdRules, { key: "", threshold: "", rate: "" }] })}>{t("pfAttDelivComp.addRule")}</AddRowBtn>
+          <p className="text-[11px] text-muted-foreground">{t("pfAttDelivComp.thresholdHint")}</p>
         </div>
       )}
     </div>

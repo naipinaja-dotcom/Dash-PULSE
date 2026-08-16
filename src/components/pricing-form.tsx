@@ -25,6 +25,7 @@ import {
   type MockClient,
 } from "@/lib/pricing-store";
 import { formatRupiah, parseRupiah } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import {
   ArrowLeft,
   Info,
@@ -238,6 +239,7 @@ function loadForm(scheme: PricingScheme | undefined): {
 // yang cuma jalan sekali pas mount — kalau datanya nyusul belakangan, field
 // bakal tetep kosong. Jadi tunggu dulu, baru render form-nya.
 export function PricingForm({ mode, schemeId }: { mode: "create" | "edit"; schemeId?: string }) {
+  const { t } = useT();
   const [existing, setExisting] = useState<PricingScheme | null>(null);
   const [ready, setReady] = useState(mode === "create");
 
@@ -252,8 +254,8 @@ export function PricingForm({ mode, schemeId }: { mode: "create" | "edit"; schem
 
   if (!ready) {
     return (
-      <AdminLayout title="Edit Skema Pricing">
-        <div className="p-10 text-center text-muted-foreground text-sm">Memuat skema…</div>
+      <AdminLayout title={t("pform.editSchemeTitle")}>
+        <div className="p-10 text-center text-muted-foreground text-sm">{t("pform.loadingScheme")}</div>
       </AdminLayout>
     );
   }
@@ -270,6 +272,7 @@ function PricingFormInner({
   mode: "create" | "edit";
   existing?: PricingScheme;
 }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const posthog = usePostHog();
   const [clients, setClients] = useState<MockClient[]>([]);
@@ -302,12 +305,12 @@ function PricingFormInner({
 
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (!effFrom) return toast.error("Tanggal berlaku dari wajib diisi");
+    if (!effFrom) return toast.error(t("pform.effFromRequired"));
     // Nama opsional — kalau dikosongin, dibikinin otomatis dari client + sisi + tipe.
     const activeCategory = PRICING_CATEGORIES.find((c) => c.key === category)!;
     const autoName = [
-      clients.find((c) => c.id === clientId)?.name ?? "Semua Client",
-      schemeFor === "client" ? "Client" : "Rider",
+      clients.find((c) => c.id === clientId)?.name ?? t("pform.allClients"),
+      schemeFor === "client" ? t("pform.client") : t("pform.rider"),
       activeCategory.name,
     ].join(" · ");
     const finalName = name.trim() || autoName;
@@ -328,7 +331,7 @@ function PricingFormInner({
         subtype: subtype ?? null,
         scheme_for: schemeFor,
       });
-      toast.success(mode === "create" ? "Skema berhasil dibuat" : "Skema berhasil diperbarui");
+      toast.success(mode === "create" ? t("pform.schemeCreated") : t("pform.schemeUpdated"));
       navigate({ to: "/admin/pricing" });
     } catch (e) {
       toast.error((e as Error).message);
@@ -339,8 +342,8 @@ function PricingFormInner({
 
   return (
     <AdminLayout
-      title={mode === "create" ? "Tambah Skema Pricing" : "Edit Skema Pricing"}
-      subtitle="Atur cara kalkulasi harga — sisi rider (cost) atau client (revenue)."
+      title={mode === "create" ? t("pform.addSchemeTitle") : t("pform.editSchemeTitle")}
+      subtitle={t("pform.pageSubtitle")}
     >
       <div className="pricing-workbench">
       <button
@@ -348,7 +351,7 @@ function PricingFormInner({
         onClick={() => navigate({ to: "/admin/pricing" })}
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-4"
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke daftar
+        <ArrowLeft className="w-3.5 h-3.5" /> {t("pform.backToList")}
       </button>
 
       {/* Rail (kiri, sticky) + Builder (kanan) — digabung dari 3 card terpisah
@@ -361,32 +364,32 @@ function PricingFormInner({
         <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
           <div className="flex flex-col gap-1.5">
             <FieldLabel>
-              Nama Skema <span className="font-normal text-muted-foreground">(opsional)</span>
+              {t("pform.schemeName")} <span className="font-normal text-muted-foreground">({t("pform.optional")})</span>
             </FieldLabel>
             <TextInput
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Kosongin = otomatis dari client + sisi + tipe"
+              placeholder={t("pform.schemeNamePlaceholder")}
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <FieldLabel>Client</FieldLabel>
+            <FieldLabel>{t("pform.client")}</FieldLabel>
             <ClientCombobox
               value={clientId}
               onChange={setClientId}
-              placeholder="Semua Client"
+              placeholder={t("pform.allClients")}
               className="w-full text-sm py-1.5"
               options={clients.map((c) => ({ value: c.id, label: c.name }))}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Berlaku Dari</FieldLabel>
+              <FieldLabel>{t("pform.effectiveFrom")}</FieldLabel>
               <DatePicker value={effFrom} onChange={setEffFrom} className="w-full" />
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel>
-                Sampai <span className="font-normal">(opsional)</span>
+                {t("pform.effectiveTo")} <span className="font-normal">({t("pform.optional")})</span>
               </FieldLabel>
               <DatePicker value={effTo} onChange={setEffTo} className="w-full" />
             </div>
@@ -394,7 +397,7 @@ function PricingFormInner({
 
           {/* Scheme for */}
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Skema untuk</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">{t("pform.schemeForLabel")}</p>
             <div className="grid grid-cols-1 gap-2">
               {(["rider", "client"] as SchemeFor[]).map((sf) => (
                 <button
@@ -410,10 +413,10 @@ function PricingFormInner({
                   }
                 >
                   <span className="text-xs font-medium block">
-                    {sf === "rider" ? "Rider (Cost)" : "Client (Revenue)"}
+                    {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
-                    {sf === "rider" ? "Fee yang dibayar ke rider" : "Harga yang ditagih ke client"}
+                    {sf === "rider" ? t("pform.riderCostDesc") : t("pform.clientRevenueDesc")}
                   </span>
                 </button>
               ))}
@@ -422,7 +425,7 @@ function PricingFormInner({
 
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-              Pilih kategori
+              {t("pform.selectCategory")}
             </p>
             <div className="grid grid-cols-1 gap-2">
               {PRICING_CATEGORIES.map((cat) => {
@@ -458,13 +461,13 @@ function PricingFormInner({
               Hitung Fee (lihat admin.calculate.tsx), bukan diisi di sini. */}
           {category === "delivery" && schemeFor === "rider" && (
             <ToggleBlock
-              label="Revenue Share (% dari revenue client)"
-              hint="Fee rider = % dari revenue client per AWB, diambil dari skema Client aktif — bukan diisi manual."
+              label={t("pform.revenueShareLabel")}
+              hint={t("pform.revenueShareHint")}
               on={f.revenueShareOn}
               onToggle={(on) => patch({ revenueShareOn: on })}
             >
               <div className="flex flex-col gap-1.5 max-w-xs">
-                <FieldLabel>Persen ke Rider (%)</FieldLabel>
+                <FieldLabel>{t("pform.percentToRider")}</FieldLabel>
                 <TextInput
                   value={f.revenueSharePercent}
                   inputMode="decimal"
@@ -478,7 +481,7 @@ function PricingFormInner({
           {category === "delivery" && !f.revenueShareOn && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-2">
-                Dimensi Pricing (pilih satu atau dua):
+                {t("pform.pricingDimensionsLabel")}
               </label>
               <div className="grid grid-cols-1 gap-2">
                 {DELIVERY_DIMENSIONS.map((dim) => {
@@ -523,12 +526,12 @@ function PricingFormInner({
             <p className="text-xs text-foreground leading-relaxed">
               {category === "delivery"
                 ? (() => {
-                    if (f.revenueShareOn) return "Fee = % × revenue client (dari skema Client aktif), bukan dari tabel Distance/Weight.";
+                    if (f.revenueShareOn) return t("pform.calloutRevenueShare");
                     const dims = subtype as DeliveryDimensions | null;
                     if (!dims || (!dims.distance && !dims.weight)) return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
                     const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map((d) => d.name);
                     if (enabled.length === 1) return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
-                    return "Distance + Weight aktif, hasilnya dijumlah.";
+                    return t("pform.calloutBothDimensions");
                   })()
                 : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
             </p>
@@ -540,21 +543,21 @@ function PricingFormInner({
               scheme_for === "client" doang, gak dibatasi kategori. */}
           {schemeFor === "client" && (
             <ToggleBlock
-              label="Billing Add-ons"
-              hint="Urutan: min charge → management fee → admin fee → PPN. Kosong = gak muncul di invoice."
+              label={t("pform.billingAddonsLabel")}
+              hint={t("pform.billingAddonsHint")}
               on={f.billingOn}
               onToggle={(on) => patch({ billingOn: on })}
             >
               <div className="grid grid-cols-1 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <FieldLabel>Min Charge (Rp)</FieldLabel>
+                  <FieldLabel>{t("pform.minCharge")}</FieldLabel>
                   <RupiahInput
                     value={f.billing.min_charge}
                     onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <FieldLabel>Management Fee (%)</FieldLabel>
+                  <FieldLabel>{t("pform.managementFee")}</FieldLabel>
                   <TextInput
                     value={f.billing.management_fee_percent}
                     inputMode="decimal"
@@ -564,14 +567,14 @@ function PricingFormInner({
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <FieldLabel>Admin Fee (Rp)</FieldLabel>
+                  <FieldLabel>{t("pform.adminFee")}</FieldLabel>
                   <RupiahInput
                     value={f.billing.admin_fee_flat}
                     onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <FieldLabel>PPN (%)</FieldLabel>
+                  <FieldLabel>{t("pform.ppn")}</FieldLabel>
                   <TextInput
                     value={f.billing.ppn_percent}
                     inputMode="decimal"
@@ -612,8 +615,8 @@ function PricingFormInner({
 
           {category === "delivery" && !f.revenueShareOn && !(subtype as DeliveryDimensions | null)?.weight && (
             <ToggleBlock
-              label="Add-KG (surcharge berat)"
-              hint="Biaya tambahan per berat, bertingkat. Otomatis mati kalau Weight aktif."
+              label={t("pform.addKgLabel")}
+              hint={t("pform.addKgHint")}
               on={f.addKgOn}
               onToggle={(on) => patch({ addKgOn: on })}
             >
@@ -623,13 +626,13 @@ function PricingFormInner({
 
           {category === "delivery" && !f.revenueShareOn && (
             <ToggleBlock
-              label="Multi-drop (kiriman ke-2 dst)"
-              hint="Otomatis mulai kiriman ke-2 dalam hari yang sama, per rider."
+              label={t("pform.multiDropLabel")}
+              hint={t("pform.multiDropHint")}
               on={f.multiDropOn}
               onToggle={(on) => patch({ multiDropOn: on })}
             >
               <div className="flex flex-col gap-1.5 max-w-xs">
-                <FieldLabel>Fee per kiriman ekstra (Rp)</FieldLabel>
+                <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
                 <RupiahInput value={f.multiDropFee} onChange={(v) => patch({ multiDropFee: v })} />
               </div>
             </ToggleBlock>
@@ -658,7 +661,7 @@ function PricingFormInner({
           onClick={() => navigate({ to: "/admin/pricing" })}
           className="rounded-md border border-border bg-card px-4 py-2 text-sm hover:bg-muted"
         >
-          Batal
+          {t("pform.cancel")}
         </button>
         <button
           type="button"
@@ -667,7 +670,7 @@ function PricingFormInner({
           className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
-          {saving ? "Menyimpan…" : "Simpan Skema"}
+          {saving ? t("pform.saving") : t("pform.saveScheme")}
         </button>
       </div>
       </div>

@@ -6,6 +6,7 @@ import { toCSV, downloadCSV } from "@/lib/csv";
 import { toast } from "sonner";
 import { Download, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { formatTanggal } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -50,6 +51,7 @@ function monthOptions() {
 }
 
 export function RecapTab() {
+  const { t } = useT();
   const months = useMemo(monthOptions, []);
   const [month, setMonth] = useState(months[0].value);
   const [loading, setLoading] = useState(false);
@@ -267,7 +269,7 @@ export function RecapTab() {
     <>
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <div>
-          <label className="text-sm font-medium block mb-1">Periode</label>
+          <label className="text-sm font-medium block mb-1">{t("recap.period")}</label>
           <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
@@ -281,31 +283,31 @@ export function RecapTab() {
           disabled={!rows.length}
           className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-3 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
         >
-          <Download className="w-4 h-4" /> Export CSV
+          <Download className="w-4 h-4" /> {t("btn.export")}
         </button>
       </div>
 
       {loading ? (
         <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Memuat data...
+          <Loader2 className="w-4 h-4 animate-spin" /> {t("btn.loading")}
         </div>
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
             <div className="rounded-lg border border-border p-3.5">
-              <div className="text-[11.5px] text-muted-foreground font-medium">Total Potongan</div>
+              <div className="text-[11.5px] text-muted-foreground font-medium">{t("recap.totalDeduction")}</div>
               <div className="text-xl font-bold mt-1">{rp(summaryCards.totalDeduction)}</div>
             </div>
             <div className="rounded-lg border border-border p-3.5">
-              <div className="text-[11.5px] text-muted-foreground font-medium">Rider Terkena</div>
+              <div className="text-[11.5px] text-muted-foreground font-medium">{t("recap.ridersAffected")}</div>
               <div className="text-xl font-bold mt-1">{summaryCards.totalRiders}</div>
             </div>
             <div className="rounded-lg border border-border p-3.5">
-              <div className="text-[11.5px] text-muted-foreground font-medium">Total Hari Sewa</div>
-              <div className="text-xl font-bold mt-1">{summaryCards.totalDailyDays} hari</div>
+              <div className="text-[11.5px] text-muted-foreground font-medium">{t("recap.totalRentalDays")}</div>
+              <div className="text-xl font-bold mt-1">{summaryCards.totalDailyDays} {t("recap.dayUnit")}</div>
             </div>
             <div className="rounded-lg border border-border p-3.5">
-              <div className="text-[11.5px] text-muted-foreground font-medium">Rata-rata / Rider</div>
+              <div className="text-[11.5px] text-muted-foreground font-medium">{t("recap.avgPerRider")}</div>
               <div className="text-xl font-bold mt-1">{rp(summaryCards.avgPerRider)}</div>
             </div>
           </div>
@@ -315,19 +317,19 @@ export function RecapTab() {
               <thead className="bg-muted text-left">
                 <tr>
                   <th className="p-2 w-8"></th>
-                  <th className="px-3">Kode Mitra</th>
-                  <th className="px-3">Nama</th>
-                  <th className="px-3">Dipotong di</th>
-                  <th className="px-3 text-right">Jenis Potongan</th>
-                  <th className="px-3 text-right">Total Hari</th>
-                  <th className="px-3 text-right">Total Nominal</th>
+                  <th className="px-3">{t("recap.employeeId")}</th>
+                  <th className="px-3">{t("recap.name")}</th>
+                  <th className="px-3">{t("recap.deductedAt")}</th>
+                  <th className="px-3 text-right">{t("recap.deductionTypes")}</th>
+                  <th className="px-3 text-right">{t("recap.totalDays")}</th>
+                  <th className="px-3 text-right">{t("recap.totalAmount")}</th>
                 </tr>
               </thead>
               <tbody>
                 {paged.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-6 text-center text-muted-foreground">
-                      Tidak ada data potongan bulan ini
+                      {t("recap.noData")}
                     </td>
                   </tr>
                 ) : paged.map((r) => {
@@ -351,8 +353,8 @@ export function RecapTab() {
                             ))}
                           </div>
                         </td>
-                        <td className="px-3 text-right text-muted-foreground">{r.deductions.length} jenis</td>
-                        <td className="px-3 text-right tabular-nums">{totalDays > 0 ? `${totalDays} hari` : "—"}</td>
+                        <td className="px-3 text-right text-muted-foreground">{r.deductions.length} {t("recap.types")}</td>
+                        <td className="px-3 text-right tabular-nums">{totalDays > 0 ? `${totalDays} ${t("recap.dayUnit")}` : "—"}</td>
                         <td className="px-3 text-right font-semibold tabular-nums">{rp(r.grandTotal)}</td>
                       </tr>
                       {isOpen && r.deductions.map((d) => (
@@ -363,22 +365,22 @@ export function RecapTab() {
                               <div className="flex items-center gap-2 mb-1.5">
                                 <span className="font-medium text-[13px]">{d.typeName}</span>
                                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                  {d.mode === "daily" ? "Harian" : d.mode === "monthly" ? "Bulanan" : d.mode === "fixed" ? "Cicilan" : "Auto"}
+                                  {d.mode === "daily" ? t("recap.daily") : d.mode === "monthly" ? t("recap.monthly") : d.mode === "fixed" ? t("recap.installment") : t("recap.auto")}
                                 </span>
                               </div>
                               <table className="w-full text-[12.5px]">
                                 <thead>
                                   <tr className="text-muted-foreground">
-                                    <th className="text-left py-1 pr-4 font-medium">Client</th>
-                                    {d.mode === "daily" && <th className="text-right py-1 pr-4 font-medium">Hari</th>}
-                                    <th className="text-right py-1 pr-4 font-medium">Nominal</th>
-                                    <th className="text-left py-1 font-medium">Keterangan</th>
+                                    <th className="text-left py-1 pr-4 font-medium">{t("recap.client")}</th>
+                                    {d.mode === "daily" && <th className="text-right py-1 pr-4 font-medium">{t("recap.days")}</th>}
+                                    <th className="text-right py-1 pr-4 font-medium">{t("recap.amount")}</th>
+                                    <th className="text-left py-1 font-medium">{t("recap.description")}</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {d.clients.map((c) => {
                                     const desc = d.mode === "daily" && c.days > 0
-                                      ? `${c.days} hari x ${rp(Math.round(c.amount / c.days))}`
+                                      ? `${c.days} ${t("recap.dayUnit")} x ${rp(Math.round(c.amount / c.days))}`
                                       : c.description;
                                     const periods = c.periods ?? [];
                                     return (
@@ -386,7 +388,7 @@ export function RecapTab() {
                                         <tr className="border-t border-border/20">
                                           <td className="py-1 pr-4">{c.clientName}</td>
                                           {d.mode === "daily" && (
-                                            <td className="py-1 pr-4 text-right tabular-nums">{c.days} hari</td>
+                                            <td className="py-1 pr-4 text-right tabular-nums">{c.days} {t("recap.dayUnit")}</td>
                                           )}
                                           <td className="py-1 pr-4 text-right tabular-nums font-medium">{rp(c.amount)}</td>
                                           <td className="py-1 text-muted-foreground">{desc}</td>
@@ -395,11 +397,11 @@ export function RecapTab() {
                                           <tr key={`${c.clientId}-p${pi}`} className="text-muted-foreground">
                                             <td className="py-0.5 pr-4 pl-4 text-[11px]">
                                               {d.mode === "daily" && p.dates.length > 0
-                                                ? `Tgl ${p.dates.join(", ")}`
+                                                ? `${t("recap.dateAbbrev")} ${p.dates.join(", ")}`
                                                 : `${formatTanggal(p.start)} — ${formatTanggal(p.end)}`}
                                             </td>
                                             {d.mode === "daily" && (
-                                              <td className="py-0.5 pr-4 text-right text-[11px] tabular-nums">{p.days} hari</td>
+                                              <td className="py-0.5 pr-4 text-right text-[11px] tabular-nums">{p.days} {t("recap.dayUnit")}</td>
                                             )}
                                             <td className="py-0.5 pr-4 text-right text-[11px] tabular-nums">{rp(p.amount)}</td>
                                             <td></td>
@@ -409,8 +411,8 @@ export function RecapTab() {
                                           <tr className="text-muted-foreground">
                                             <td colSpan={d.mode === "daily" ? 4 : 3} className="py-0.5 pl-4 text-[11px]">
                                               {d.mode === "daily" && periods[0].dates.length > 0
-                                                ? `Tanggal: ${periods[0].dates.join(", ")}`
-                                                : `Periode: ${formatTanggal(periods[0].start)} — ${formatTanggal(periods[0].end)}`}
+                                                ? `${t("recap.datesLabel")}: ${periods[0].dates.join(", ")}`
+                                                : `${t("recap.periodLabel")}: ${formatTanggal(periods[0].start)} — ${formatTanggal(periods[0].end)}`}
                                             </td>
                                           </tr>
                                         )}
@@ -420,9 +422,9 @@ export function RecapTab() {
                                 </tbody>
                                 <tfoot className="font-medium border-t border-border/40">
                                   <tr>
-                                    <td className="py-1 pr-4">Total</td>
+                                    <td className="py-1 pr-4">{t("recap.total")}</td>
                                     {d.mode === "daily" && (
-                                      <td className="py-1 pr-4 text-right tabular-nums">{d.totalDays} hari</td>
+                                      <td className="py-1 pr-4 text-right tabular-nums">{d.totalDays} {t("recap.dayUnit")}</td>
                                     )}
                                     <td className="py-1 text-right tabular-nums">{rp(d.totalAmount)}</td>
                                     <td></td>

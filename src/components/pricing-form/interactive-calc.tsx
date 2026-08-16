@@ -3,6 +3,7 @@
 // (cuma nama field "calcType" 6-way diganti jadi kombinasi category+subtype).
 import { useEffect, useMemo, useState } from "react";
 import { Calculator } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import type { PricingCategory, PricingSubtype, SchemeFor, PricingEnvelope, DeliveryDimensions } from "@/lib/pricing-types";
 import { calcAttendanceScheme, bandLookupFee } from "@/lib/pricing-calc";
 import { formatRupiah, parseRupiah } from "@/lib/format";
@@ -199,33 +200,34 @@ export function DeliveryCalcInputs({
   inp: CalcInputs;
   onChange: (p: Partial<CalcInputs>) => void;
 }) {
+  const { t } = useT();
   const dims = (props.subtype as { distance: boolean; weight: boolean }) || { distance: false, weight: false };
   return (
     <div className="flex flex-wrap gap-3">
       {dims.distance && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{props.delivery.distance.accumulate === "daily" ? "Total jarak hari ini (km)" : "Jarak (km)"}</span>
+          <span className="text-[11px] text-muted-foreground">{props.delivery.distance.accumulate === "daily" ? t("pfCalc.totalDistanceToday") : t("pfCalc.distanceKm")}</span>
           <input type="number" min="0" step="0.1" value={inp.distance} onChange={(e) => onChange({ distance: e.target.value })}
             className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
         </div>
       )}
       {dims.weight && props.delivery.weight.mode === "range" && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? "Total berat hari ini (kg)" : "Berat (kg)"}</span>
+          <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? t("pfCalc.totalWeightToday") : t("pfCalc.weightKg")}</span>
           <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => onChange({ weight: e.target.value })}
             className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
         </div>
       )}
       {!dims.weight && props.delivery.weight_surcharge?.enabled && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">Berat (kg) — pemicu surcharge Distance</span>
+          <span className="text-[11px] text-muted-foreground">{t("pfCalc.weightSurchargeTrigger")}</span>
           <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => onChange({ weight: e.target.value })}
             className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
         </div>
       )}
       {dims.weight && props.delivery.weight.mode === "threshold_group" && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">Total berat sekelompok (kg)</span>
+          <span className="text-[11px] text-muted-foreground">{t("pfCalc.totalGroupWeight")}</span>
           <input type="number" min="0" step="0.1" value={inp.totalKg} onChange={(e) => onChange({ totalKg: e.target.value })}
             className="w-28 text-xs rounded border border-border bg-card px-2 py-1.5" />
         </div>
@@ -235,6 +237,7 @@ export function DeliveryCalcInputs({
 }
 
 export function InteractiveCalc(props: InteractiveCalcProps) {
+  const { t } = useT();
   const [inp, setInp] = useState<CalcInputs>(() => defaultCalcInputs(props));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setInp(defaultCalcInputs(props)); }, [props.category, props.subtype]);
@@ -245,8 +248,8 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
     <div className="rounded-md border-2 border-border-strong bg-card shadow-[3px_3px_0_0_var(--color-border-strong)] px-4 py-3.5 mt-4">
       <div className="flex items-center gap-2 mb-3">
         <Calculator className="w-4 h-4 text-primary" />
-        <p className="text-xs font-semibold text-foreground">Kalkulator</p>
-        <span className="text-[10px] text-muted-foreground">(ubah input → hasil update otomatis)</span>
+        <p className="text-xs font-semibold text-foreground">{t("pfCalc.title")}</p>
+        <span className="text-[10px] text-muted-foreground">{t("pfCalc.autoUpdateHint")}</span>
       </div>
 
       {/* ── Inputs per tipe ── */}
@@ -256,12 +259,12 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
         {props.category === "attendance" && (
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex flex-col gap-1">
-              <span className="text-[11px] text-muted-foreground">Jam kerja</span>
+              <span className="text-[11px] text-muted-foreground">{t("pfCalc.workHours")}</span>
               <input type="number" min="0" step="0.5" value={inp.hours} onChange={(e) => p({ hours: e.target.value })}
                 className="w-20 text-xs rounded border border-border bg-card px-2 py-1.5" />
             </div>
             <div className="flex gap-1 pb-0.5">
-              {([{ v: false, l: "Ontime" }, { v: true, l: "Late" }] as const).map((opt) => (
+              {([{ v: false, l: t("pfCalc.ontime") }, { v: true, l: t("pfCalc.late") }] as const).map((opt) => (
                 <button key={String(opt.v)} type="button" onClick={() => p({ isLate: opt.v })}
                   className={"text-xs px-2.5 py-1.5 rounded border-2 border-border-strong transition-colors " +
                     (inp.isLate === opt.v ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>

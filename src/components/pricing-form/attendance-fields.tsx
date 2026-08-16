@@ -1,6 +1,7 @@
 // Kategori 2 — Per Kehadiran. Dipecah dari pricing-form.tsx.
 // v2: delivery_component toggle menggantikan kategori "Kombinasi" lama.
 import { parseRupiah } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, TimeInput, Th, RowDeleteBtn, ToggleBlock } from "./shared";
 import {
   AttendanceDeliveryCompFields,
@@ -99,53 +100,54 @@ export function loadAttendanceState(c: any): AttendanceState {
 }
 
 export function AttendanceFields({ value, onChange }: { value: AttendanceState; onChange: (v: AttendanceState) => void }) {
+  const { t } = useT();
   const patch = (p: Partial<AttendanceState>) => onChange({ ...value, ...p });
 
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-primary-border bg-primary-soft px-3.5 py-2.5 text-xs text-primary-soft-foreground">
-        Rumus: (fee penuh × proporsi jam kerja) {value.overtimeOn ? "+ lembur " : ""}+ insentif (nominal ditentuin di sini, data absensi cuma dipakai cek syarat — mis. OTP=ONTIME).
-        {value.shiftsOn && " Shift Configuration AKTIF di bawah — tarif/jam standar di sini cuma FALLBACK kalau clock-in rider di luar semua jendela shift. Insentif (termasuk ontime) SELALU dari tabel Insentif di bawah, berlaku sama buat semua shift."}
+        {t("pfAttendance.formulaBase")} {value.overtimeOn ? t("pfAttendance.formulaOvertimeSuffix") : ""}{t("pfAttendance.formulaIncentiveSuffix")}
+        {value.shiftsOn && ` ${t("pfAttendance.formulaShiftActiveNote")}`}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <FieldLabel>{value.shiftsOn ? "Fee Penuh (Fallback, Rp)" : "Fee Penuh per Shift (Rp)"}</FieldLabel>
+          <FieldLabel>{value.shiftsOn ? t("pfAttendance.feePenuhFallback") : t("pfAttendance.feePenuhPerShift")}</FieldLabel>
           <RupiahInput value={value.full_fee} onChange={(v) => patch({ full_fee: v })} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <FieldLabel>{value.shiftsOn ? "Jam Standar (Fallback)" : "Jam Standar per Shift"}</FieldLabel>
-          <TextInput type="number" value={value.standard_hours} onChange={(e) => patch({ standard_hours: e.target.value })} placeholder="8" />
+          <FieldLabel>{value.shiftsOn ? t("pfAttendance.jamStandarFallback") : t("pfAttendance.jamStandarPerShift")}</FieldLabel>
+          <TextInput type="number" value={value.standard_hours} onChange={(e) => patch({ standard_hours: e.target.value })} placeholder={t("pfAttendance.placeholderEight")} />
         </div>
       </div>
       <p className="text-[11px] text-muted-foreground -mt-2">
         {value.shiftsOn
-          ? "Cuma kepakai kalau clock-in rider TIDAK cocok ke shift manapun di bawah."
-          : "Kerja kurang dari jam standar dibayar proporsional. Kerja pas/lebih = fee penuh (kecuali lembur dinyalain di bawah)."}
+          ? t("pfAttendance.hintShiftFallbackOnly")
+          : t("pfAttendance.hintProportional")}
       </p>
 
       <ToggleBlock
-        label="Lembur (bayar kelebihan jam kerja)"
-        hint="Kalau mati, kerja lebih dari jam standar tetap mentok di fee penuh (tidak ada tambahan)."
+        label={t("pfAttendance.overtimeToggleLabel")}
+        hint={t("pfAttendance.overtimeToggleHint")}
         on={value.overtimeOn}
         onToggle={(on) => patch({ overtimeOn: on })}
       >
         <div className="max-w-xs">
-          <FieldLabel>Tarif Lembur per Jam (Rp)</FieldLabel>
+          <FieldLabel>{t("pfAttendance.overtimeRateLabel")}</FieldLabel>
           <RupiahInput value={value.overtime_rate_per_hour} onChange={(v) => patch({ overtime_rate_per_hour: v })} />
         </div>
       </ToggleBlock>
 
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-2">Insentif</p>
+        <p className="text-xs font-medium text-muted-foreground mb-2">{t("pfAttendance.incentivesHeading")}</p>
         <TableShell head={<>
-          <Th>Nama Insentif</Th>
-          <Th className="w-36">Jumlah (Rp)</Th>
-          <Th className="w-44">Syarat Cair</Th>
+          <Th>{t("pfAttendance.thIncentiveName")}</Th>
+          <Th className="w-36">{t("pfAttendance.thAmount")}</Th>
+          <Th className="w-44">{t("pfAttendance.thCondition")}</Th>
           <Th className="w-10" />
         </>}>
           {value.incentives.map((c, i) => (
             <tr key={i} className="border-t border-border/60">
-              <Td><TextInput value={c.label} placeholder="cth: Insentif Ontime" onChange={(e) => patch({ incentives: value.incentives.map((x, idx) => (idx === i ? { ...x, label: e.target.value } : x)) })} /></Td>
+              <Td><TextInput value={c.label} placeholder={t("pfAttendance.placeholderIncentiveName")} onChange={(e) => patch({ incentives: value.incentives.map((x, idx) => (idx === i ? { ...x, label: e.target.value } : x)) })} /></Td>
               <Td><RupiahInput value={c.amount} onChange={(v) => patch({ incentives: value.incentives.map((x, idx) => (idx === i ? { ...x, amount: v } : x)) })} /></Td>
               <Td>
                 <select
@@ -153,21 +155,21 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
                   onChange={(e) => patch({ incentives: value.incentives.map((x, idx) => (idx === i ? { ...x, condition: e.target.value as "always" | "ontime_only" } : x)) })}
                   className="w-full text-sm rounded-md border border-border bg-card px-2 py-1.5"
                 >
-                  <option value="always">Selalu (hari kerja)</option>
-                  <option value="ontime_only">Cuma kalau ONTIME</option>
+                  <option value="always">{t("pfAttendance.conditionAlways")}</option>
+                  <option value="ontime_only">{t("pfAttendance.conditionOntimeOnly")}</option>
                 </select>
               </Td>
               <Td className="text-center"><RowDeleteBtn onClick={() => patch({ incentives: value.incentives.filter((_, idx) => idx !== i) })} /></Td>
             </tr>
           ))}
         </TableShell>
-        <AddRowBtn onClick={() => patch({ incentives: [...value.incentives, { label: "", amount: "", condition: "always" }] })}>Tambah Insentif</AddRowBtn>
-        <p className="text-[11px] text-muted-foreground mt-1.5">"Cuma kalau ONTIME" itu biner — hari LATE dapet Rp0 buat insentif ini, ga ada setengah-setengah.</p>
+        <AddRowBtn onClick={() => patch({ incentives: [...value.incentives, { label: "", amount: "", condition: "always" }] })}>{t("pfAttendance.addIncentiveBtn")}</AddRowBtn>
+        <p className="text-[11px] text-muted-foreground mt-1.5">{t("pfAttendance.incentiveOntimeBinaryHint")}</p>
       </div>
 
       <ToggleBlock
-        label="Shift Configuration (tarif beda per jam clock-in)"
-        hint="Buat client dengan beberapa shift beda tarif — rider otomatis kedeteksi dari jam clock-in. Insentif/ontime tetap dari tabel di atas."
+        label={t("pfAttendance.shiftToggleLabel")}
+        hint={t("pfAttendance.shiftToggleHint")}
         on={value.shiftsOn}
         onToggle={(on) => patch({ shiftsOn: on, shifts: on && value.shifts.length === 0 ? [emptyShiftRow(1)] : value.shifts })}
       >
@@ -175,47 +177,45 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
           {value.shifts.map((s, i) => (
             <div key={i} className="rounded-md border border-border p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <TextInput value={s.label} placeholder={`Shift ${i + 1}`}
+                <TextInput value={s.label} placeholder={`${t("pfAttendance.shiftLabelPrefix")} ${i + 1}`}
                   onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, label: e.target.value } : x)) })}
                   className="max-w-[180px] font-medium" />
                 <RowDeleteBtn onClick={() => patch({ shifts: value.shifts.filter((_, idx) => idx !== i) })} />
               </div>
               <div className="grid grid-cols-5 gap-2">
                 <div>
-                  <FieldLabel>Clock-in Dari</FieldLabel>
+                  <FieldLabel>{t("pfAttendance.clockInFromLabel")}</FieldLabel>
                   <TimeInput value={s.start_time} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, start_time: v } : x)) })} />
                 </div>
                 <div>
-                  <FieldLabel>Sampai (eksklusif)</FieldLabel>
+                  <FieldLabel>{t("pfAttendance.clockInUntilLabel")}</FieldLabel>
                   <TimeInput value={s.end_time} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, end_time: v } : x)) })} />
                 </div>
                 <div>
-                  <FieldLabel>Batas Ontime</FieldLabel>
+                  <FieldLabel>{t("pfAttendance.ontimeLimitLabel")}</FieldLabel>
                   <TimeInput value={s.late_after} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, late_after: v } : x)) })} />
                 </div>
                 <div>
-                  <FieldLabel>Fee Penuh (Rp)</FieldLabel>
+                  <FieldLabel>{t("pfAttendance.feePenuhLabel")}</FieldLabel>
                   <RupiahInput value={s.full_fee} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, full_fee: v } : x)) })} />
                 </div>
                 <div>
-                  <FieldLabel>Jam Standar</FieldLabel>
+                  <FieldLabel>{t("pfAttendance.jamStandarLabel")}</FieldLabel>
                   <TextInput type="number" value={s.standard_hours} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, standard_hours: e.target.value } : x)) })} />
                 </div>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                "Batas Ontime" opsional — clock-in lewat jam ini = telat, insentif ontime-only hangus.
-                Kosongkan kalau telat ditentukan dari data (kolom OTP upload). Jendela "Clock-in Dari/Sampai"
-                boleh lebih lebar dari batas ontime (mis. pagi 03:00–12:00, batas ontime 06:10).
+                {t("pfAttendance.shiftOntimeHint")}
               </p>
             </div>
           ))}
-          <AddRowBtn onClick={() => patch({ shifts: [...value.shifts, emptyShiftRow(value.shifts.length + 1)] })}>Tambah Shift</AddRowBtn>
+          <AddRowBtn onClick={() => patch({ shifts: [...value.shifts, emptyShiftRow(value.shifts.length + 1)] })}>{t("pfAttendance.addShiftBtn")}</AddRowBtn>
         </div>
       </ToggleBlock>
 
       <ToggleBlock
-        label="Komponen per kiriman (gabung delivery + attendance)"
-        hint="Tambah fee per pengiriman ke fee absensi harian, dari data pengiriman di rentang yang sama."
+        label={t("pfAttendance.deliveryCompToggleLabel")}
+        hint={t("pfAttendance.deliveryCompToggleHint")}
         on={value.deliveryCompOn}
         onToggle={(on) => patch({ deliveryCompOn: on })}
       >

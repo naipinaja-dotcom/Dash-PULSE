@@ -249,7 +249,7 @@ export function AdminLayout({
               key={m}
               type="button"
               onClick={() => switchMode(m)}
-              title={m === "payroll" ? "Payroll Mode" : "PnL Mode"}
+              title={m === "payroll" ? `${t("admin.payrollMode")} Mode` : `${t("admin.pnlMode")} Mode`}
               className={
                 "w-full flex justify-center p-2 rounded-lg transition-colors " +
                 (mode === m
@@ -314,7 +314,7 @@ export function AdminLayout({
               <div className="text-[12px] font-semibold truncate leading-tight">
                 {user?.fullName ?? "Admin"}
               </div>
-              <div className="text-[10px] text-muted-foreground truncate">Administrator</div>
+              <div className="text-[10px] text-muted-foreground truncate">{t("admin.administrator")}</div>
             </div>
             <button
               onClick={handleLogout}
@@ -385,7 +385,7 @@ export function AdminLayout({
           <button
             className="hidden lg:flex items-center justify-center w-7 h-7 -ml-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
             onClick={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? t("admin.expandSidebar") : t("admin.collapseSidebar")}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
@@ -415,7 +415,7 @@ export function AdminLayout({
               title={`Payroll run belum dibuat. Period terakhir berakhir ${overdue.lastPeriodEnd}.`}
             >
               <Bell className="w-3.5 h-3.5 animate-pulse" />
-              <span className="hidden sm:inline">Payroll terlambat {overdue.daysLate} hari</span>
+              <span className="hidden sm:inline">{t("admin.payrollOverdue")} {overdue.daysLate} {t("admin.days")}</span>
               <span className="sm:hidden">Payroll!</span>
             </Link>
           )}

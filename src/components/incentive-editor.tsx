@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { parseRupiah } from "@/lib/format";
 import { Loader2, Trash2, Plus } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -40,6 +41,7 @@ export function IncentiveEditor({
   const [newAmount, setNewAmount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { t } = useT();
 
   useEffect(() => {
     sb.from("payroll_incentives")
@@ -66,8 +68,8 @@ export function IncentiveEditor({
   };
 
   const addIncentive = async () => {
-    if (!newDesc.trim()) return toast.error("Keterangan/alasan wajib diisi");
-    if (newAmount <= 0) return toast.error("Jumlah harus lebih dari 0");
+    if (!newDesc.trim()) return toast.error(t("incentive.addDescRequired"));
+    if (newAmount <= 0) return toast.error(t("incentive.amountMustBePositive"));
     setSaving(true);
     try {
       const { data, error } = await sb
@@ -82,7 +84,7 @@ export function IncentiveEditor({
       setNewDesc("");
       setNewAmount(0);
       setAdding(false);
-      toast.success("Insentif ditambahkan");
+      toast.success(t("incentive.added"));
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -93,9 +95,9 @@ export function IncentiveEditor({
   const deleteIncentive = async (item: Incentive) => {
     if (
       !(await confirmDialog({
-        title: "Hapus insentif ini?",
-        description: `"${item.description}" — Rp${Number(item.amount).toLocaleString("id-ID")} akan dihapus dan gross/net pay dihitung ulang.`,
-        confirmText: "Hapus",
+        title: t("incentive.deleteConfirmTitle"),
+        description: `"${item.description}" — Rp${Number(item.amount).toLocaleString("id-ID")} ${t("incentive.deleteConfirmSuffix")}`,
+        confirmText: t("incentive.deleteConfirmButton"),
         danger: true,
       }))
     )
@@ -107,7 +109,7 @@ export function IncentiveEditor({
       const list = items.filter((x) => x.id !== item.id);
       await applyNewTotal(list);
       setItems(list);
-      toast.success("Insentif dihapus");
+      toast.success(t("incentive.deleted"));
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -120,10 +122,10 @@ export function IncentiveEditor({
   return (
     <div className="space-y-1.5">
       <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-        Insentif Tambahan (di luar skema)
+        {t("incentive.heading")}
       </div>
       {items.length === 0 && !adding && (
-        <p className="text-[12.5px] text-muted-foreground">Belum ada insentif tambahan.</p>
+        <p className="text-[12.5px] text-muted-foreground">{t("incentive.empty")}</p>
       )}
       {items.map((it) => (
         <div key={it.id} className="flex items-center gap-3 text-[13px]">
@@ -135,7 +137,7 @@ export function IncentiveEditor({
             <button
               onClick={() => deleteIncentive(it)}
               disabled={deletingId === it.id}
-              title="Hapus insentif ini"
+              title={t("incentive.deleteTooltip")}
               className="text-muted-foreground hover:text-destructive disabled:opacity-50"
             >
               {deletingId === it.id ? (
@@ -154,14 +156,14 @@ export function IncentiveEditor({
             <input
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="Keterangan/alasan (mis. Bonus referral rider baru)"
+              placeholder={t("incentive.descPlaceholder")}
               className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-[12px]"
             />
             <input
               inputMode="numeric"
               value={newAmount ? newAmount.toLocaleString("id-ID") : ""}
               onChange={(e) => setNewAmount(parseRupiah(e.target.value))}
-              placeholder="Jumlah"
+              placeholder={t("incentive.amountPlaceholder")}
               className="w-32 rounded-md border border-border bg-background px-2 py-1 text-[12px] text-right tabular-nums"
             />
             <button
@@ -169,13 +171,13 @@ export function IncentiveEditor({
               disabled={saving}
               className="rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-[12px] disabled:opacity-50"
             >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Simpan"}
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("incentive.save")}
             </button>
             <button
               onClick={() => setAdding(false)}
               className="text-[12px] text-muted-foreground hover:text-foreground"
             >
-              Batal
+              {t("incentive.cancel")}
             </button>
           </div>
         ) : (
@@ -183,12 +185,12 @@ export function IncentiveEditor({
             onClick={() => setAdding(true)}
             className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline pt-1"
           >
-            <Plus className="w-3.5 h-3.5" /> Tambah Insentif
+            <Plus className="w-3.5 h-3.5" /> {t("incentive.addButton")}
           </button>
         ))}
       {runPublished && (
         <p className="text-[11px] text-muted-foreground pt-1">
-          Run sudah di-publish — insentif gak bisa diedit lagi dari sini.
+          {t("incentive.publishedNotice")}
         </p>
       )}
     </div>

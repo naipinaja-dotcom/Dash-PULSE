@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Plus, Trash2, Send, CheckCircle2, XCircle } from "lucide-react";
 import { ScheduleFormModal } from "./payroll-reminder-panel/schedule-form-modal";
+import { useT } from "@/lib/i18n";
 
 type Client = { id: string; name: string };
 type Rider = { id: string; full_name: string; employee_id: string };
@@ -33,9 +34,19 @@ type LogRow = {
   created_at: string;
 };
 
-const WEEKDAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const WEEKDAY_KEYS = [
+  "reminderPanel.weekdaySunday",
+  "reminderPanel.weekdayMonday",
+  "reminderPanel.weekdayTuesday",
+  "reminderPanel.weekdayWednesday",
+  "reminderPanel.weekdayThursday",
+  "reminderPanel.weekdayFriday",
+  "reminderPanel.weekdaySaturday",
+] as const;
 
 export function PayrollReminderPanel() {
+  const { t } = useT();
+  const dayName = (d: number) => t(WEEKDAY_KEYS[d]);
   const { session } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [riders, setRiders] = useState<Rider[]>([]);
@@ -73,9 +84,9 @@ export function PayrollReminderPanel() {
   const deleteSchedule = async (s: Schedule) => {
     if (
       !(await confirmDialog({
-        title: "Hapus jadwal reminder?",
-        description: `"${s.label}" akan dihapus.`,
-        confirmText: "Hapus",
+        title: t("reminderPanel.deleteScheduleTitle"),
+        description: `"${s.label}" ${t("reminderPanel.deleteScheduleDescriptionSuffix")}`,
+        confirmText: t("reminderPanel.deleteConfirm"),
         danger: true,
       }))
     )
@@ -85,7 +96,7 @@ export function PayrollReminderPanel() {
       .delete()
       .eq("id", s.id);
     if (error) return toast.error(error.message);
-    toast.success("Jadwal dihapus");
+    toast.success(t("reminderPanel.scheduleDeleted"));
     load();
   };
 
@@ -99,23 +110,21 @@ export function PayrollReminderPanel() {
   };
 
   const testSend = async () => {
-    if (!session?.access_token) return toast.error("Sesi admin habis — login ulang");
+    if (!session?.access_token) return toast.error(t("reminderPanel.adminSessionExpired"));
     setTesting(true);
     try {
       const result = await triggerPayrollReminderManual({
         data: { adminToken: session.access_token },
       });
       if (!result.sent) {
-        toast.success(
-          "Dicek — tidak ada client/rider yang jatuh tempo hari ini, jadi Slack/Email sengaja tidak dikirim.",
-        );
+        toast.success(t("reminderPanel.nothingDueToday"));
       } else {
         const slackOk = result.pushStatus!.slack.ok,
           emailOk = result.pushStatus!.email.ok;
-        if (slackOk && emailOk) toast.success("Reminder berhasil dikirim ke Slack & Email");
+        if (slackOk && emailOk) toast.success(t("reminderPanel.sentToSlackAndEmail"));
         else
           toast.warning(
-            `Slack: ${slackOk ? "OK" : "gagal — " + result.pushStatus!.slack.error}. Email: ${emailOk ? "OK" : "gagal — " + result.pushStatus!.email.error}`,
+            `${t("reminderPanel.slackLabel")}: ${slackOk ? t("reminderPanel.deliveryOk") : t("reminderPanel.deliveryFailedPrefix") + result.pushStatus!.slack.error}. ${t("reminderPanel.emailLabel")}: ${emailOk ? t("reminderPanel.deliveryOk") : t("reminderPanel.deliveryFailedPrefix") + result.pushStatus!.email.error}`,
           );
       }
       load();
@@ -130,11 +139,9 @@ export function PayrollReminderPanel() {
     <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="font-semibold text-sm">Jadwal Reminder Disbursement</h3>
+          <h3 className="font-semibold text-sm">{t("reminderPanel.heading")}</h3>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Ingatkan Admin/Ops lewat Slack + Email client/rider mana yang harus digaji hari itu,
-            sesuai siklus masing-masing. Cron belum diaktifkan — pakai "Test Kirim Sekarang" untuk
-            cek manual.
+            {t("reminderPanel.headingDescription")}
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
@@ -148,13 +155,13 @@ export function PayrollReminderPanel() {
             ) : (
               <Send className="w-3.5 h-3.5" />
             )}{" "}
-            Test Kirim Sekarang
+            {t("reminderPanel.testSendNow")}
           </button>
           <button
             onClick={() => setFormOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-medium hover:opacity-90 transition-opacity"
           >
-            <Plus className="w-3.5 h-3.5" /> Jadwal Baru
+            <Plus className="w-3.5 h-3.5" /> {t("reminderPanel.newSchedule")}
           </button>
         </div>
       </div>
@@ -162,7 +169,7 @@ export function PayrollReminderPanel() {
       <div className="rounded-xl border border-border overflow-hidden">
         {schedules.length === 0 ? (
           <p className="p-4 text-[11px] text-muted-foreground text-center">
-            Belum ada jadwal reminder.
+            {t("reminderPanel.noSchedulesYet")}
           </p>
         ) : (
           schedules.map((s) => (
@@ -177,12 +184,13 @@ export function PayrollReminderPanel() {
                   {s.clients && s.riders ? " · " : ""}
                   {s.riders ? `${s.riders.full_name} (${s.riders.employee_id})` : ""}
                   {" — "}
-                  {s.weekdays.map((d) => WEEKDAYS[d]).join(", ")}
+                  {s.weekdays.map((d) => dayName(d)).join(", ")}
                   {s.period_start_weekday !== null && s.period_end_weekday !== null && (
                     <span className="text-primary">
                       {" "}
-                      · Periode {WEEKDAYS[s.period_start_weekday]}–{WEEKDAYS[s.period_end_weekday]}
-                      {s.close_same_day ? " (tutup hari sama)" : ""}
+                      · {t("reminderPanel.periodLabel")} {dayName(s.period_start_weekday)}–
+                      {dayName(s.period_end_weekday)}
+                      {s.close_same_day ? ` ${t("reminderPanel.closeSameDaySuffix")}` : ""}
                     </span>
                   )}
                 </div>
@@ -192,7 +200,7 @@ export function PayrollReminderPanel() {
                   onClick={() => toggleActive(s)}
                   className={`text-[10px] font-medium px-2 py-0.5 rounded-full border-2 transition-colors ${s.active ? "border-border-strong bg-success text-success-foreground" : "border-border text-muted-foreground bg-muted"}`}
                 >
-                  {s.active ? "Aktif" : "Nonaktif"}
+                  {s.active ? t("reminderPanel.active") : t("reminderPanel.inactive")}
                 </button>
                 <button
                   onClick={() => deleteSchedule(s)}
@@ -209,26 +217,26 @@ export function PayrollReminderPanel() {
       {logs.length > 0 && (
         <div>
           <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-            Histori Pengiriman (10 terakhir)
+            {t("reminderPanel.deliveryHistoryHeading")}
           </h4>
           <div className="rounded-xl border border-border overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-2.5">
-                    Tanggal
+                    {t("reminderPanel.tableDate")}
                   </th>
                   <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-2.5">
-                    Client/Rider Due
+                    {t("reminderPanel.tableClientRiderDue")}
                   </th>
                   <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-2.5">
-                    Slack
+                    {t("reminderPanel.slackLabel")}
                   </th>
                   <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-2.5">
-                    Email
+                    {t("reminderPanel.emailLabel")}
                   </th>
                   <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-2.5">
-                    Trigger
+                    {t("reminderPanel.tableTrigger")}
                   </th>
                 </tr>
               </thead>
@@ -281,7 +289,7 @@ export function PayrollReminderPanel() {
               .insert(rows);
             setSaving(false);
             if (error) return toast.error(error.message);
-            toast.success("Jadwal dibuat");
+            toast.success(t("reminderPanel.scheduleCreated"));
             setFormOpen(false);
             load();
           }}

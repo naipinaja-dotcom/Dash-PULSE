@@ -96,12 +96,12 @@ function RidersPage() {
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } = usePagination(filtered, 10);
   const statusBadge = (s: string) => {
     const map: Record<RiderStatus, string> = {
-      ready_to_work: "bg-primary/10 text-primary",
-      active: "bg-success/10 text-success",
+      ready_to_work: "border-2 border-border-strong bg-primary text-primary-foreground",
+      active: "border-2 border-border-strong bg-success text-success-foreground",
       resign: "bg-muted text-muted-foreground",
-      withdrawn: "bg-warning/10 text-warning",
-      blacklisted: "bg-destructive/10 text-destructive",
-      suspended: "bg-destructive/10 text-destructive",
+      withdrawn: "border-2 border-border-strong bg-warning text-warning-foreground",
+      blacklisted: "border-2 border-border-strong bg-destructive text-destructive-foreground",
+      suspended: "border-2 border-border-strong bg-destructive text-destructive-foreground",
     };
     const cls = map[s as RiderStatus] ?? "bg-muted text-muted-foreground";
     const label = STATUS_LABEL[s as RiderStatus] ?? s.replace(/_/g, " ");
@@ -137,7 +137,7 @@ function RidersPage() {
             <div className="absolute top-full left-0 mt-1 w-48 rounded-lg border border-border bg-card shadow-lg z-20 py-1">
               {(["all", ...STATUS_ORDER] as const).map((s) => (
                 <button key={s} onClick={() => { setFilter(s); setStatusOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left transition-colors ${filter === s ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted"}`}>
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left transition-colors ${filter === s ? "bg-primary text-primary-foreground border-2 border-border-strong font-medium" : "text-foreground hover:bg-muted"}`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[s]}`} />
                   {s === "all" ? t("btn.all") : STATUS_LABEL[s]}
                 </button>
@@ -159,7 +159,7 @@ function RidersPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-auto">
+      <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-auto">
         <table className="w-full text-[12px] whitespace-nowrap">
           <thead>
             <tr className="border-b border-border">
@@ -182,7 +182,7 @@ function RidersPage() {
                 <tr key={r.id} className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors cursor-pointer">
                   <td className="p-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-primary-soft grid place-items-center text-[11px] font-semibold text-primary flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-border-strong grid place-items-center text-[11px] font-semibold flex-shrink-0">
                         {getInitials(r.full_name)}
                       </div>
                       <div>
@@ -400,7 +400,7 @@ function RiderImportModal({ clients, onClose, onDone }:
           <div className="mt-4 text-sm">
             <div className="text-success font-medium">✓ {result.ok} rider berhasil disimpan</div>
             {result.warnings.length > 0 && (
-              <div className="mt-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning max-h-40 overflow-auto">
+              <div className="mt-2 rounded-md border-2 border-border-strong bg-warning p-3 text-xs text-warning-foreground max-h-40 overflow-auto">
                 <div className="font-medium mb-1">{result.warnings.length} peringatan:</div>
                 {result.warnings.map((w, i) => <div key={i}>• {w}</div>)}
               </div>
@@ -546,7 +546,7 @@ function RiderModal({ initial, clients, onClose, onSaved }:
           <div className="mt-4 rounded-md border border-border bg-muted/30 p-3">
             <div className="flex items-center gap-2 text-sm font-medium mb-2">
               <KeyRound className="w-4 h-4" /> Login Rider
-              <span className={`ml-auto px-2 py-0.5 rounded-full text-xs ${hasLogin && !pendingSetup ? "bg-success/10 text-success" : hasLogin ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"}`}>
+              <span className={`ml-auto px-2 py-0.5 rounded-full text-xs ${hasLogin && !pendingSetup ? "border-2 border-border-strong bg-success text-success-foreground" : hasLogin ? "border-2 border-border-strong bg-warning text-warning-foreground" : "bg-muted text-muted-foreground"}`}>
                 {hasLogin && !pendingSetup ? "Aktif" : hasLogin ? "Menunggu rider set PIN" : "Belum ada"}
               </span>
             </div>

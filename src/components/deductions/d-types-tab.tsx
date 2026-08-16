@@ -7,8 +7,10 @@ import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2, X, Users } from "lucide-react";
 import type { Client, DType, Rider } from "./types";
+import { useT } from "@/lib/i18n";
 
 export function DTypesTab() {
+  const { t } = useT();
   const [rows, setRows] = useState<DType[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -115,9 +117,9 @@ export function DTypesTab() {
   }, []);
 
   const save = async () => {
-    if (!nf.code.trim() || !nf.name.trim()) return toast.error("Kode & nama wajib diisi");
+    if (!nf.code.trim() || !nf.name.trim()) return toast.error(t("dtypes.errCodeName"));
     if (nf.auto_recurring && nf.recurring_amount <= 0)
-      return toast.error("Nominal potong otomatis wajib diisi");
+      return toast.error(t("dtypes.errRecurringAmount"));
     setSaving(true);
     const { error } = await (supabase as any).from("deduction_types").insert({
       code: nf.code.trim().toUpperCase(),
@@ -131,7 +133,7 @@ export function DTypesTab() {
     });
     setSaving(false);
     if (error) return toast.error(error.message);
-    toast.success("Jenis potongan ditambahkan");
+    toast.success(t("dtypes.addedToast"));
     setNf({
       code: "",
       name: "",
@@ -148,15 +150,15 @@ export function DTypesTab() {
   const remove = async (r: DType) => {
     if (
       !(await confirmDialog({
-        title: "Hapus jenis potongan?",
-        description: `"${r.name}" akan dihapus permanen.`,
-        confirmText: "Hapus",
+        title: t("dtypes.deleteTitle"),
+        description: `"${r.name}" ${t("dtypes.deleteDesc")}`,
+        confirmText: t("dtypes.delete"),
       }))
     )
       return;
     const { error } = await (supabase as any).from("deduction_types").delete().eq("id", r.id);
     if (!error) {
-      toast.success("Jenis potongan dihapus");
+      toast.success(t("dtypes.deletedToast"));
       return load();
     }
     // Kalau masih dipakai cicilan/potongan tercatat → FK error. Tawarin nonaktifin.
@@ -164,9 +166,9 @@ export function DTypesTab() {
     if (inUse) {
       if (
         await confirmDialog({
-          title: "Tidak bisa dihapus",
-          description: `"${r.name}" masih dipakai potongan/cicilan yang sudah tercatat.\n\nNonaktifkan saja? Jenis ini tidak muncul lagi saat bikin potongan baru, tapi data lama tetap aman.`,
-          confirmText: "Nonaktifkan",
+          title: t("dtypes.cannotDeleteTitle"),
+          description: `"${r.name}" ${t("dtypes.inUseDesc")}`,
+          confirmText: t("dtypes.deactivate"),
           danger: false,
         })
       ) {
@@ -175,7 +177,7 @@ export function DTypesTab() {
           .update({ active: false })
           .eq("id", r.id);
         if (e2) return toast.error(e2.message);
-        toast.success("Jenis potongan dinonaktifkan");
+        toast.success(t("dtypes.deactivatedToast"));
         load();
       }
       return;
@@ -186,9 +188,9 @@ export function DTypesTab() {
   const handleBulkDelete = async () => {
     if (
       !(await confirmDialog({
-        title: `Hapus ${bulk.count} jenis potongan?`,
-        description: "Jenis yang masih dipakai cicilan/potongan tercatat gak akan kehapus — hapus itu satu-satu biar bisa dipilih nonaktifkan aja.",
-        confirmText: "Hapus",
+        title: `${t("dtypes.delete")} ${bulk.count} ${t("dtypes.bulkLabel")}?`,
+        description: t("dtypes.bulkDeleteDesc"),
+        confirmText: t("dtypes.delete"),
       }))
     )
       return;
@@ -200,13 +202,9 @@ export function DTypesTab() {
     setBulkDeleting(false);
     if (error) {
       const inUse = (error as any).code === "23503" || /foreign key/i.test(error.message);
-      return toast.error(
-        inUse
-          ? "Sebagian masih dipakai cicilan/potongan tercatat — gak ada yang kehapus. Hapus satu-satu biar bisa ditawarin nonaktifkan."
-          : error.message,
-      );
+      return toast.error(inUse ? t("dtypes.bulkInUseError") : error.message);
     }
-    toast.success(`${bulk.count} jenis potongan dihapus`);
+    toast.success(`${bulk.count} ${t("dtypes.bulkLabel")} ${t("dtypes.deletedSuffix")}`);
     bulk.clear();
     load();
   };
@@ -217,7 +215,7 @@ export function DTypesTab() {
       .update({ active: !r.active })
       .eq("id", r.id);
     if (error) return toast.error(error.message);
-    toast.success(r.active ? "Dinonaktifkan" : "Diaktifkan");
+    toast.success(r.active ? t("dtypes.deactivated") : t("dtypes.activated"));
     load();
   };
 
@@ -230,14 +228,14 @@ export function DTypesTab() {
           onClick={() => setAdding((v) => !v)}
           className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm"
         >
-          <Plus className="w-4 h-4" /> Tambah Jenis
+          <Plus className="w-4 h-4" /> {t("dtypes.addButton")}
         </button>
       </div>
 
       {adding && (
         <div className="rounded-lg border border-border bg-card p-4 mb-3">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium">Jenis Potongan Baru</h3>
+            <h3 className="text-sm font-medium">{t("dtypes.newTitle")}</h3>
             <button
               onClick={() => setAdding(false)}
               className="p-1 text-muted-foreground hover:text-foreground"
@@ -247,27 +245,27 @@ export function DTypesTab() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium">Kode</label>
+              <label className="text-sm font-medium">{t("dtypes.codeLabel")}</label>
               <input
                 value={nf.code}
                 onChange={(e) => setNf({ ...nf, code: e.target.value })}
-                placeholder="mis. SIM, BBM"
+                placeholder={t("dtypes.codePlaceholder")}
                 className={inputCls}
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Nama</label>
+              <label className="text-sm font-medium">{t("dtypes.nameLabel")}</label>
               <input
                 value={nf.name}
                 onChange={(e) => setNf({ ...nf, name: e.target.value })}
-                placeholder="mis. Cicilan SIM"
+                placeholder={t("dtypes.namePlaceholder")}
                 className={inputCls}
               />
             </div>
           </div>
           <div className="mt-3">
             <label className="text-sm font-medium">
-              Keterangan <span className="font-normal text-muted-foreground">(opsional)</span>
+              {t("dtypes.descriptionLabel")} <span className="font-normal text-muted-foreground">({t("dtypes.optional")})</span>
             </label>
             <input
               value={nf.description}
@@ -287,9 +285,9 @@ export function DTypesTab() {
                 })
               }
             />{" "}
-            Bisa dicicil{" "}
+            {t("dtypes.installmentableLabel")}{" "}
             <span className="text-muted-foreground text-xs">
-              (termasuk mode "per hari" mis. sewa motor — diatur per rider pas ditambahin)
+              ({t("dtypes.installmentableHint")})
             </span>
           </label>
           <label className="flex items-center gap-2 mt-2 text-sm">
@@ -304,23 +302,23 @@ export function DTypesTab() {
                 })
               }
             />
-            Potong otomatis tiap periode{" "}
-            <span className="text-muted-foreground text-xs">(semua rider yg ada penghasilan)</span>
+            {t("dtypes.autoRecurringLabel")}{" "}
+            <span className="text-muted-foreground text-xs">({t("dtypes.autoRecurringHint")})</span>
           </label>
           {nf.auto_recurring && (
             <div className="mt-3 space-y-3">
               <div>
-                <label className="text-sm font-medium">Nominal Potong per Periode (Rp)</label>
+                <label className="text-sm font-medium">{t("dtypes.recurringAmountLabel")}</label>
                 <input
                   inputMode="numeric"
-                  placeholder="mis. 2.500"
+                  placeholder={t("dtypes.amountPlaceholder")}
                   value={nf.recurring_amount ? nf.recurring_amount.toLocaleString("id-ID") : ""}
                   onChange={(e) => setNf({ ...nf, recurring_amount: parseRupiah(e.target.value) })}
                   className={inputCls}
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Frekuensi Potong</label>
+                <label className="text-sm font-medium">{t("dtypes.frequencyLabel")}</label>
                 <select
                   value={nf.trigger_frequency}
                   onChange={(e) =>
@@ -328,12 +326,11 @@ export function DTypesTab() {
                   }
                   className={inputCls}
                 >
-                  <option value="every_payroll_run">Tiap payroll run</option>
-                  <option value="monthly_once">Sekali per bulan (mis. BPJS)</option>
+                  <option value="every_payroll_run">{t("dtypes.everyRun")}</option>
+                  <option value="monthly_once">{t("dtypes.monthlyOnce")}</option>
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  "Sekali per bulan" berlaku per rider lintas client manapun dia digaji — kalau
-                  client-nya digaji &gt;1x/bulan (kayak Wicked Pies), gak dobel kepotong.
+                  {t("dtypes.monthlyOnceHint")}
                 </p>
               </div>
               <label className="flex items-center gap-2 text-sm">
@@ -342,10 +339,9 @@ export function DTypesTab() {
                   checked={nf.applies_to_all}
                   onChange={(e) => setNf({ ...nf, applies_to_all: e.target.checked })}
                 />
-                Berlaku untuk semua rider{" "}
+                {t("dtypes.appliesToAllLabel")}{" "}
                 <span className="text-muted-foreground text-xs">
-                  (uncheck kalau cuma sebagian rider yang ikut, mis. BPJS — bisa dipilih ridernya
-                  setelah disimpan)
+                  ({t("dtypes.appliesToAllHint")})
                 </span>
               </label>
             </div>
@@ -355,14 +351,14 @@ export function DTypesTab() {
               onClick={() => setAdding(false)}
               className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-muted"
             >
-              Batal
+              {t("dtypes.cancel")}
             </button>
             <button
               onClick={save}
               disabled={saving}
               className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm disabled:opacity-50"
             >
-              {saving ? "Menyimpan…" : "Simpan"}
+              {saving ? t("dtypes.saving") : t("dtypes.save")}
             </button>
           </div>
         </div>
@@ -381,19 +377,19 @@ export function DTypesTab() {
                 />
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Kode
+                {t("dtypes.codeLabel")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Nama
+                {t("dtypes.nameLabel")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Bisa Dicicil
+                {t("dtypes.installmentableCol")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Otomatis
+                {t("dtypes.autoCol")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Status
+                {t("dtypes.statusCol")}
               </th>
               <th className="p-3"></th>
             </tr>
@@ -408,7 +404,7 @@ export function DTypesTab() {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-muted-foreground text-[11px]">
-                  Belum ada jenis potongan
+                  {t("dtypes.emptyState")}
                 </td>
               </tr>
             ) : (
@@ -433,51 +429,51 @@ export function DTypesTab() {
                   </td>
                   <td className="p-3 font-medium text-foreground">{r.name}</td>
                   <td className="p-3 text-muted-foreground">
-                    {r.installmentable ? "Ya" : "Tidak"}
+                    {r.installmentable ? t("dtypes.yes") : t("dtypes.no")}
                   </td>
                   <td className="p-3 text-muted-foreground">
                     {r.auto_recurring ? (
                       <div className="space-y-1">
                         <span className="text-primary font-medium block">
-                          Ya · Rp{Number(r.recurring_amount).toLocaleString("id-ID")} ·{" "}
-                          {r.trigger_frequency === "monthly_once" ? "bulanan" : "tiap run"}
+                          {t("dtypes.yes")} · Rp{Number(r.recurring_amount).toLocaleString("id-ID")} ·{" "}
+                          {r.trigger_frequency === "monthly_once" ? t("dtypes.monthly") : t("dtypes.perRun")}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => toggleAppliesToAll(r)}
-                            title="Klik untuk ganti"
+                            title={t("dtypes.clickToChange")}
                             className={`text-[10px] font-medium px-2 py-0.5 rounded-full border-2 transition-colors ${r.applies_to_all ? "border-border text-muted-foreground bg-muted hover:bg-muted/70" : "border-border-strong text-primary-foreground bg-primary hover:bg-primary/90"}`}
                           >
-                            {r.applies_to_all ? "Semua rider" : "Rider tertentu"}
+                            {r.applies_to_all ? t("dtypes.allRiders") : t("dtypes.specificRiders")}
                           </button>
                           {!r.applies_to_all && (
                             <button
                               onClick={() => openManage(r)}
                               className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-primary"
                             >
-                              <Users className="w-3 h-3" /> Kelola
+                              <Users className="w-3 h-3" /> {t("dtypes.manage")}
                             </button>
                           )}
                         </div>
                       </div>
                     ) : (
-                      "Tidak"
+                      t("dtypes.no")
                     )}
                   </td>
                   <td className="p-3">
                     <button
                       onClick={() => toggleActive(r)}
-                      title="Klik untuk aktif/nonaktif"
+                      title={t("dtypes.clickToToggleActive")}
                       className={`text-[10px] font-medium px-2 py-0.5 rounded-full border-2 transition-colors ${r.active ? "border-border-strong bg-success text-success-foreground hover:brightness-105" : "border-border text-muted-foreground bg-muted hover:bg-muted/70"}`}
                     >
-                      {r.active ? "Aktif" : "Nonaktif"}
+                      {r.active ? t("dtypes.active") : t("dtypes.inactive")}
                     </button>
                   </td>
                   <td className="text-right pr-3">
                     <button
                       onClick={() => remove(r)}
                       className="p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-md transition-colors"
-                      title="Hapus"
+                      title={t("dtypes.delete")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -488,7 +484,7 @@ export function DTypesTab() {
                     <td colSpan={7} className="p-3">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-medium">
-                          Rider yang kena "{r.name}" ({enrolledIds.size} dipilih)
+                          {t("dtypes.ridersAffected")} "{r.name}" ({enrolledIds.size} {t("dtypes.selectedSuffix")})
                         </span>
                         <button
                           onClick={() => setManagingId(null)}
@@ -498,14 +494,14 @@ export function DTypesTab() {
                         </button>
                       </div>
                       <input
-                        placeholder="Cari nama / kode rider…"
+                        placeholder={t("dtypes.searchRiderPlaceholder")}
                         value={riderSearch}
                         onChange={(e) => setRiderSearch(e.target.value)}
                         className="w-full max-w-sm rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                       />
                       <div className="mt-2 max-h-56 max-w-sm overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
                         {filteredRiders.length === 0 ? (
-                          <div className="px-3 py-2 text-muted-foreground text-xs">Ga ada rider cocok</div>
+                          <div className="px-3 py-2 text-muted-foreground text-xs">{t("dtypes.noRidersFound")}</div>
                         ) : (
                           filteredRiders.map((rd) => (
                             <div
@@ -526,9 +522,9 @@ export function DTypesTab() {
                                   value={enrolledClient.get(rd.id) ?? ""}
                                   onChange={(e) => setEnrolledClient(r.id, rd.id, e.target.value)}
                                   className="rounded-md border-2 border-border-strong bg-background px-1.5 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-                                  title="Client prioritas — null pakai client rumah rider"
+                                  title={t("dtypes.clientPriorityTitle")}
                                 >
-                                  <option value="">— client rumah rider —</option>
+                                  <option value="">{t("dtypes.homeClientOption")}</option>
                                   {clients.map((c) => (
                                     <option key={c.id} value={c.id}>
                                       {c.name}
@@ -551,7 +547,7 @@ export function DTypesTab() {
       </div>
       <BulkActionBar
         count={bulk.count}
-        label="jenis potongan"
+        label={t("dtypes.bulkLabel")}
         deleting={bulkDeleting}
         onDelete={handleBulkDelete}
         onClear={bulk.clear}

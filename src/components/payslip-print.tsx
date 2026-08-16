@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { Download, Printer, FileDown, ChevronDown } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 const exact: CSSProperties = { WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" as any };
 
@@ -19,6 +20,7 @@ export type PayslipPrintProps = {
 };
 
 export function PayslipPrint({ slip, riderName, employeeId, clients, incentives, deductions, onClose }: PayslipPrintProps) {
+  const { t } = useT();
   const period = slip.payroll_runs;
   const d = slip.data;
   const totalIncentive = incentives.reduce((s, x) => s + x.amount, 0);
@@ -54,24 +56,24 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
               className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
             >
               <Download className="w-4 h-4" />
-              {saving ? "Menyimpan..." : "Unduh / Cetak"}
+              {saving ? t("payslipPrint.downloading") : t("payslipPrint.downloadPrint")}
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
             {menuOpen && (
               <div className="absolute right-0 mt-1 w-48 rounded-lg border border-border bg-card shadow-lg py-1 z-10">
                 <button onClick={savePdf}
                   className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted flex items-center gap-2">
-                  <FileDown className="w-4 h-4" /> Simpan PDF
+                  <FileDown className="w-4 h-4" /> {t("payslipPrint.savePdf")}
                 </button>
                 <button onClick={() => { setMenuOpen(false); window.print(); }}
                   className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted flex items-center gap-2">
-                  <Printer className="w-4 h-4" /> Cetak
+                  <Printer className="w-4 h-4" /> {t("payslipPrint.print")}
                 </button>
               </div>
             )}
           </div>
           <button onClick={onClose} className="px-4 py-2 rounded-lg bg-muted text-sm font-medium hover:opacity-80">
-            Tutup
+            {t("payslipPrint.close")}
           </button>
         </div>
 
@@ -84,15 +86,15 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <img src="/dash-logo.png" alt="DASH" style={{ height: 32 }} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                 </div>
-                <div style={{ fontSize: 11, color: "#666" }}>PT. Dash Elektrik Indonesia</div>
+                <div style={{ fontSize: 11, color: "#666" }}>{t("payslipPrint.companyName")}</div>
               </div>
               <div style={{ textAlign: "right", fontSize: 11 }}>
-                <div style={{ fontWeight: 600 }}>{period?.name ?? "Payroll"}</div>
+                <div style={{ fontWeight: 600 }}>{period?.name ?? t("payslipPrint.payrollFallback")}</div>
                 <div style={{ color: "#666" }}>
                   {period ? `${formatTanggal(period.period_start)} – ${formatTanggal(period.period_end)}` : ""}
                 </div>
                 <div style={{ color: "#555", marginTop: 2 }}>
-                  Diterbitkan: {formatTanggal(slip.published_at.slice(0, 10))}
+                  {t("payslipPrint.publishedLabel")}: {formatTanggal(slip.published_at.slice(0, 10))}
                 </div>
               </div>
             </div>
@@ -101,20 +103,20 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
             <div style={{ background: "#f8f7ff", borderRadius: 6, padding: "10px 14px", marginBottom: 16, ...exact }}>
               <table style={{ fontSize: 12 }}>
                 <tbody>
-                  <tr><td style={{ color: "#666", paddingRight: 16, paddingBottom: 2 }}>Nama</td><td style={{ fontWeight: 600 }}>{riderName}</td></tr>
-                  <tr><td style={{ color: "#666", paddingRight: 16 }}>Kode Mitra</td><td style={{ fontWeight: 600 }}>{employeeId}</td></tr>
+                  <tr><td style={{ color: "#666", paddingRight: 16, paddingBottom: 2 }}>{t("payslipPrint.name")}</td><td style={{ fontWeight: 600 }}>{riderName}</td></tr>
+                  <tr><td style={{ color: "#666", paddingRight: 16 }}>{t("payslipPrint.partnerCode")}</td><td style={{ fontWeight: 600 }}>{employeeId}</td></tr>
                 </tbody>
               </table>
             </div>
 
             {/* earnings per client */}
-            <SectionLabel>Pendapatan per Client</SectionLabel>
+            <SectionLabel>{t("payslipPrint.earningsPerClient")}</SectionLabel>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
               <thead>
                 <tr style={{ borderBottom: "2px solid #e0e0e0" }}>
-                  <th style={{ textAlign: "left", padding: "6px 0", fontWeight: 600 }}>Client</th>
-                  <th style={{ textAlign: "center", padding: "6px 8px", fontWeight: 600 }}>Order</th>
-                  <th style={{ textAlign: "right", padding: "6px 0", fontWeight: 600 }}>Fee</th>
+                  <th style={{ textAlign: "left", padding: "6px 0", fontWeight: 600 }}>{t("payslipPrint.client")}</th>
+                  <th style={{ textAlign: "center", padding: "6px 8px", fontWeight: 600 }}>{t("payslipPrint.orders")}</th>
+                  <th style={{ textAlign: "right", padding: "6px 0", fontWeight: 600 }}>{t("payslipPrint.fee")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -126,7 +128,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
                   </tr>
                 ))}
                 <tr style={{ borderTop: "2px solid #e0e0e0", fontWeight: 700 }}>
-                  <td style={{ padding: "8px 0" }}>Fee Kotor</td>
+                  <td style={{ padding: "8px 0" }}>{t("payslipPrint.grossFee")}</td>
                   <td style={{ textAlign: "center", padding: "8px 8px" }}>{d?.delivery_count ?? 0}</td>
                   <td style={{ textAlign: "right", padding: "8px 0", fontFamily: "monospace" }}>{formatRupiah(d?.gross_earning)}</td>
                 </tr>
@@ -136,7 +138,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
             {/* incentives */}
             {incentives.length > 0 && (
               <>
-                <SectionLabel>Insentif Tambahan</SectionLabel>
+                <SectionLabel>{t("payslipPrint.additionalIncentives")}</SectionLabel>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
                   <tbody>
                     {incentives.map((inc, i) => (
@@ -146,7 +148,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
                       </tr>
                     ))}
                     <tr style={{ borderTop: "2px solid #e0e0e0", fontWeight: 700 }}>
-                      <td style={{ padding: "6px 0" }}>Total Insentif</td>
+                      <td style={{ padding: "6px 0" }}>{t("payslipPrint.totalIncentives")}</td>
                       <td style={{ textAlign: "right", padding: "6px 0", fontFamily: "monospace", color: "#16a34a" }}>+{formatRupiah(totalIncentive)}</td>
                     </tr>
                   </tbody>
@@ -157,7 +159,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
             {/* deductions */}
             {deductions.length > 0 && (
               <>
-                <SectionLabel>Potongan</SectionLabel>
+                <SectionLabel>{t("payslipPrint.deductions")}</SectionLabel>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
                   <tbody>
                     {deductions.map((ded, i) => (
@@ -167,7 +169,7 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
                       </tr>
                     ))}
                     <tr style={{ borderTop: "2px solid #e0e0e0", fontWeight: 700 }}>
-                      <td style={{ padding: "6px 0" }}>Total Potongan</td>
+                      <td style={{ padding: "6px 0" }}>{t("payslipPrint.totalDeductions")}</td>
                       <td style={{ textAlign: "right", padding: "6px 0", fontFamily: "monospace", color: "#dc2626" }}>−{formatRupiah(totalDeduction)}</td>
                     </tr>
                   </tbody>
@@ -178,27 +180,27 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
             {/* summary box */}
             <div style={{ background: "#7c5cff", color: "#fff", borderRadius: 8, padding: "14px 18px", marginTop: 8, ...exact }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                <span>Fee Kotor</span><span style={{ fontFamily: "monospace" }}>{formatRupiah(d?.gross_earning)}</span>
+                <span>{t("payslipPrint.grossFee")}</span><span style={{ fontFamily: "monospace" }}>{formatRupiah(d?.gross_earning)}</span>
               </div>
               {totalIncentive > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                  <span>Insentif</span><span style={{ fontFamily: "monospace" }}>+{formatRupiah(totalIncentive)}</span>
+                  <span>{t("payslipPrint.incentives")}</span><span style={{ fontFamily: "monospace" }}>+{formatRupiah(totalIncentive)}</span>
                 </div>
               )}
               {totalDeduction > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                  <span>Potongan</span><span style={{ fontFamily: "monospace" }}>−{formatRupiah(totalDeduction)}</span>
+                  <span>{t("payslipPrint.deductions")}</span><span style={{ fontFamily: "monospace" }}>−{formatRupiah(totalDeduction)}</span>
                 </div>
               )}
               <div style={{ borderTop: "1px solid rgba(255,255,255,0.3)", marginTop: 6, paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>TAKE-HOME PAY</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{t("payslipPrint.takeHomePay")}</span>
                 <span style={{ fontSize: 20, fontWeight: 700, fontFamily: "monospace" }}>{formatRupiah(d?.net_pay)}</span>
               </div>
             </div>
 
             {/* footer */}
             <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid #e0e0e0", display: "flex", justifyContent: "flex-end", fontSize: 10, color: "#555" }}>
-              <span>Halaman 1 dari 1</span>
+              <span>{t("payslipPrint.pageInfo")}</span>
             </div>
           </div>
         </div>

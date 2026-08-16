@@ -4,6 +4,7 @@
 import type { StepTier } from "@/lib/pricing-types";
 import { formatRupiah, parseRupiah } from "@/lib/format";
 import { Plus, Trash2 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 // Kolom yang BENERAN dipahami resolveField() di pricing-calc.ts (dipakai buat
 // match_column/group_by di mana pun) — ketik bebas selain 3 ini (mis. contoh
@@ -166,6 +167,7 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
 // StepTier editor — mirrors mockup's Tier Configuration table:
 // MIN | MAX | BASE FEE | PER KM, with row 0 being the base_fee/base_until pair.
 export function StepTierEditor({ value, onChange, unit }: { value: StepTierState; onChange: (v: StepTierState) => void; unit: "km" | "kg" }) {
+  const { t } = useT();
   const setTier = (i: number, patch: Partial<StepTierState["tiers"][number]>) =>
     onChange({ ...value, tiers: value.tiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)) });
   const addTier = () => onChange({ ...value, tiers: [...value.tiers, { from: value.base_until || "0", to: "", step: "1", add_per_step: "0" }] });
@@ -176,20 +178,20 @@ export function StepTierEditor({ value, onChange, unit }: { value: StepTierState
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
-        <span className="text-sm font-semibold">Tier Configuration</span>
+        <span className="text-sm font-semibold">{t("pfShared.tierConfiguration")}</span>
         <button type="button" onClick={addTier}
           className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
-          <Plus className="w-3.5 h-3.5" /> Add Tier
+          <Plus className="w-3.5 h-3.5" /> {t("pfShared.addTier")}
         </button>
       </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-            <th className="px-3 py-2 text-left">Min ({unit})</th>
-            <th className="px-3 py-2 text-left">Max ({unit})</th>
-            <th className="px-3 py-2 text-left">Base Fee (Rp)</th>
-            <th className="px-3 py-2 text-left">Step ({unit})</th>
-            <th className="px-3 py-2 text-left">Per Step (Rp)</th>
+            <th className="px-3 py-2 text-left">{t("pfShared.min")} ({unit})</th>
+            <th className="px-3 py-2 text-left">{t("pfShared.max")} ({unit})</th>
+            <th className="px-3 py-2 text-left">{t("pfShared.baseFeeRp")}</th>
+            <th className="px-3 py-2 text-left">{t("pfShared.step")} ({unit})</th>
+            <th className="px-3 py-2 text-left">{t("pfShared.perStepRp")}</th>
             <th className="px-3 py-2 w-10" />
           </tr>
         </thead>

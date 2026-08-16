@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calculator } from "lucide-react";
 import { Loader2 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import { listPricingSchemes } from "@/lib/pricing-store";
 import type { PricingScheme } from "@/lib/pricing-types";
 import { formatRupiah } from "@/lib/format";
@@ -60,6 +61,7 @@ export function RevenueShareCalc({
   effTo: string;
   percentToRider: string;
 }) {
+  const { t } = useT();
   const [schemes, setSchemes] = useState<PricingScheme[] | null>(null);
 
   useEffect(() => {
@@ -84,8 +86,8 @@ export function RevenueShareCalc({
   const header = (
     <div className="flex items-center gap-2 mb-3">
       <Calculator className="w-4 h-4 text-primary" />
-      <p className="text-xs font-semibold text-foreground">Kalkulator</p>
-      <span className="text-[10px] text-muted-foreground">(pakai skema Client yang aktif, bukan angka manual)</span>
+      <p className="text-xs font-semibold text-foreground">{t("pfRevShare.calculatorTitle")}</p>
+      <span className="text-[10px] text-muted-foreground">{t("pfRevShare.calculatorHint")}</span>
     </div>
   );
 
@@ -94,7 +96,7 @@ export function RevenueShareCalc({
       <div className="rounded-md border-2 border-border-strong bg-card shadow-[3px_3px_0_0_var(--color-border-strong)] px-4 py-3.5">
         {header}
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat skema…
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t("pfRevShare.loadingSchemes")}
         </p>
       </div>
     );
@@ -104,7 +106,7 @@ export function RevenueShareCalc({
     return (
       <div className="rounded-md border-2 border-border-strong bg-card shadow-[3px_3px_0_0_var(--color-border-strong)] px-4 py-3.5">
         {header}
-        <p className="text-xs text-muted-foreground">Pilih Client dulu di kolom sebelah kiri buat lihat revenue-nya.</p>
+        <p className="text-xs text-muted-foreground">{t("pfRevShare.selectClientFirst")}</p>
       </div>
     );
   }
@@ -113,10 +115,7 @@ export function RevenueShareCalc({
     return (
       <div className="rounded-md border-2 border-border-strong bg-card shadow-[3px_3px_0_0_var(--color-border-strong)] px-4 py-3.5">
         {header}
-        <p className="text-xs text-muted-foreground">
-          Belum ada skema Client (Per Pengiriman) yang aktif buat client & periode ini — bikin dulu skema Client-nya, atau cek
-          tanggal "Berlaku Dari/Sampai".
-        </p>
+        <p className="text-xs text-muted-foreground">{t("pfRevShare.noActiveClientScheme")}</p>
       </div>
     );
   }
@@ -132,7 +131,7 @@ export function RevenueShareCalc({
       {header}
 
       <p className="text-[11px] text-muted-foreground mb-2">
-        Skema Client dipakai: <span className="font-medium text-foreground">{clientScheme.name}</span>
+        {t("pfRevShare.clientSchemeUsed")} <span className="font-medium text-foreground">{clientScheme.name}</span>
       </p>
 
       <div className="mb-3.5">
@@ -148,7 +147,7 @@ export function RevenueShareCalc({
           </div>
         ))}
         <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-border-strong">
-          <span className="text-xs font-semibold">Revenue Client</span>
+          <span className="text-xs font-semibold">{t("pfRevShare.revenueClient")}</span>
           <span className="text-base font-bold text-primary tabular-nums">{formatRupiah(revenue)}</span>
         </div>
       </div>
@@ -161,19 +160,16 @@ export function RevenueShareCalc({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-3 py-2.5">
-          <div className="text-[10px] font-semibold uppercase tracking-wide opacity-90">Fee Rider · {pctRider}%</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wide opacity-90">{t("pfRevShare.feeRiderLabel")} · {pctRider}%</div>
           <div className="text-base font-bold tabular-nums mt-0.5">{formatRupiah(riderFee)}</div>
         </div>
         <div className="rounded-md border-2 border-border-strong bg-muted text-foreground px-3 py-2.5">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Margin · {pctMargin}%</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t("pfRevShare.marginLabel")} · {pctMargin}%</div>
           <div className="text-base font-bold tabular-nums mt-0.5">{formatRupiah(margin)}</div>
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground mt-3">
-        Ubah Jarak/Berat contoh di atas buat lihat revenue-nya berubah — angka ini murni preview, bukan angka final (fee beneran
-        tetap dihitung pas Hitung Fee dari data pengiriman asli).
-      </p>
+      <p className="text-[11px] text-muted-foreground mt-3">{t("pfRevShare.previewDisclaimer")}</p>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Download, Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import type { Run } from "@/components/finance-worksheet";
+import { useT } from "@/lib/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -51,6 +52,7 @@ type ClientRollup = {
 type NearlyDone = { riderName: string; typeName: string; paid: number; count: number };
 
 export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
+  const { t } = useT();
   const [loading, setLoading] = useState(false);
   const [clientId, setClientId] = useState("");
   const [riderRows, setRiderRows] = useState<RiderRow[]>([]);
@@ -298,60 +300,67 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
   return (
     <>
       <div className="rounded-lg border-2 border-border-strong bg-warning text-warning-foreground text-xs px-3.5 py-2.5 mb-4 leading-relaxed">
-        Metrik cash-flow — dipisahkan dari Margin/PNL. Angka di sini menunjukkan total potongan yang
-        ditahan dari rider (cicilan &amp; potongan lain), <b>bukan</b> komponen cost/revenue Dash.
+        {t("dedSummary.cashFlowNote1")}
+        <b>{t("dedSummary.cashFlowNoteBukan")}</b>
+        {t("dedSummary.cashFlowNote2")}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         <div className="rounded-lg border border-border p-3.5">
           <div className="text-[11.5px] text-muted-foreground font-medium">
-            Total Potongan Periode
+            {t("dedSummary.totalDeductionPeriod")}
           </div>
           <div className="text-xl font-bold mt-1">{rp(totals.total)}</div>
           <div className="text-[11.5px] text-muted-foreground/70 mt-0.5">
-            {filteredRiders.length} rider
+            {filteredRiders.length} {t("dedSummary.riderUnit")}
           </div>
         </div>
         <div className="rounded-lg border border-border p-3.5">
           <div className="text-[11.5px] text-muted-foreground font-medium">
-            Cicilan (Installment)
+            {t("dedSummary.installmentLabel")}
           </div>
           <div className="text-xl font-bold mt-1">{rp(totals.installment)}</div>
           <div className="text-[11.5px] text-muted-foreground/70 mt-0.5">
-            {totals.total ? Math.round((totals.installment / totals.total) * 100) : 0}% dari total
-          </div>
-        </div>
-        <div className="rounded-lg border border-border p-3.5">
-          <div className="text-[11.5px] text-muted-foreground font-medium">Auto-Recurring</div>
-          <div className="text-xl font-bold mt-1">{rp(totals.auto)}</div>
-          <div className="text-[11.5px] text-muted-foreground/70 mt-0.5">
-            {totals.total ? Math.round((totals.auto / totals.total) * 100) : 0}% dari total
+            {totals.total ? Math.round((totals.installment / totals.total) * 100) : 0}
+            {t("dedSummary.percentOfTotal")}
           </div>
         </div>
         <div className="rounded-lg border border-border p-3.5">
           <div className="text-[11.5px] text-muted-foreground font-medium">
-            Cicilan Lunas Periode Ini
+            {t("dedSummary.autoRecurringLabel")}
           </div>
-          <div className="text-xl font-bold mt-1">{paidOffCount} rider</div>
+          <div className="text-xl font-bold mt-1">{rp(totals.auto)}</div>
+          <div className="text-[11.5px] text-muted-foreground/70 mt-0.5">
+            {totals.total ? Math.round((totals.auto / totals.total) * 100) : 0}
+            {t("dedSummary.percentOfTotal")}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border p-3.5">
+          <div className="text-[11.5px] text-muted-foreground font-medium">
+            {t("dedSummary.installmentsClearedThisPeriod")}
+          </div>
+          <div className="text-xl font-bold mt-1">
+            {paidOffCount} {t("dedSummary.riderUnit")}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4 mb-5">
         <div>
-          <div className="text-[13px] font-bold mb-2">Per Client</div>
+          <div className="text-[13px] font-bold mb-2">{t("dedSummary.perClientHeading")}</div>
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="border-b border-border text-muted-foreground text-left">
-                <th className="py-1.5 px-2 font-semibold">Client</th>
-                <th className="py-1.5 px-2 font-semibold text-right">Rider</th>
-                <th className="py-1.5 px-2 font-semibold text-right">Total</th>
+                <th className="py-1.5 px-2 font-semibold">{t("dedSummary.colClient")}</th>
+                <th className="py-1.5 px-2 font-semibold text-right">{t("dedSummary.colRider")}</th>
+                <th className="py-1.5 px-2 font-semibold text-right">{t("dedSummary.colTotal")}</th>
               </tr>
             </thead>
             <tbody>
               {clientRollups.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="py-4 text-center text-muted-foreground">
-                    Tidak ada potongan
+                    {t("dedSummary.emptyNoDeductions")}
                   </td>
                 </tr>
               ) : (
@@ -368,37 +377,39 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
             </tbody>
           </table>
 
-          <div className="text-[13px] font-bold mt-4 mb-2">Per Jenis Potongan</div>
+          <div className="text-[13px] font-bold mt-4 mb-2">{t("dedSummary.perTypeHeading")}</div>
           <table className="w-full text-[13px] border-collapse">
             <thead>
               <tr className="border-b border-border text-muted-foreground text-left">
-                <th className="py-1.5 px-2 font-semibold">Jenis Potongan</th>
-                <th className="py-1.5 px-2 font-semibold">Tipe</th>
-                <th className="py-1.5 px-2 font-semibold text-right">Rider Terkena</th>
-                <th className="py-1.5 px-2 font-semibold text-right">Total</th>
+                <th className="py-1.5 px-2 font-semibold">{t("dedSummary.colDeductionType")}</th>
+                <th className="py-1.5 px-2 font-semibold">{t("dedSummary.colType")}</th>
+                <th className="py-1.5 px-2 font-semibold text-right">
+                  {t("dedSummary.colRiderAffected")}
+                </th>
+                <th className="py-1.5 px-2 font-semibold text-right">{t("dedSummary.colTotal")}</th>
               </tr>
             </thead>
             <tbody>
               {typeRollups.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-4 text-center text-muted-foreground">
-                    Tidak ada potongan
+                    {t("dedSummary.emptyNoDeductions")}
                   </td>
                 </tr>
               ) : (
-                typeRollups.map((t) => (
-                  <tr key={t.name} className="border-b border-border/50">
-                    <td className="py-1.5 px-2">{t.name}</td>
+                typeRollups.map((tr) => (
+                  <tr key={tr.name} className="border-b border-border/50">
+                    <td className="py-1.5 px-2">{tr.name}</td>
                     <td className="py-1.5 px-2 text-muted-foreground">
-                      {t.installment > 0 && t.auto > 0
-                        ? "Campuran"
-                        : t.installment > 0
-                          ? "Cicilan"
-                          : "Auto-recurring"}
+                      {tr.installment > 0 && tr.auto > 0
+                        ? t("dedSummary.typeMixed")
+                        : tr.installment > 0
+                          ? t("dedSummary.typeInstallment")
+                          : t("dedSummary.typeAutoRecurring")}
                     </td>
-                    <td className="py-1.5 px-2 text-right tabular-nums">{t.riderCount}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">{tr.riderCount}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums font-medium">
-                      {rp(t.total)}
+                      {rp(tr.total)}
                     </td>
                   </tr>
                 ))
@@ -408,9 +419,9 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
         </div>
 
         <div>
-          <div className="text-[13px] font-bold mb-2">Komposisi Total Potongan</div>
+          <div className="text-[13px] font-bold mb-2">{t("dedSummary.compositionHeading")}</div>
           {typeRollups.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Tidak ada data</p>
+            <p className="text-xs text-muted-foreground">{t("dedSummary.emptyNoData")}</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -432,11 +443,11 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
             </ResponsiveContainer>
           )}
 
-          <div className="text-[13px] font-bold mt-4 mb-2">Cicilan Mendekati Lunas</div>
+          <div className="text-[13px] font-bold mt-4 mb-2">{t("dedSummary.nearlyDoneHeading")}</div>
           <div className="rounded-lg border border-border overflow-hidden">
             {nearlyDone.length === 0 ? (
               <div className="px-2.5 py-3 text-[12.5px] text-muted-foreground text-center">
-                Tidak ada cicilan aktif
+                {t("dedSummary.emptyNoActiveInstallments")}
               </div>
             ) : (
               nearlyDone.map((n, i) => (
@@ -459,11 +470,11 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
 
       <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
         <div className="w-full sm:w-auto">
-          <label className="text-sm font-medium block mb-1">Filter Client</label>
+          <label className="text-sm font-medium block mb-1">{t("dedSummary.filterClientLabel")}</label>
           <ClientCombobox
             value={clientId}
             onChange={setClientId}
-            placeholder="— semua client —"
+            placeholder={t("dedSummary.allClientsPlaceholder")}
             className="w-full sm:w-[240px] text-sm py-2"
             options={clients}
           />
@@ -477,7 +488,7 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
             disabled={!filteredRiders.length}
             className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm disabled:opacity-50"
           >
-            <Download className="w-4 h-4" /> Export CSV
+            <Download className="w-4 h-4" /> {t("dedSummary.exportCsvButton")}
           </button>
         </div>
       </div>
@@ -486,15 +497,15 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
         <table className="w-full text-sm whitespace-nowrap">
           <thead className="bg-muted text-left">
             <tr>
-              <th className="p-2">Kode Mitra</th>
-              <th className="px-3">Nama</th>
-              <th className="px-3">Client</th>
-              {typeNames.map((t) => (
-                <th key={t} className="text-right px-3">
-                  {t}
+              <th className="p-2">{t("dedSummary.colPartnerCode")}</th>
+              <th className="px-3">{t("dedSummary.colName")}</th>
+              <th className="px-3">{t("dedSummary.colClient")}</th>
+              {typeNames.map((tn) => (
+                <th key={tn} className="text-right px-3">
+                  {tn}
                 </th>
               ))}
-              <th className="text-right px-3">Total</th>
+              <th className="text-right px-3">{t("dedSummary.colTotal")}</th>
             </tr>
           </thead>
           <tbody>
@@ -504,7 +515,7 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
                   colSpan={4 + typeNames.length}
                   className="p-6 text-center text-muted-foreground"
                 >
-                  Tidak ada potongan di periode/filter ini
+                  {t("dedSummary.emptyNoDeductionsFiltered")}
                 </td>
               </tr>
             ) : (
@@ -513,9 +524,9 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
                   <td className="p-2 font-mono text-xs">{r.employeeId}</td>
                   <td className="px-3 font-medium">{r.name}</td>
                   <td className="px-3 text-muted-foreground">{r.clientName}</td>
-                  {typeNames.map((t) => (
-                    <td key={t} className="text-right px-3 tabular-nums">
-                      {r.typeAmounts[t] ? rp(r.typeAmounts[t]) : "—"}
+                  {typeNames.map((tn) => (
+                    <td key={tn} className="text-right px-3 tabular-nums">
+                      {r.typeAmounts[tn] ? rp(r.typeAmounts[tn]) : "—"}
                     </td>
                   ))}
                   <td className="text-right px-3 font-semibold tabular-nums">{rp(r.total)}</td>
@@ -527,11 +538,11 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
             <tfoot className="bg-muted font-semibold">
               <tr>
                 <td className="p-2" colSpan={3}>
-                  TOTAL
+                  {t("dedSummary.footerTotal")}
                 </td>
-                {typeNames.map((t) => (
-                  <td key={t} className="text-right px-3 tabular-nums">
-                    {rp(typeRollups.find((r) => r.name === t)?.total ?? 0)}
+                {typeNames.map((tn) => (
+                  <td key={tn} className="text-right px-3 tabular-nums">
+                    {rp(typeRollups.find((r) => r.name === tn)?.total ?? 0)}
                   </td>
                 ))}
                 <td className="text-right px-3 tabular-nums">{rp(totals.total)}</td>
@@ -552,9 +563,15 @@ export function DeductionSummary({ runId, run }: { runId: string; run?: Run }) {
       )}
 
       <div className="text-[11px] text-muted-foreground mt-4 border-t border-border pt-2.5">
-        Sumber: agregat <code>payroll_deductions</code> × <code>report_summary_weekly</code> ×{" "}
-        <code>rider_installments</code>, per run/client — dipakai bersama Finance Worksheet, tidak
-        menyentuh <code>pnl-engine.ts</code>.
+        {t("dedSummary.sourceNotePrefix")}
+        <code>payroll_deductions</code>
+        {t("dedSummary.sourceNoteSeparator")}
+        <code>report_summary_weekly</code>
+        {t("dedSummary.sourceNoteSeparator")}
+        <code>rider_installments</code>
+        {t("dedSummary.sourceNoteMiddle")}
+        <code>pnl-engine.ts</code>
+        {t("dedSummary.sourceNoteSuffix")}
       </div>
     </>
   );

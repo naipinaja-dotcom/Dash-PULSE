@@ -10,9 +10,11 @@ import { toast } from "sonner";
 import { Loader2, Trash2, Pencil } from "lucide-react";
 import { ClientCombobox } from "@/components/client-combobox";
 import { DatePicker } from "@/components/date-picker";
+import { useT } from "@/lib/i18n";
 import type { Client, DType, Inst, Rider } from "./types";
 
 export function ActiveTab() {
+  const { t } = useT();
   const [rows, setRows] = useState<(Inst & { rider?: Rider; type?: DType; client?: Client })[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -100,10 +102,10 @@ export function ActiveTab() {
   // TIDAK menyentuh riwayat payroll_deductions yang sudah tercatat — cuma
   // proyeksi ke depan (potongan otomatis di run berikutnya).
   const saveEdit = async (r: Inst) => {
-    if (!ef.deduction_type_id) return toast.error("Lengkapi jenis potongan");
+    if (!ef.deduction_type_id) return toast.error(t("dedactive.fillTypeError"));
     if (ef.mode !== r.mode && r.installments_paid > 0) {
       return toast.error(
-        `Mode gak bisa diganti — cicilan ini udah kepotong ${r.installments_paid}× di mode lama.`,
+        `${t("dedactive.modeChangeErrorPrefix")} ${r.installments_paid}${t("dedactive.modeChangeErrorSuffix")}`,
       );
     }
     setSaving(true);
@@ -134,7 +136,7 @@ export function ActiveTab() {
       if (ef.installment_count < r.installments_paid) {
         setSaving(false);
         return toast.error(
-          `Jumlah cicilan gak boleh kurang dari yang sudah terbayar (${r.installments_paid}).`,
+          `${t("dedactive.installmentCountError")} (${r.installments_paid}).`,
         );
       }
       // per_period_amount buat cicilan SISA (bukan total_amount baru dibagi
@@ -148,7 +150,7 @@ export function ActiveTab() {
         if (remainingAmount > 0.5) {
           setSaving(false);
           return toast.error(
-            `Total baru gak konsisten — ${r.installments_paid}× udah lunas (Rp${alreadyPaid.toLocaleString("id-ID")}) tapi total barunya lebih tinggi dan gak nyisain cicilan lagi buat nutup selisihnya. Naikin jumlah cicilan atau turunin total.`,
+            `${t("dedactive.totalInconsistentPart1")} ${r.installments_paid}${t("dedactive.totalInconsistentAlreadyPaid")} (Rp${alreadyPaid.toLocaleString("id-ID")}) ${t("dedactive.totalInconsistentPart3")}`,
           );
         }
         update.per_period_amount = 0;
@@ -164,9 +166,7 @@ export function ActiveTab() {
     const { error } = await supabase.from("rider_installments").update(update).eq("id", r.id);
     setSaving(false);
     if (error) return toast.error(error.message);
-    toast.success(
-      "Cicilan diperbarui — perubahan ini cuma berlaku ke potongan berikutnya, riwayat yang sudah tercatat tidak berubah.",
-    );
+    toast.success(t("dedactive.updateSuccess"));
     setEditingId(null);
     load();
   };
@@ -187,10 +187,9 @@ export function ActiveTab() {
   const handleBulkDelete = async () => {
     if (
       !(await confirmDialog({
-        title: `Hapus ${bulk.count} cicilan?`,
-        description:
-          "Cicilan yang dicentang akan dihapus. Yang sudah pernah kepotong tetap aman di riwayat payroll, cuma berhenti & hilang dari daftar ini.",
-        confirmText: "Hapus",
+        title: `${t("dedactive.deleteConfirmTitlePrefix")} ${bulk.count} ${t("dedactive.bulkDeleteCountSuffix")}`,
+        description: t("dedactive.bulkDeleteDesc"),
+        confirmText: t("dedactive.deleteConfirmTitlePrefix"),
       }))
     )
       return;
@@ -198,7 +197,7 @@ export function ActiveTab() {
     const { error } = await supabase.from("rider_installments").delete().in("id", [...bulk.selected]);
     setBulkDeleting(false);
     if (error) return toast.error(error.message);
-    toast.success(`${bulk.count} cicilan dihapus`);
+    toast.success(`${bulk.count} ${t("dedactive.bulkDeletedSuffix")}`);
     bulk.clear();
     load();
   };
@@ -206,13 +205,13 @@ export function ActiveTab() {
   const remove = async (r: Inst & { rider?: Rider; type?: DType }) => {
     const paid = (r.installments_paid ?? 0) > 0;
     const desc = paid
-      ? `Milik ${r.rider?.full_name}.\n\nSudah terpotong ${r.installments_paid}× di payroll sebelumnya — potongan yang SUDAH tercatat tidak berubah, cicilan ini cuma berhenti & hilang dari daftar.`
-      : `Milik ${r.rider?.full_name}.\n\nBelum pernah kepotong, jadi aman dihapus.`;
+      ? `${t("dedactive.ownedByPrefix")} ${r.rider?.full_name}.\n\n${t("dedactive.deletePaidDesc")} ${r.installments_paid}${t("dedactive.deletePaidDescSuffix")}`
+      : `${t("dedactive.ownedByPrefix")} ${r.rider?.full_name}.\n\n${t("dedactive.deleteUnpaidDesc")}`;
     if (
       !(await confirmDialog({
-        title: `Hapus cicilan ${r.type?.name}?`,
+        title: `${t("dedactive.deleteSingleTitlePrefix")} ${r.type?.name}?`,
         description: desc,
-        confirmText: "Hapus",
+        confirmText: t("dedactive.deleteConfirmTitlePrefix"),
       }))
     )
       return;
@@ -220,7 +219,7 @@ export function ActiveTab() {
     const { error } = await supabase.from("rider_installments").delete().eq("id", r.id);
     setDeletingId(null);
     if (error) return toast.error(error.message);
-    toast.success("Cicilan dihapus");
+    toast.success(t("dedactive.deleteSingleSuccess"));
     load();
   };
 
@@ -231,7 +230,7 @@ export function ActiveTab() {
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <input
-          placeholder="Cari nama / kode rider…"
+          placeholder={t("dedactive.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm w-56 outline-none focus:ring-1 focus:ring-ring"
@@ -241,10 +240,10 @@ export function ActiveTab() {
           onChange={(e) => setTypeFilter(e.target.value)}
           className="rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
         >
-          <option value="">Semua jenis potongan</option>
-          {typeOptions.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
+          <option value="">{t("dedactive.allTypesOption")}</option>
+          {typeOptions.map((opt) => (
+            <option key={opt.id} value={opt.id}>
+              {opt.name}
             </option>
           ))}
         </select>
@@ -267,20 +266,20 @@ export function ActiveTab() {
                 />
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Rider
+                {t("dedactive.colRider")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Jenis
+                {t("dedactive.colType")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Mode / Tarif
+                {t("dedactive.colModeRate")}
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Progress
+                {t("dedactive.colProgress")}
               </th>
-              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">Pemberi Kasbon</th>
+              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">{t("dedactive.kasbonGiver")}</th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
-                Mulai
+                {t("dedactive.colStart")}
               </th>
               <th className="p-3"></th>
             </tr>
@@ -295,7 +294,7 @@ export function ActiveTab() {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-muted-foreground text-[11px]">
-                  Tidak ada cicilan aktif
+                  {t("dedactive.noActiveInstallments")}
                 </td>
               </tr>
             ) : (
@@ -336,35 +335,35 @@ export function ActiveTab() {
                       {r.type?.name}
                       {r.client && (
                         <span className="block text-[10px] font-medium text-primary">
-                          Prioritas: {r.client.name}
+                          {t("dedactive.priorityLabel")} {r.client.name}
                         </span>
                       )}
                     </td>
                     <td className="p-3 text-muted-foreground">
                       {r.mode === "daily" || r.mode === "monthly" ? (
                         <div className="space-y-0.5">
-                          <span>Rp{Number(r.daily_rate ?? 0).toLocaleString("id-ID")}/hari</span>
+                          <span>Rp{Number(r.daily_rate ?? 0).toLocaleString("id-ID")}{t("dedactive.perDay")}</span>
                           {r.mode === "monthly" && (
                             <span className="block text-[10px] font-medium text-muted-foreground">
-                              Potong per siklus tgl {r.cycle_start_day ?? 25}
+                              {t("dedactive.cyclePrefix")} {r.cycle_start_day ?? 25}
                             </span>
                           )}
                           {r.charge_target === "client_revenue" && (
                             <span className="block text-[10px] font-medium text-primary">
-                              Ditanggung Revenue Client
+                              {t("dedactive.chargedToClientRevenue")}
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span>Rp{Number(r.per_period_amount ?? 0).toLocaleString("id-ID")}/periode</span>
+                        <span>Rp{Number(r.per_period_amount ?? 0).toLocaleString("id-ID")}{t("dedactive.perPeriod")}</span>
                       )}
                     </td>
                     <td className="p-3">
-                      {r.type?.code === "KASBON" ? (recipients.find((x) => x.id === (r as any).kasbon_recipient_id)?.name ?? <span className="text-warning text-[11px]">Belum dipetakan</span>) : <span className="text-muted-foreground">—</span>}
+                      {r.type?.code === "KASBON" ? (recipients.find((x) => x.id === (r as any).kasbon_recipient_id)?.name ?? <span className="text-warning text-[11px]">{t("dedactive.notMapped")}</span>) : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="p-3 text-muted-foreground">
                       {r.mode === "daily" || r.mode === "monthly" ? (
-                        <span className="text-[10px] uppercase tracking-wide">Ongoing</span>
+                        <span className="text-[10px] uppercase tracking-wide">{t("dedactive.ongoing")}</span>
                       ) : (
                         `${r.installments_paid}/${r.installment_count}`
                       )}
@@ -374,7 +373,7 @@ export function ActiveTab() {
                       <button
                         onClick={() => startEdit(r)}
                         className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-primary transition-colors"
-                        title="Edit cicilan"
+                        title={t("dedactive.editTooltip")}
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -382,7 +381,7 @@ export function ActiveTab() {
                         onClick={() => remove(r)}
                         disabled={deletingId === r.id}
                         className="p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-md disabled:opacity-50 transition-colors"
-                        title="Hapus cicilan"
+                        title={t("dedactive.deleteTooltip")}
                       >
                         {deletingId === r.id ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -398,7 +397,7 @@ export function ActiveTab() {
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 items-end text-sm">
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
-                              Jenis
+                              {t("dedactive.colType")}
                             </label>
                             <select
                               value={ef.deduction_type_id}
@@ -407,62 +406,62 @@ export function ActiveTab() {
                             >
                               {/* Jenis yang lagi kepake tapi udah nonaktif/gak-bisa-dicicil tetep
                                 ditampilin (biar select-nya gak diam-diam kosong), taruh di atas. */}
-                              {r.type && !types.some((t) => t.id === r.deduction_type_id) && (
-                                <option value={r.type.id}>{r.type.name} (nonaktif)</option>
+                              {r.type && !types.some((tp) => tp.id === r.deduction_type_id) && (
+                                <option value={r.type.id}>{r.type.name} ({t("dedactive.inactiveSuffix")})</option>
                               )}
-                              {types.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name}
+                              {types.map((tp) => (
+                                <option key={tp.id} value={tp.id}>
+                                  {tp.name}
                                 </option>
                               ))}
                             </select>
                           </div>
                           {r.type?.code === "KASBON" && (
                             <div>
-                              <label className="text-xs font-medium text-muted-foreground">Pemberi Kasbon</label>
+                              <label className="text-xs font-medium text-muted-foreground">{t("dedactive.kasbonGiver")}</label>
                               <select value={(ef as any).kasbon_recipient_id} onChange={(e) => setEf({ ...ef, kasbon_recipient_id: e.target.value } as any)} className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring">
-                                <option value="">— belum dipetakan —</option>
+                                <option value="">{t("dedactive.kasbonUnmappedOption")}</option>
                                 {recipients.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.bank_name} · {x.account_number}</option>)}
                               </select>
                             </div>
                           )}
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
-                              Client Prioritas
+                              {t("dedactive.clientPriorityLabel")}
                             </label>
                             <ClientCombobox
                               value={ef.client_id}
                               onChange={(v) => setEf({ ...ef, client_id: v })}
-                              placeholder="— pakai client rumah rider —"
+                              placeholder={t("dedactive.useRiderHomeClient")}
                               className="mt-1 w-full text-sm py-1.5"
                               options={clients.map((c) => ({ value: c.id, label: c.name }))}
                             />
                           </div>
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
-                              Mode
+                              {t("dedactive.modeLabel")}
                             </label>
                             <select
                               value={ef.mode}
                               disabled={r.installments_paid > 0}
                               title={
                                 r.installments_paid > 0
-                                  ? `Gak bisa diganti — udah kepotong ${r.installments_paid}×`
+                                  ? `${t("dedactive.modeLockedPrefix")} ${r.installments_paid}×`
                                   : undefined
                               }
                               onChange={(e) => setEf({ ...ef, mode: e.target.value as "fixed" | "daily" | "monthly" })}
                               className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
                             >
-                              <option value="fixed">Cicilan (fixed)</option>
-                              <option value="daily">Sewa harian (daily)</option>
-                              <option value="monthly">Sewa bulanan (monthly)</option>
+                              <option value="fixed">{t("dedactive.modeFixedOption")}</option>
+                              <option value="daily">{t("dedactive.modeDailyOption")}</option>
+                              <option value="monthly">{t("dedactive.modeMonthlyOption")}</option>
                             </select>
                           </div>
                           {ef.mode === "daily" || ef.mode === "monthly" ? (
                             <>
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">
-                                  Tarif per Hari (Rp)
+                                  {t("dedactive.dailyRateLabel")}
                                 </label>
                                 <input
                                   inputMode="numeric"
@@ -474,7 +473,7 @@ export function ActiveTab() {
                               {ef.mode === "monthly" && (
                                 <div>
                                   <label className="text-xs font-medium text-muted-foreground">
-                                    Tgl Mulai Siklus
+                                    {t("dedactive.cycleStartLabel")}
                                   </label>
                                   <input
                                     type="number"
@@ -490,7 +489,7 @@ export function ActiveTab() {
                               )}
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">
-                                  Ditanggung
+                                  {t("dedactive.chargeTargetLabel")}
                                 </label>
                                 <select
                                   value={ef.charge_target}
@@ -499,8 +498,8 @@ export function ActiveTab() {
                                   }
                                   className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                 >
-                                  <option value="rider">Rider (net pay)</option>
-                                  <option value="client_revenue">Revenue Client</option>
+                                  <option value="rider">{t("dedactive.chargeRiderOption")}</option>
+                                  <option value="client_revenue">{t("dedactive.clientRevenueOption")}</option>
                                 </select>
                               </div>
                             </>
@@ -508,7 +507,7 @@ export function ActiveTab() {
                             <>
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">
-                                  Total (Rp)
+                                  {t("dedactive.totalAmountLabel")}
                                 </label>
                                 <input
                                   inputMode="numeric"
@@ -521,7 +520,7 @@ export function ActiveTab() {
                               </div>
                               <div>
                                 <label className="text-xs font-medium text-muted-foreground">
-                                  Jumlah Cicilan
+                                  {t("dedactive.installmentCountLabel")}
                                 </label>
                                 <input
                                   type="number"
@@ -531,7 +530,7 @@ export function ActiveTab() {
                                   className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                                 />
                                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                                  Per periode: Rp
+                                  {t("dedactive.perPeriodPrefix")} Rp
                                   {(ef.total_amount / Math.max(1, ef.installment_count)).toLocaleString(
                                     "id-ID",
                                   )}
@@ -541,7 +540,7 @@ export function ActiveTab() {
                           )}
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
-                              Potong Berikutnya
+                              {t("dedactive.nextDeductionLabel")}
                             </label>
                             <DatePicker
                               value={ef.next_deduction_date}
@@ -551,7 +550,7 @@ export function ActiveTab() {
                           </div>
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">
-                              Catatan
+                              {t("dedactive.notesLabel")}
                             </label>
                             <input
                               value={ef.notes}
@@ -565,14 +564,14 @@ export function ActiveTab() {
                             onClick={() => setEditingId(null)}
                             className="rounded-md border-2 border-border-strong bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted"
                           >
-                            Batal
+                            {t("dedactive.cancelBtn")}
                           </button>
                           <button
                             onClick={() => saveEdit(r)}
                             disabled={saving}
                             className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm disabled:opacity-50"
                           >
-                            {saving ? "Menyimpan…" : "Simpan"}
+                            {saving ? t("dedactive.savingLabel") : t("dedactive.saveBtn")}
                           </button>
                         </div>
                       </td>
@@ -596,7 +595,7 @@ export function ActiveTab() {
       )}
       <BulkActionBar
         count={bulk.count}
-        label="cicilan"
+        label={t("dedactive.bulkLabel")}
         deleting={bulkDeleting}
         onDelete={handleBulkDelete}
         onClear={bulk.clear}

@@ -1,10 +1,19 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/lib/i18n";
 
 type Client = { id: string; name: string };
 type Rider = { id: string; full_name: string; employee_id: string };
 
-const WEEKDAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const WEEKDAY_KEYS = [
+  "reminderModal.weekdaySunday",
+  "reminderModal.weekdayMonday",
+  "reminderModal.weekdayTuesday",
+  "reminderModal.weekdayWednesday",
+  "reminderModal.weekdayThursday",
+  "reminderModal.weekdayFriday",
+  "reminderModal.weekdaySaturday",
+] as const;
 
 export type ScheduleRow = {
   label: string;
@@ -29,6 +38,8 @@ export function ScheduleFormModal({
   onClose: () => void;
   onSave: (rows: ScheduleRow[]) => void;
 }) {
+  const { t } = useT();
+  const dayName = (d: number) => t(WEEKDAY_KEYS[d]);
   const [label, setLabel] = useState("");
   const [clientIds, setClientIds] = useState<string[]>([]);
   const [riderIds, setRiderIds] = useState<string[]>([]);
@@ -58,10 +69,10 @@ export function ScheduleFormModal({
   // client/rider sekaligus di sini cuma bikin banyak baris identik dalam
   // 1x submit, biar ga perlu buka form berkali-kali buat tiap client.
   const submit = () => {
-    if (!label.trim()) return toast.error("Label wajib diisi");
+    if (!label.trim()) return toast.error(t("reminderModal.labelRequired"));
     if (clientIds.length === 0 && riderIds.length === 0)
-      return toast.error("Pilih minimal 1 client atau rider");
-    if (weekdays.length === 0) return toast.error("Pilih minimal 1 hari");
+      return toast.error(t("reminderModal.pickAtLeastOneClientOrRider"));
+    if (weekdays.length === 0) return toast.error(t("reminderModal.pickAtLeastOneDay"));
     const period = periodOn
       ? { period_start_weekday: periodStartWeekday, period_end_weekday: periodEndWeekday, close_same_day: closeSameDay }
       : { period_start_weekday: null, period_end_weekday: null, close_same_day: false };
@@ -79,41 +90,40 @@ export function ScheduleFormModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="reminder-modal-header">
-          <span data-eyebrow>Disbursement / reminder</span>
-          <h2>Jadwal Reminder Baru</h2>
-          <p>Susun pengingat untuk batch pembayaran agar tim ops tahu siapa yang perlu ditindaklanjuti.</p>
+          <span data-eyebrow>{t("reminderModal.eyebrow")}</span>
+          <h2>{t("reminderModal.heading")}</h2>
+          <p>{t("reminderModal.headingDescription")}</p>
           <span className="reminder-modal-number" aria-hidden="true">01</span>
         </div>
         <div className="reminder-modal-body space-y-4 text-sm">
           <div className="reminder-field">
-            <label className="font-medium">Nama batch</label>
+            <label className="font-medium">{t("reminderModal.batchNameLabel")}</label>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="mis. Batch Senin & Kamis"
+              placeholder={t("reminderModal.batchNamePlaceholder")}
               className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Dipakai buat semua client/rider yang dipilih di bawah — kalau mau label beda per
-              client, submit terpisah.
+              {t("reminderModal.batchNameHint")}
             </p>
           </div>
           <div className="reminder-field reminder-picker">
             <label className="font-medium">
-              Client{" "}
+              {t("reminderModal.clientLabel")}{" "}
               <span className="font-normal text-muted-foreground">
-                (bisa pilih lebih dari satu)
+                {t("reminderModal.multiSelectHint")}
               </span>
             </label>
             <input
               value={clientSearch}
               onChange={(e) => setClientSearch(e.target.value)}
-              placeholder="Cari client…"
+              placeholder={t("reminderModal.searchClientPlaceholder")}
               className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
             />
             <div className="mt-1 max-h-32 overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
               {visibleClients.length === 0 ? (
-                <p className="p-2 text-xs text-muted-foreground">Tidak ada match</p>
+                <p className="p-2 text-xs text-muted-foreground">{t("reminderModal.noMatch")}</p>
               ) : (
                 visibleClients.map((c) => (
                   <label
@@ -132,30 +142,32 @@ export function ScheduleFormModal({
             </div>
             {clientIds.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                <span className="reminder-selection-chip">{clientIds.length} client dipilih</span>
+                <span className="reminder-selection-chip">
+                  {clientIds.length} {t("reminderModal.clientsSelected")}
+                </span>
               </p>
             )}
           </div>
           <div className="reminder-field reminder-picker">
             <label className="font-medium">
-              Rider{" "}
+              {t("reminderModal.riderLabel")}{" "}
               <span className="font-normal text-muted-foreground">
-                (opsional — buat reminder khusus rider tertentu, bisa pilih lebih dari satu)
+                {t("reminderModal.riderOptionalHint")}
               </span>
             </label>
             <input
               value={riderSearch}
               onChange={(e) => setRiderSearch(e.target.value)}
-              placeholder="Cari nama / kode rider…"
+              placeholder={t("reminderModal.searchRiderPlaceholder")}
               className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
             />
             <div className="mt-1 max-h-32 overflow-y-auto rounded-md border-2 border-border-strong divide-y divide-border">
               {riderSearch.trim() === "" ? (
                 <p className="p-2 text-xs text-muted-foreground">
-                  Ketik buat cari rider ({riders.length} total)
+                  {t("reminderModal.typeToSearchRiders")} ({riders.length} {t("reminderModal.total")})
                 </p>
               ) : visibleRiders.length === 0 ? (
-                <p className="p-2 text-xs text-muted-foreground">Tidak ada match</p>
+                <p className="p-2 text-xs text-muted-foreground">{t("reminderModal.noMatch")}</p>
               ) : (
                 visibleRiders.slice(0, 50).map((r) => (
                   <label
@@ -173,21 +185,25 @@ export function ScheduleFormModal({
               )}
             </div>
             {riderIds.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1"><span className="reminder-selection-chip">{riderIds.length} rider dipilih</span></p>
+              <p className="text-xs text-muted-foreground mt-1">
+                <span className="reminder-selection-chip">
+                  {riderIds.length} {t("reminderModal.ridersSelected")}
+                </span>
+              </p>
             )}
           </div>
           <div className="reminder-field reminder-weekdays">
-            <label className="font-medium">Hari kirim reminder</label>
-            <p className="text-xs text-muted-foreground mt-0.5">Pilih hari ketika pengingat harus muncul ke tim.</p>
+            <label className="font-medium">{t("reminderModal.sendDaysLabel")}</label>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("reminderModal.sendDaysHint")}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {WEEKDAYS.map((name, d) => (
+              {WEEKDAY_KEYS.map((_, d) => (
                 <button
                   key={d}
                   type="button"
                   onClick={() => toggleDay(d)}
                   className={`reminder-weekday px-2.5 py-1 rounded text-xs border-2 ${weekdays.includes(d) ? "bg-primary text-primary-foreground border-border-strong" : "border-border-strong"}`}
                 >
-                  {name}
+                  {dayName(d)}
                 </button>
               ))}
             </div>
@@ -196,12 +212,10 @@ export function ScheduleFormModal({
             <div className="reminder-period-panel rounded-md border-2 border-border-strong p-3">
               <label className="flex items-center gap-2 font-medium cursor-pointer">
                 <input type="checkbox" checked={periodOn} onChange={(e) => setPeriodOn(e.target.checked)} />
-                Periode perhitungan payroll custom
+                {t("reminderModal.customPeriodLabel")}
               </label>
               <p className="text-xs text-muted-foreground mt-1">
-                Kosongin kalau client ini mingguan Senin–Minggu biasa. Isi kalau siklusnya beda (mis.
-                Selasa–Kamis) — client dengan 2x gajian seminggu tinggal bikin 2 jadwal terpisah dengan
-                periode masing-masing (contoh Wicked Pies: Selasa–Kamis & Jumat–Senin).
+                {t("reminderModal.customPeriodHint")}
               </p>
               {periodOn && (
                 <div className="mt-2 flex items-center gap-2 text-xs">
@@ -210,18 +224,18 @@ export function ScheduleFormModal({
                     onChange={(e) => setPeriodStartWeekday(Number(e.target.value))}
                     className="rounded-md border-2 border-border-strong bg-background px-2 py-1.5 outline-none focus:ring-1 focus:ring-ring"
                   >
-                    {WEEKDAYS.map((name, d) => (
-                      <option key={d} value={d}>{name}</option>
+                    {WEEKDAY_KEYS.map((_, d) => (
+                      <option key={d} value={d}>{dayName(d)}</option>
                     ))}
                   </select>
-                  <span className="text-muted-foreground">sampai</span>
+                  <span className="text-muted-foreground">{t("reminderModal.periodUntil")}</span>
                   <select
                     value={periodEndWeekday}
                     onChange={(e) => setPeriodEndWeekday(Number(e.target.value))}
                     className="rounded-md border-2 border-border-strong bg-background px-2 py-1.5 outline-none focus:ring-1 focus:ring-ring"
                   >
-                    {WEEKDAYS.map((name, d) => (
-                      <option key={d} value={d}>{name}</option>
+                    {WEEKDAY_KEYS.map((_, d) => (
+                      <option key={d} value={d}>{dayName(d)}</option>
                     ))}
                   </select>
                 </div>
@@ -235,11 +249,10 @@ export function ScheduleFormModal({
                     className="mt-0.5"
                   />
                   <span className="text-xs">
-                    <span className="font-medium">Tutup di hari yang sama</span>{" "}
+                    <span className="font-medium">{t("reminderModal.closeSameDayLabel")}</span>{" "}
                     <span className="text-muted-foreground">
-                      — dihitung PAS di hari terakhir periode ({WEEKDAYS[periodEndWeekday]}), bukan besoknya.
-                      Cuma aman kalau ada cutoff operasional reliable (mis. semua kiriman hari itu udah
-                      pasti selesai jam 17:00 WIB, sama jamnya kayak cron sore). Kalau ragu, biarin OFF.
+                      — {t("reminderModal.closeSameDayHintPrefix")} ({dayName(periodEndWeekday)}){" "}
+                      {t("reminderModal.closeSameDayHintSuffix")}
                     </span>
                   </span>
                 </label>
@@ -249,7 +262,7 @@ export function ScheduleFormModal({
         </div>
         <div className="reminder-modal-footer flex justify-end gap-2">
           <button onClick={onClose} className="reminder-cancel-button px-3 py-1.5 text-sm rounded border-2 border-border-strong">
-            Batal
+            {t("reminderModal.cancel")}
           </button>
           <button
             onClick={submit}
@@ -257,8 +270,8 @@ export function ScheduleFormModal({
             className="reminder-save-button px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground disabled:opacity-50"
           >
             {saving
-              ? "Menyimpan…"
-              : `Simpan${clientIds.length + riderIds.length > 1 ? ` (${clientIds.length + riderIds.length} jadwal)` : ""}`}
+              ? t("reminderModal.saving")
+              : `${t("reminderModal.save")}${clientIds.length + riderIds.length > 1 ? ` (${clientIds.length + riderIds.length} ${t("reminderModal.schedulesCount")})` : ""}`}
           </button>
         </div>
       </div>

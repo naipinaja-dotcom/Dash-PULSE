@@ -12,6 +12,7 @@
 // ke-upgrade ke format modular_v2 (lihat `loadModularDeliveryState` di bawah
 // buat konversi baca, `buildModularDeliveryConfig` buat konversi tulis).
 import { useState } from "react";
+import { useT } from "@/lib/i18n";
 import type {
   DeliveryDimensions,
   PricingCalcType,
@@ -335,6 +336,7 @@ function RangeTableEditor({
   onChange: (rows: RangeRowState[]) => void;
   unit: "km" | "kg";
 }) {
+  const { t } = useT();
   const patchRow = (i: number, p: Partial<RangeRowState>) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
   const delRow = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
@@ -378,12 +380,12 @@ function RangeTableEditor({
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted">
-            <th className="px-3 py-2 text-left">Variant</th>
-            <th className="px-3 py-2 text-left">From ({unit})</th>
-            <th className="px-3 py-2 text-left">To ({unit})</th>
-            <th className="px-3 py-2 text-left">Base (Rp)</th>
-            <th className="px-3 py-2 text-left">Step ({unit})</th>
-            <th className="px-3 py-2 text-left">+Rp/Step</th>
+            <th className="px-3 py-2 text-left">{t("pfDelivery.colVariant")}</th>
+            <th className="px-3 py-2 text-left">{t("pfDelivery.colFrom")} ({unit})</th>
+            <th className="px-3 py-2 text-left">{t("pfDelivery.colTo")} ({unit})</th>
+            <th className="px-3 py-2 text-left">{t("pfDelivery.colBaseRp")}</th>
+            <th className="px-3 py-2 text-left">{t("pfDelivery.colStep")} ({unit})</th>
+            <th className="px-3 py-2 text-left">{t("pfDelivery.colAddPerStep")}</th>
             <th className="px-3 py-2 w-10" />
           </tr>
         </thead>
@@ -391,7 +393,7 @@ function RangeTableEditor({
           {rows.length === 0 ? (
             <tr>
               <td colSpan={7} className="px-3 py-4 text-center text-xs text-muted-foreground">
-                Belum ada baris. Tambah Flat atau Tier di bawah.
+                {t("pfDelivery.emptyRows")}
               </td>
             </tr>
           ) : (
@@ -404,7 +406,7 @@ function RangeTableEditor({
                       (r.type === "flat" ? "border-2 border-border-strong bg-primary text-primary-foreground" : "border-2 border-border-strong bg-warning text-warning-foreground")
                     }
                   >
-                    {r.type === "flat" ? "Flat" : "Tier"}
+                    {r.type === "flat" ? t("pfDelivery.typeFlat") : t("pfDelivery.typeTier")}
                   </span>
                 </td>
                 <td className="px-3 py-1.5">
@@ -414,7 +416,7 @@ function RangeTableEditor({
                   <input
                     className={inputCls}
                     value={r.to}
-                    placeholder="∞"
+                    placeholder={t("pfDelivery.toPlaceholder")}
                     inputMode="decimal"
                     onChange={(e) => patchRow(i, { to: sanitizeDecimalInput(e.target.value) })}
                   />
@@ -468,15 +470,15 @@ function RangeTableEditor({
           onClick={() => addRow("flat")}
           className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors"
         >
-          <Plus className="w-3.5 h-3.5" /> Add Flat
+          <Plus className="w-3.5 h-3.5" /> {t("pfDelivery.addFlat")}
         </button>
-        <span className="text-[11px] text-muted-foreground">OR</span>
+        <span className="text-[11px] text-muted-foreground">{t("pfDelivery.or")}</span>
         <button
           type="button"
           onClick={() => addRow("tier")}
           className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors"
         >
-          <Plus className="w-3.5 h-3.5" /> Add Tier
+          <Plus className="w-3.5 h-3.5" /> {t("pfDelivery.addTier")}
         </button>
       </div>
     </div>
@@ -484,9 +486,14 @@ function RangeTableEditor({
 }
 
 function AccumulateToggle({ value, onChange }: { value: "per_order" | "daily"; onChange: (v: "per_order" | "daily") => void }) {
+  const { t } = useT();
+  const options = [
+    { k: "per_order" as const, l: t("pfDelivery.perOrder") },
+    { k: "daily" as const, l: t("pfDelivery.dailyAccum") },
+  ];
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {([{ k: "per_order", l: "Per Kiriman" }, { k: "daily", l: "Akumulasi Harian" }] as const).map((opt) => (
+      {options.map((opt) => (
         <button
           key={opt.k}
           type="button"
@@ -506,15 +513,16 @@ function AccumulateToggle({ value, onChange }: { value: "per_order" | "daily"; o
 }
 
 function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState; onChange: (v: ThresholdGroupState) => void }) {
+  const { t } = useT();
   const patch = (p: Partial<ThresholdGroupState>) => onChange({ ...value, ...p });
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Qty dibaca dari berat aktual (kg), dikelompokkan per store/area. Fee per grup = ceil(total kg / threshold) × rate.
+        {t("pfDelivery.thresholdGroupHint")}
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="flex flex-col gap-1.5">
-          <FieldLabel>Kolom pengelompokan</FieldLabel>
+          <FieldLabel>{t("pfDelivery.groupByColumn")}</FieldLabel>
           <select
             value={value.group_by}
             onChange={(e) => patch({ group_by: e.target.value })}
@@ -526,7 +534,7 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
           </select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <FieldLabel>Default Threshold (kg)</FieldLabel>
+          <FieldLabel>{t("pfDelivery.defaultThresholdKg")}</FieldLabel>
           <TextInput
             value={value.default_threshold}
             inputMode="decimal"
@@ -534,14 +542,14 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <FieldLabel>Default Rate (Rp)</FieldLabel>
+          <FieldLabel>{t("pfDelivery.defaultRateRp")}</FieldLabel>
           <RupiahInput value={value.default_rate} onChange={(v) => patch({ default_rate: v })} />
         </div>
       </div>
       <TableShell head={<>
-        <Th>Area / Store</Th>
-        <Th className="w-32">Threshold (kg)</Th>
-        <Th className="w-44">Rate (Rp)</Th>
+        <Th>{t("pfDelivery.colAreaStore")}</Th>
+        <Th className="w-32">{t("pfDelivery.colThresholdKg")}</Th>
+        <Th className="w-44">{t("pfDelivery.colRateRp")}</Th>
         <Th className="w-10" />
       </>}>
         {value.rules.map((r, i) => (
@@ -574,7 +582,7 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
         ))}
       </TableShell>
       <AddRowBtn onClick={() => patch({ rules: [...value.rules, { key: "", threshold: "", rate: "" }] })}>
-        Tambah Store
+        {t("pfDelivery.addStore")}
       </AddRowBtn>
     </div>
   );
@@ -590,6 +598,7 @@ export function DeliveryFields({
   value: ModularDeliveryState;
   onChange: (v: ModularDeliveryState) => void;
 }) {
+  const { t } = useT();
   const dims = subtype || { distance: false, weight: false };
   const noDims = !dims.distance && !dims.weight;
   // Kalau Distance/Weight dua-duanya OFF, panel di bawah ("Pengaturan lain")
@@ -607,8 +616,7 @@ export function DeliveryFields({
     <div className="space-y-5">
       {noDims && (
         <p className="text-xs text-muted-foreground">
-          Distance/Weight gak dipilih — skema ini flat per kiriman, atur tarifnya di "Pengaturan lain" di bawah
-          (mis. dibedain per Antar/Kembali atau per Area).
+          {t("pfDelivery.noDimsHint")}
         </p>
       )}
       {dims.distance && (
@@ -616,26 +624,26 @@ export function DeliveryFields({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Ruler className="w-3.5 h-3.5 text-primary" />
-              <span className="text-sm font-semibold">Distance</span>
+              <span className="text-sm font-semibold">{t("pfDelivery.distanceLabel")}</span>
             </div>
             <AccumulateToggle value={value.distance.accumulate} onChange={(v) => patchDistance({ accumulate: v })} />
           </div>
           {value.distance.accumulate === "daily" && (
             <div className="rounded-md border-2 border-border-strong bg-warning text-warning-foreground px-3.5 py-2.5 text-xs">
-              Akumulasi harian: jarak semua kiriman 1 rider dalam 1 hari dijumlah dulu, baru dicocokkan ke band.
+              {t("pfDelivery.dailyHintDistance")}
             </div>
           )}
           <RangeTableEditor rows={value.distance.rows} onChange={(rows) => patchDistance({ rows })} unit="km" />
 
           <ToggleBlock
-            label="Surcharge Berat → Distance"
-            hint="Berat lewat batas → fee Distance dikali N. Weight (kalau aktif) tetap dihitung normal, gak ikut kali."
+            label={t("pfDelivery.surchargeLabel")}
+            hint={t("pfDelivery.surchargeHint")}
             on={value.weight_surcharge.enabled}
             onToggle={(on) => patchWeightSurcharge({ enabled: on })}
           >
             <div className="grid grid-cols-2 gap-3 max-w-sm">
               <div className="flex flex-col gap-1.5">
-                <FieldLabel>Batas Berat (kg)</FieldLabel>
+                <FieldLabel>{t("pfDelivery.weightLimitKg")}</FieldLabel>
                 <TextInput
                   value={value.weight_surcharge.threshold_kg}
                   inputMode="decimal"
@@ -643,7 +651,7 @@ export function DeliveryFields({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <FieldLabel>Kali (mis. 2 = 2×)</FieldLabel>
+                <FieldLabel>{t("pfDelivery.multiplierHint")}</FieldLabel>
                 <TextInput
                   value={value.weight_surcharge.multiplier}
                   inputMode="decimal"
@@ -660,10 +668,10 @@ export function DeliveryFields({
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-1.5">
               <Package className="w-3.5 h-3.5 text-primary" />
-              <span className="text-sm font-semibold">Weight</span>
+              <span className="text-sm font-semibold">{t("pfDelivery.weightLabel")}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {([{ k: "range", l: "Range (Flat/Tier)" }, { k: "threshold_group", l: "Kelipatan per Store" }] as const).map(
+              {([{ k: "range" as const, l: t("pfDelivery.modeRange") }, { k: "threshold_group" as const, l: t("pfDelivery.modeThresholdGroup") }]).map(
                 (opt) => (
                   <button
                     key={opt.k}
@@ -690,7 +698,7 @@ export function DeliveryFields({
               </div>
               {value.weight.accumulate === "daily" && (
                 <div className="rounded-md border-2 border-border-strong bg-warning text-warning-foreground px-3.5 py-2.5 text-xs">
-                  Akumulasi harian: berat semua kiriman 1 rider dalam 1 hari dijumlah dulu, baru dicocokkan ke band.
+                  {t("pfDelivery.dailyHintWeight")}
                 </div>
               )}
               <RangeTableEditor rows={value.weight.rows} onChange={(rows) => patchWeight({ rows })} unit="kg" />
@@ -708,33 +716,33 @@ export function DeliveryFields({
           onClick={() => setRateOpen((o) => !o)}
           className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
         >
-          Pengaturan lain (unit & rate untuk baris Flat)
-          <span className="text-[11px]">{rateOpen ? "Tutup ▲" : "Buka ▼"}</span>
+          {t("pfDelivery.otherSettingsToggle")}
+          <span className="text-[11px]">{rateOpen ? t("pfDelivery.close") : t("pfDelivery.open")}</span>
         </button>
         {rateOpen && (
           <div className="px-3.5 pb-3.5 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <FieldLabel>Unit dihitung (dedup & stop count)</FieldLabel>
+                <FieldLabel>{t("pfDelivery.unitBasisLabel")}</FieldLabel>
                 <select
                   value={value.unit_basis}
                   onChange={(e) => onChange({ ...value, unit_basis: e.target.value as "awb" | "unique_address" })}
                   className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                 >
-                  <option value="awb">Per kiriman (AWB)</option>
-                  <option value="unique_address">Per alamat unik</option>
+                  <option value="awb">{t("pfDelivery.unitAwb")}</option>
+                  <option value="unique_address">{t("pfDelivery.unitUniqueAddress")}</option>
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <FieldLabel>Rate baris Flat ditentukan dari</FieldLabel>
+                <FieldLabel>{t("pfDelivery.rateByLabel")}</FieldLabel>
                 <select
                   value={value.rate_by}
                   onChange={(e) => onChange({ ...value, rate_by: e.target.value as "flat" | "column" | "delivery_type" })}
                   className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                 >
-                  <option value="flat">Flat (base_fee band, tanpa override)</option>
-                  <option value="column">Beda per kolom (mis. Area)</option>
-                  <option value="delivery_type">Antar / Kembali</option>
+                  <option value="flat">{t("pfDelivery.rateByFlat")}</option>
+                  <option value="column">{t("pfDelivery.rateByColumn")}</option>
+                  <option value="delivery_type">{t("pfDelivery.rateByDeliveryType")}</option>
                 </select>
               </div>
             </div>
@@ -743,21 +751,21 @@ export function DeliveryFields({
               <>
                 {value.rate_by === "column" && (
                   <div className="flex flex-col gap-1.5 max-w-xs">
-                    <FieldLabel>Nama Kolom</FieldLabel>
+                    <FieldLabel>{t("pfDelivery.columnNameLabel")}</FieldLabel>
                     <select
                       value={value.match_column}
                       onChange={(e) => onChange({ ...value, match_column: e.target.value })}
                       className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                     >
                       {MATCH_COLUMN_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt === "Area" ? "Area / Kota (District)" : "Tipe Layanan (Service Type)"}</option>
+                        <option key={opt} value={opt}>{opt === "Area" ? t("pfDelivery.columnArea") : t("pfDelivery.columnServiceType")}</option>
                       ))}
                     </select>
                   </div>
                 )}
                 <TableShell head={<>
-                  <Th>{value.rate_by === "delivery_type" ? "Nilai (DELIVERY / RETURN)" : "Nilai Kolom (cth: Jakarta Pusat)"}</Th>
-                  <Th className="w-44">Tarif (Rp)</Th>
+                  <Th>{value.rate_by === "delivery_type" ? t("pfDelivery.colValueDeliveryType") : t("pfDelivery.colValueColumn")}</Th>
+                  <Th className="w-44">{t("pfDelivery.colTarifRp")}</Th>
                   <Th className="w-10" />
                 </>}>
                   {value.rates.map((r, i) => (
@@ -785,18 +793,17 @@ export function DeliveryFields({
                   ))}
                 </TableShell>
                 <AddRowBtn onClick={() => onChange({ ...value, rates: [...value.rates, { key: "", rate: "" }] })}>
-                  Tambah Baris
+                  {t("pfDelivery.addRateRow")}
                 </AddRowBtn>
                 {noDims && (
                   <div className="flex flex-col gap-1.5 max-w-xs">
-                    <FieldLabel>Rate Default (kalau gak ke-match baris manapun)</FieldLabel>
+                    <FieldLabel>{t("pfDelivery.defaultRateLabel")}</FieldLabel>
                     <RupiahInput
                       value={value.default_rate}
                       onChange={(v) => onChange({ ...value, default_rate: v })}
                     />
                     <p className="text-[11px] text-muted-foreground">
-                      Dipakai kalau nilai kolomnya (mis. district) gak cocok satu pun baris di atas — biar gak diam-diam
-                      jadi Rp0. Kosongkan/0 kalau memang mau tetap Rp0.
+                      {t("pfDelivery.defaultRateHint")}
                     </p>
                   </div>
                 )}

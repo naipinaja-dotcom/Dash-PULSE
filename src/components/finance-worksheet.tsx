@@ -19,6 +19,7 @@ import { Download, Loader2, ChevronRight, FileSpreadsheet, ChevronDown } from "l
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { useT } from "@/lib/i18n";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -26,6 +27,7 @@ const sb = supabase as any;
 export type Run = { id: string; name: string; period_start: string; period_end: string; status: string; client_id?: string | null };
 
 export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
+  const { t: tr } = useT();
   const [rows, setRows] = useState<RiderRow[]>([]);
   const [dedTypes, setDedTypes] = useState<string[]>([]);
   const [rateCards, setRateCards] = useState<RateCard[]>([]);
@@ -380,13 +382,13 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       <div className="rounded-xl border border-border bg-card mb-4 overflow-hidden">
         <button onClick={() => setShowRates((v) => !v)} className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-muted/40">
           <FileSpreadsheet className="w-4 h-4 text-primary" />
-          <span className="text-sm font-semibold">Rate / PKS — dasar perhitungan ({rateCards.length} skema)</span>
+          <span className="text-sm font-semibold">{tr("financeWs.rateCardHeader")} ({rateCards.length} {tr("financeWs.schemesUnit")})</span>
           <ChevronRight className={`w-4 h-4 ml-auto transition-transform ${showRates ? "rotate-90" : ""}`} />
         </button>
         {showRates && (
           <div className="px-4 pb-4 pt-1 grid gap-3 md:grid-cols-2">
             {rateCards.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Belum ada skema rider untuk client di run ini.</p>
+              <p className="text-xs text-muted-foreground">{tr("financeWs.noRiderSchemes")}</p>
             ) : rateCards.map((c, i) => (
               <div key={i} className="rounded-lg border border-border overflow-hidden">
                 <div className="px-3 py-2 bg-muted flex items-center gap-2">
@@ -423,21 +425,21 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           <DropdownMenuTrigger asChild>
             <button disabled={!rows.length}
               className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm disabled:opacity-50">
-              <Download className="w-4 h-4" /> Download <ChevronDown className="w-3.5 h-3.5" />
+              <Download className="w-4 h-4" /> {tr("financeWs.download")} <ChevronDown className="w-3.5 h-3.5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuItem onClick={exportExcel} className="flex-col items-start gap-0.5 py-2">
-              <span className="flex items-center gap-2 font-medium"><FileSpreadsheet className="w-4 h-4" /> Excel (3 sheet)</span>
-              <span className="text-xs text-muted-foreground pl-6">Rate Card, Detail, dan Ringkasan dalam 1 file</span>
+              <span className="flex items-center gap-2 font-medium"><FileSpreadsheet className="w-4 h-4" /> {tr("financeWs.excelThreeSheets")}</span>
+              <span className="text-xs text-muted-foreground pl-6">{tr("financeWs.excelThreeSheetsDesc")}</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={exportSummaryCSV} className="flex-col items-start gap-0.5 py-2">
-              <span className="flex items-center gap-2 font-medium"><Download className="w-4 h-4" /> CSV Ringkasan</span>
-              <span className="text-xs text-muted-foreground pl-6">Total fee per rider, tanpa rincian per baris</span>
+              <span className="flex items-center gap-2 font-medium"><Download className="w-4 h-4" /> {tr("financeWs.csvSummary")}</span>
+              <span className="text-xs text-muted-foreground pl-6">{tr("financeWs.csvSummaryDesc")}</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={exportDetailCSV} className="flex-col items-start gap-0.5 py-2">
-              <span className="flex items-center gap-2 font-medium"><Download className="w-4 h-4" /> CSV Detail</span>
-              <span className="text-xs text-muted-foreground pl-6">Rincian per kiriman/absensi per rider</span>
+              <span className="flex items-center gap-2 font-medium"><Download className="w-4 h-4" /> {tr("financeWs.csvDetail")}</span>
+              <span className="text-xs text-muted-foreground pl-6">{tr("financeWs.csvDetailDesc")}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -448,18 +450,18 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
         <table className="w-full text-sm whitespace-nowrap">
           <thead className="bg-muted text-left">
             <tr>
-              <th className="p-2 sticky left-0 bg-muted">Driver Name</th>
-              {enabledCols.has("client") && <th className="px-3">Client</th>}
-              {enabledCols.has("order_count") && <th className="text-right px-3">Order</th>}
-              {enabledCols.has("fee_rider") && <th className="text-right px-3">Fee Rider</th>}
-              {enabledCols.has("active_date") && <th className="text-right px-3">Active</th>}
+              <th className="p-2 sticky left-0 bg-muted">{tr("financeWs.driverName")}</th>
+              {enabledCols.has("client") && <th className="px-3">{tr("financeWs.client")}</th>}
+              {enabledCols.has("order_count") && <th className="text-right px-3">{tr("financeWs.order")}</th>}
+              {enabledCols.has("fee_rider") && <th className="text-right px-3">{tr("financeWs.feeRiderLabel")}</th>}
+              {enabledCols.has("active_date") && <th className="text-right px-3">{tr("financeWs.active")}</th>}
               {enabledCols.has("deductions") && dedTypes.map((ty) => <th key={ty} className="text-right px-3">{ty}</th>)}
-              {enabledCols.has("total_fee") && <th className="text-right px-3">Total Fee</th>}
-              {enabledCols.has("remarks") && <th className="px-3 min-w-[180px]">Remarks</th>}
+              {enabledCols.has("total_fee") && <th className="text-right px-3">{tr("financeWs.totalFee")}</th>}
+              {enabledCols.has("remarks") && <th className="px-3 min-w-[180px]">{tr("financeWs.remarks")}</th>}
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td colSpan={visibleColCount} className="p-6 text-center text-muted-foreground">Tidak ada data — pastikan payroll run ini sudah di-Generate.</td></tr> :
+            {rows.length === 0 ? <tr><td colSpan={visibleColCount} className="p-6 text-center text-muted-foreground">{tr("financeWs.noDataEmptyState")}</td></tr> :
               paged.map((r) => (
                 <Fragment key={r.detailId}>
                   <tr className={`border-t border-border ${r.held ? "bg-destructive/5" : r.isKasbonRow ? "bg-secondary" : ""}`}>
@@ -471,12 +473,12 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
                             {r.isKasbonRow ? `→ ${r.name}` : r.name}
                             {r.held && (
                               <span title={r.holdReason ?? ""} className="rounded border-2 border-border-strong px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive text-destructive-foreground">
-                                Ditahan
+                                {tr("financeWs.heldBadge")}
                               </span>
                             )}
                             {r.isKasbonRow && (
                               <span className="rounded border-2 border-border-strong px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-primary text-primary-foreground">
-                                {r.kasbonNoTransfer ? "Kasbon · Internal" : "Kasbon · Transfer"}
+                                {r.kasbonNoTransfer ? tr("financeWs.kasbonInternalBadge") : tr("financeWs.kasbonTransferBadge")}
                               </span>
                             )}
                           </span>
@@ -498,7 +500,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
                           <span className="text-xs text-muted-foreground">{r.remarks}</span>
                         ) : (
                           <input defaultValue={r.remarks} onBlur={(e) => { if (e.target.value !== r.remarks) saveRemark(r.detailId, e.target.value); }}
-                            placeholder="catatan…" className="w-full min-w-[160px] rounded border border-border bg-background px-2 py-1 text-xs" />
+                            placeholder={tr("financeWs.remarksPlaceholder")} className="w-full min-w-[160px] rounded border border-border bg-background px-2 py-1 text-xs" />
                         )}
                       </td>
                     )}
@@ -516,7 +518,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
           {rows.length > 0 && (
             <tfoot className="bg-muted font-semibold">
               <tr>
-                <td className="p-2 sticky left-0 bg-muted">GRAND TOTAL</td>
+                <td className="p-2 sticky left-0 bg-muted">{tr("financeWs.grandTotal")}</td>
                 {enabledCols.has("client") && <td></td>}
                 {enabledCols.has("order_count") && <td className="text-right px-3 tabular-nums">{t.order}</td>}
                 {enabledCols.has("fee_rider") && <td className="text-right px-3 tabular-nums">{rp(t.fee)}</td>}
@@ -531,21 +533,21 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       </div>
       {rows.length > 0 && <PaginationBar page={page} totalPages={totalPages} setPage={setPage} from={from} to={to} total={total} />}
       <p className="text-xs text-muted-foreground mt-2">
-        Klik nama rider buat lihat rincian per order/hari (bukti angkanya). Remarks ke-simpan otomatis pas pindah kolom. Excel isi 3 sheet: Rate Card, Detail, Ringkasan. GRAND TOTAL menghitung SEMUA rider, bukan cuma yang tampil di halaman ini.
+        {tr("financeWs.helpText")}
       </p>
       {heldRows.length > 0 && (
         <p className="text-xs text-destructive mt-1">
-          {heldRows.length} rider ditandai "Ditahan" (pembayarannya di-hold) — total fee-nya ({rp(heldRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL di atas, karena gak ditransfer di Bulk Payment reguler.
+          {heldRows.length} {tr("financeWs.heldRidersPrefix")} ({rp(heldRows.reduce((s, r) => s + r.total, 0))}) {tr("financeWs.heldRidersSuffix")}
         </p>
       )}
       {rows.some((r) => r.isKasbonRow && !r.kasbonNoTransfer) && (
         <p className="text-xs text-muted-foreground mt-1">
-          GRAND TOTAL sudah termasuk transfer kasbon ke penerima pihak ke-3 (baris "→ Penerima" berlabel "Kasbon · Transfer") — bukan cuma net_pay rider, karena kasbon itu juga ditransfer terpisah di Bulk Payment.
+          {tr("financeWs.kasbonTransferNote")}
         </p>
       )}
       {internalKasbonRows.length > 0 && (
         <p className="text-xs text-muted-foreground mt-1">
-          {internalKasbonRows.length} penerima kasbon ditandai "Internal" (rekening perusahaan sendiri) — nominalnya ({rp(internalKasbonRows.reduce((s, r) => s + r.total, 0))}) TIDAK ikut GRAND TOTAL, karena gak ada transfer keluar beneran.
+          {internalKasbonRows.length} {tr("financeWs.internalKasbonPrefix")} ({rp(internalKasbonRows.reduce((s, r) => s + r.total, 0))}) {tr("financeWs.internalKasbonSuffix")}
         </p>
       )}
     </>
@@ -553,16 +555,17 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
 }
 
 function RiderDetail({ r }: { r: RiderRow }) {
+  const { t } = useT();
   const delivSum = r.deliv.reduce((s, d) => s + d.fee, 0);
   const attSum = r.att.reduce((s, a) => s + a.fee, 0);
   return (
     <div className="space-y-3">
       {r.deliv.length > 0 && (
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Kiriman ({r.deliv.length})</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{t("financeWs.deliveriesHeading")} ({r.deliv.length})</div>
           <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-xs whitespace-nowrap bg-card">
-              <thead className="bg-muted text-left"><tr><th className="px-3 py-1.5">Tanggal</th><th className="text-right px-3">Jarak (km)</th><th className="text-right px-3">Berat (kg)</th><th className="px-3">District</th><th className="px-3">Tipe</th><th className="text-right px-3">Fee</th></tr></thead>
+              <thead className="bg-muted text-left"><tr><th className="px-3 py-1.5">{t("financeWs.date")}</th><th className="text-right px-3">{t("financeWs.distanceKm")}</th><th className="text-right px-3">{t("financeWs.weightKg")}</th><th className="px-3">{t("financeWs.district")}</th><th className="px-3">{t("financeWs.type")}</th><th className="text-right px-3">{t("financeWs.fee")}</th></tr></thead>
               <tbody>
                 {r.deliv.map((d, i) => (
                   <tr key={i} className="border-t border-border">
@@ -574,7 +577,7 @@ function RiderDetail({ r }: { r: RiderRow }) {
                     <td className="text-right px-3 tabular-nums">{rp(d.fee)}</td>
                   </tr>
                 ))}
-                <tr className="border-t border-border-strong font-medium"><td className="px-3 py-1.5" colSpan={5}>Subtotal kiriman</td><td className="text-right px-3 tabular-nums">{rp(delivSum)}</td></tr>
+                <tr className="border-t border-border-strong font-medium"><td className="px-3 py-1.5" colSpan={5}>{t("financeWs.subtotalDeliveries")}</td><td className="text-right px-3 tabular-nums">{rp(delivSum)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -582,10 +585,10 @@ function RiderDetail({ r }: { r: RiderRow }) {
       )}
       {r.att.length > 0 && (
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Absensi ({r.att.length})</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">{t("financeWs.attendanceHeading")} ({r.att.length})</div>
           <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-xs whitespace-nowrap bg-card">
-              <thead className="bg-muted text-left"><tr><th className="px-3 py-1.5">Tanggal</th><th className="px-3">Masuk</th><th className="px-3">Keluar</th><th className="px-3">Durasi</th><th className="px-3">OTP</th><th className="text-right px-3">Fee</th></tr></thead>
+              <thead className="bg-muted text-left"><tr><th className="px-3 py-1.5">{t("financeWs.date")}</th><th className="px-3">{t("financeWs.clockIn")}</th><th className="px-3">{t("financeWs.clockOut")}</th><th className="px-3">{t("financeWs.duration")}</th><th className="px-3">{t("financeWs.otp")}</th><th className="text-right px-3">{t("financeWs.fee")}</th></tr></thead>
               <tbody>
                 {r.att.map((a, i) => (
                   <tr key={i} className="border-t border-border">
@@ -597,14 +600,14 @@ function RiderDetail({ r }: { r: RiderRow }) {
                     <td className="text-right px-3 tabular-nums">{rp(a.fee)}</td>
                   </tr>
                 ))}
-                <tr className="border-t border-border-strong font-medium"><td className="px-3 py-1.5" colSpan={5}>Subtotal absensi</td><td className="text-right px-3 tabular-nums">{rp(attSum)}</td></tr>
+                <tr className="border-t border-border-strong font-medium"><td className="px-3 py-1.5" colSpan={5}>{t("financeWs.subtotalAttendance")}</td><td className="text-right px-3 tabular-nums">{rp(attSum)}</td></tr>
               </tbody>
             </table>
           </div>
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        Σ kiriman {rp(delivSum)} + absensi {rp(attSum)} = Fee Rider {rp(r.feeRider)} → dikurangi potongan → Total {rp(r.total)}.
+        Σ {t("financeWs.deliveriesShort")} {rp(delivSum)} + {t("financeWs.attendanceShort")} {rp(attSum)} = {t("financeWs.feeRiderLabel")} {rp(r.feeRider)} → {t("financeWs.minusDeductions")} → {t("financeWs.totalLabel")} {rp(r.total)}.
       </p>
     </div>
   );

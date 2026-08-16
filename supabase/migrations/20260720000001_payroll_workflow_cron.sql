@@ -9,8 +9,9 @@
 --
 -- Jadwal aktif: SETIAP HARI, 2 cron TERPISAH berdasarkan tipe tutup buku:
 --
---   1. Jam 12:00 WIB (05:00 UTC) — hitung payroll client TUTUP H-1
---      (close_same_day = false). Data udah ditarik dari sync jam 06:00 WIB.
+--   1. Jam 09:00 WIB (02:00 UTC, dipercepat dari 12:00 -> 09:00 pada 2026-08-17)
+--      — hitung payroll client TUTUP H-1 (close_same_day = false). Data udah
+--      ditarik dari sync jam 06:00 WIB (buffer 3 jam sebelum job jalan).
 --
 --   2. Jam 16:00 WIB (09:00 UTC, dipercepat dari 17:00 -> 16:00 pada 2026-08-13)
 --      — hitung payroll client TUTUP HARI SAMA (close_same_day = true, termasuk
@@ -18,7 +19,7 @@
 --
 -- Urutan harian (lihat juga 20260730000001_live_fee_sync_cron.sql):
 --   06:00 WIB  live-fee-sync (tarik data KEMARIN)
---   12:00 WIB  payroll-workflow H-1
+--   09:00 WIB  payroll-workflow H-1
 --   15:50 WIB  live-fee-sync (tarik data HARI INI)
 --   16:00 WIB  payroll-workflow same-day
 --
@@ -33,10 +34,10 @@
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
 --
--- -- Cron 1: Jam 12:00 WIB — client tutup H-1
+-- -- Cron 1: Jam 09:00 WIB — client tutup H-1
 -- select cron.schedule(
 --   'payroll-workflow-h1',
---   '0 5 * * *', -- tiap hari jam 05:00 UTC (12:00 WIB)
+--   '0 2 * * *', -- tiap hari jam 02:00 UTC (09:00 WIB)
 --   $$
 --   select net.http_post(
 --     url := '<PRODUCTION_URL>/api/payroll-workflow',

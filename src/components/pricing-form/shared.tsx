@@ -16,6 +16,17 @@ export function resolvableColumnLabel(opt: string): string {
   return "Area / Kota (District)";
 }
 
+// Semua field angka desimal (From/To/Step di tabel Distance/Weight, Surcharge,
+// Threshold, StepTier) — koma diganti titik (ID pakai koma buat desimal,
+// tapi field ini dibaca `Number()` yang cuma ngerti titik), dan cuma 1 titik
+// yang dibolehin biar gak rancu ("10.1.2" gak masuk akal sebagai angka).
+export function sanitizeDecimalInput(raw: string): string {
+  const cleaned = raw.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+}
+
 // -------------------- StepTier: state form <-> envelope --------------------
 export interface StepTierState {
   base_fee: string;
@@ -68,6 +79,33 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
         "w-full text-sm rounded-md border-2 border-border-strong bg-card px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-ring " +
         (props.className ?? "")
       }
+    />
+  );
+}
+
+// Native <input type="time"> ikut format 12/24 jam dari locale OS/browser
+// (bukan cuma atribut `lang` — Chrome di Windows sering tetap AM/PM ikut
+// region Windows-nya walau `lang="id"` diset), jadi gak bisa dipaksa 24 jam
+// dari HTML doang. Ganti jadi teks polos "HH:MM" — gak pernah AM/PM, ngetik
+// digit langsung, otomatis dikasih ":" & di-clamp ke jam 0-23 / menit 0-59.
+export function sanitizeTimeInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  const hh = String(Math.min(23, parseInt(digits.slice(0, 2), 10))).padStart(2, "0");
+  const mmRaw = digits.slice(2);
+  if (mmRaw.length < 2) return `${hh}:${mmRaw}`;
+  const mm = String(Math.min(59, parseInt(mmRaw, 10))).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+export function TimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <TextInput
+      value={value}
+      placeholder="--:--"
+      inputMode="numeric"
+      maxLength={5}
+      onChange={(e) => onChange(sanitizeTimeInput(e.target.value))}
     />
   );
 }
@@ -161,7 +199,7 @@ export function StepTierEditor({ value, onChange, unit }: { value: StepTierState
             <td className="px-3 py-1.5 text-muted-foreground tabular-nums">0</td>
             <td className="px-3 py-1.5">
               <input className={inputCls} value={value.base_until} inputMode="decimal"
-                onChange={(e) => onChange({ ...value, base_until: e.target.value })} placeholder="0" />
+                onChange={(e) => onChange({ ...value, base_until: sanitizeDecimalInput(e.target.value) })} placeholder="0" />
             </td>
             <td className="px-3 py-1.5">
               <input className={inputCls} value={value.base_fee ? Number(formatRupiah(value.base_fee).replace(/\D/g, "")).toLocaleString("id-ID") : ""}
@@ -175,12 +213,12 @@ export function StepTierEditor({ value, onChange, unit }: { value: StepTierState
           {/* Tier rows */}
           {value.tiers.map((t, i) => (
             <tr key={i} className="border-t border-border/60 hover:bg-muted/30 transition-colors">
-              <td className="px-3 py-1.5"><input className={inputCls} value={t.from} inputMode="decimal" onChange={(e) => setTier(i, { from: e.target.value })} /></td>
-              <td className="px-3 py-1.5"><input className={inputCls} value={t.to} placeholder="∞" inputMode="decimal" onChange={(e) => setTier(i, { to: e.target.value })} /></td>
+              <td className="px-3 py-1.5"><input className={inputCls} value={t.from} inputMode="decimal" onChange={(e) => setTier(i, { from: sanitizeDecimalInput(e.target.value) })} /></td>
+              <td className="px-3 py-1.5"><input className={inputCls} value={t.to} placeholder="∞" inputMode="decimal" onChange={(e) => setTier(i, { to: sanitizeDecimalInput(e.target.value) })} /></td>
               <td className="px-3 py-1.5 text-muted-foreground text-center">—</td>
               <td className="px-3 py-1.5">
                 <input className={inputCls} value={t.step} inputMode="decimal" placeholder="1"
-                  onChange={(e) => setTier(i, { step: e.target.value })} />
+                  onChange={(e) => setTier(i, { step: sanitizeDecimalInput(e.target.value) })} />
               </td>
               <td className="px-3 py-1.5">
                 <input className={inputCls} value={t.add_per_step ? Number(t.add_per_step).toLocaleString("id-ID") : ""}

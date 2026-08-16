@@ -1,7 +1,7 @@
 // Kategori 2 — Per Kehadiran. Dipecah dari pricing-form.tsx.
 // v2: delivery_component toggle menggantikan kategori "Kombinasi" lama.
 import { parseRupiah } from "@/lib/format";
-import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock } from "./shared";
+import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, TimeInput, Th, RowDeleteBtn, ToggleBlock } from "./shared";
 import {
   AttendanceDeliveryCompFields,
   buildDeliveryCompConfig,
@@ -167,7 +167,7 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
 
       <ToggleBlock
         label="Shift Configuration (tarif beda per jam clock-in)"
-        hint="Kalau client punya beberapa shift dengan tarif beda (mis. Shift Pagi vs Shift Siang), atur di sini — pure nama, jam, & tarif. Rider otomatis kedeteksi masuk shift mana dari jam clock-in-nya. Insentif/ontime TETAP dari tabel Insentif di atas, berlaku sama buat semua shift (dan buat yang di luar semua jendela shift ini)."
+        hint="Buat client dengan beberapa shift beda tarif — rider otomatis kedeteksi dari jam clock-in. Insentif/ontime tetap dari tabel di atas."
         on={value.shiftsOn}
         onToggle={(on) => patch({ shiftsOn: on, shifts: on && value.shifts.length === 0 ? [emptyShiftRow(1)] : value.shifts })}
       >
@@ -183,15 +183,15 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
               <div className="grid grid-cols-5 gap-2">
                 <div>
                   <FieldLabel>Clock-in Dari</FieldLabel>
-                  <TextInput type="time" value={s.start_time} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, start_time: e.target.value } : x)) })} />
+                  <TimeInput value={s.start_time} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, start_time: v } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Sampai (eksklusif)</FieldLabel>
-                  <TextInput type="time" value={s.end_time} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, end_time: e.target.value } : x)) })} />
+                  <TimeInput value={s.end_time} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, end_time: v } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Batas Ontime</FieldLabel>
-                  <TextInput type="time" value={s.late_after} onChange={(e) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, late_after: e.target.value } : x)) })} />
+                  <TimeInput value={s.late_after} onChange={(v) => patch({ shifts: value.shifts.map((x, idx) => (idx === i ? { ...x, late_after: v } : x)) })} />
                 </div>
                 <div>
                   <FieldLabel>Fee Penuh (Rp)</FieldLabel>
@@ -215,7 +215,7 @@ export function AttendanceFields({ value, onChange }: { value: AttendanceState; 
 
       <ToggleBlock
         label="Komponen per kiriman (gabung delivery + attendance)"
-        hint="Tambah fee per pengiriman ke fee absensi harian. Sumber data: delivery_records di rentang yang sama. Menggantikan tipe 'Kombinasi' lama, tapi semua metode valid (tier/flat/threshold)."
+        hint="Tambah fee per pengiriman ke fee absensi harian, dari data pengiriman di rentang yang sama."
         on={value.deliveryCompOn}
         onToggle={(on) => patch({ deliveryCompOn: on })}
       >

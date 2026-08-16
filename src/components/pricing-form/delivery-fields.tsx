@@ -21,7 +21,8 @@ import type {
   StepTier,
 } from "@/lib/pricing-types";
 import { parseRupiah } from "@/lib/format";
-import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel } from "./shared";
+import { bandFeeAt } from "@/lib/pricing-calc";
+import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel, sanitizeDecimalInput } from "./shared";
 import { Plus, Ruler, Package } from "lucide-react";
 
 // -------------------- State shapes (semua string, di-parse saat simpan) --------------------
@@ -341,10 +342,31 @@ function RangeTableEditor({
     const last = rows[rows.length - 1];
     const from = last && last.to.trim() !== "" ? last.to : last ? "" : "0";
     const row = emptyRangeRow(type, from || "0");
-    // Base fee nerusin dari baris sebelumnya (jangkar buat rumus tier: base_fee
-    // + ceil(span/step)*add_per_step) — tetep bisa diubah manual kalau band ini
-    // memang mau base yang beda.
-    if (last) row.base_fee = last.base_fee;
+    // Base fee nerusin dari baris sebelumnya — bukan nyalin mentah base_fee
+    // baris lama (dulu gitu, hasilnya 0 kalau base_fee baris lama 0 walau
+    // step-nya udah numpuk banyak), tapi DIHITUNG dulu fee baris lama itu di
+    // titik paling atasnya (`to`), pakai rumus band yang sama kayak mesin
+    // hitung (bandFeeAt, pricing-calc.ts) — biar baris baru nyambung mulus,
+    // gak ujug-ujug jatuh ke 0. Tetep bisa diubah manual kalau band ini
+    // emang mau base yang beda. Cuma kepake kalau `to` baris lama jelas
+    // (bukan tak terbatas — gak ada titik buat dihitung kalau ∞).
+    if (last && last.to.trim() !== "") {
+      row.base_fee = String(
+        bandFeeAt(
+          {
+            type: last.type,
+            from: Number(last.from) || 0,
+            to: Number(last.to),
+            base_fee: parseRupiah(last.base_fee),
+            step: last.type === "tier" ? Number(last.step) || 1 : 0,
+            add_per_step: last.type === "tier" ? parseRupiah(last.add_per_step) : 0,
+          },
+          Number(last.to),
+        ),
+      );
+    } else if (last) {
+      row.base_fee = last.base_fee;
+    }
     onChange([...rows, row]);
   };
 
@@ -386,7 +408,7 @@ function RangeTableEditor({
                   </span>
                 </td>
                 <td className="px-3 py-1.5">
-                  <input className={inputCls} value={r.from} inputMode="decimal" onChange={(e) => patchRow(i, { from: e.target.value })} />
+                  <input className={inputCls} value={r.from} inputMode="decimal" onChange={(e) => patchRow(i, { from: sanitizeDecimalInput(e.target.value) })} />
                 </td>
                 <td className="px-3 py-1.5">
                   <input
@@ -394,7 +416,7 @@ function RangeTableEditor({
                     value={r.to}
                     placeholder="∞"
                     inputMode="decimal"
-                    onChange={(e) => patchRow(i, { to: e.target.value })}
+                    onChange={(e) => patchRow(i, { to: sanitizeDecimalInput(e.target.value) })}
                   />
                 </td>
                 <td className="px-3 py-1.5">
@@ -413,7 +435,7 @@ function RangeTableEditor({
                       value={r.step}
                       inputMode="decimal"
                       placeholder="1"
-                      onChange={(e) => patchRow(i, { step: e.target.value })}
+                      onChange={(e) => patchRow(i, { step: sanitizeDecimalInput(e.target.value) })}
                     />
                   ) : (
                     <span className="text-muted-foreground text-center block">—</span>
@@ -508,7 +530,7 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
           <TextInput
             value={value.default_threshold}
             inputMode="decimal"
-            onChange={(e) => patch({ default_threshold: e.target.value })}
+            onChange={(e) => patch({ default_threshold: sanitizeDecimalInput(e.target.value) })}
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -535,7 +557,7 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
                 value={r.threshold}
                 inputMode="decimal"
                 onChange={(e) =>
-                  patch({ rules: value.rules.map((x, idx) => (idx === i ? { ...x, threshold: e.target.value } : x)) })
+                  patch({ rules: value.rules.map((x, idx) => (idx === i ? { ...x, threshold: sanitizeDecimalInput(e.target.value) } : x)) })
                 }
               />
             </Td>
@@ -607,7 +629,7 @@ export function DeliveryFields({
 
           <ToggleBlock
             label="Surcharge Berat → Distance"
-            hint="Berat kiriman lewat batas ini → fee Distance (di atas) baris itu dikali N. Weight (kalau aktif di bawah) tetap dihitung normal terpisah, gak ikut kena kali — berat di sini cuma pemicu."
+            hint="Berat lewat batas → fee Distance dikali N. Weight (kalau aktif) tetap dihitung normal, gak ikut kali."
             on={value.weight_surcharge.enabled}
             onToggle={(on) => patchWeightSurcharge({ enabled: on })}
           >
@@ -617,7 +639,7 @@ export function DeliveryFields({
                 <TextInput
                   value={value.weight_surcharge.threshold_kg}
                   inputMode="decimal"
-                  onChange={(e) => patchWeightSurcharge({ threshold_kg: e.target.value })}
+                  onChange={(e) => patchWeightSurcharge({ threshold_kg: sanitizeDecimalInput(e.target.value) })}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -625,7 +647,7 @@ export function DeliveryFields({
                 <TextInput
                   value={value.weight_surcharge.multiplier}
                   inputMode="decimal"
-                  onChange={(e) => patchWeightSurcharge({ multiplier: e.target.value })}
+                  onChange={(e) => patchWeightSurcharge({ multiplier: sanitizeDecimalInput(e.target.value) })}
                 />
               </div>
             </div>

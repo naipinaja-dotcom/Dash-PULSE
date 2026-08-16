@@ -1,5 +1,38 @@
 import { describe, expect, it } from "vitest";
 import { buildDeliveryConfig, emptyDeliveryState } from "@/components/pricing-form/delivery-fields";
+import { sanitizeDecimalInput, sanitizeTimeInput } from "@/components/pricing-form/shared";
+
+describe("sanitizeDecimalInput", () => {
+  it("replaces comma with dot (ID keyboards type decimals with comma)", () => {
+    expect(sanitizeDecimalInput("10,5")).toBe("10.5");
+  });
+
+  it("keeps only the first dot when the user types more than one punctuation mark", () => {
+    expect(sanitizeDecimalInput("10.1.2")).toBe("10.12");
+    expect(sanitizeDecimalInput("10,1,2")).toBe("10.12");
+  });
+
+  it("strips non-numeric characters", () => {
+    expect(sanitizeDecimalInput("10km")).toBe("10");
+  });
+});
+
+describe("sanitizeTimeInput", () => {
+  it("auto-inserts the colon as digits are typed (no AM/PM, always 24h)", () => {
+    expect(sanitizeTimeInput("0")).toBe("0");
+    expect(sanitizeTimeInput("06")).toBe("06");
+    expect(sanitizeTimeInput("061")).toBe("06:1");
+    expect(sanitizeTimeInput("0610")).toBe("06:10");
+  });
+
+  it("clamps hour to 23 and minute to 59", () => {
+    expect(sanitizeTimeInput("9999")).toBe("23:59");
+  });
+
+  it("ignores non-digit characters (e.g. pasted 'AM'/'PM')", () => {
+    expect(sanitizeTimeInput("06:10 AM")).toBe("06:10");
+  });
+});
 
 describe("buildDeliveryConfig", () => {
   it("saves the Distance dimension when the checkbox is on, even if the stale internal enabled flag never flipped (GORECA regression)", () => {

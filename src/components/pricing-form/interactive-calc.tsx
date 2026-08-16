@@ -24,13 +24,13 @@ function numericRows(rows: RangeRowState[]): RangeRow[] {
   }));
 }
 
-interface WorkedExample {
+export interface WorkedExample {
   steps: ExStep[];
   total: { label: string; amount: number };
   notes: string[];
 }
 
-interface CalcInputs {
+export interface CalcInputs {
   units: string;
   area: string;
   distance: string;
@@ -40,7 +40,7 @@ interface CalcInputs {
   isLate: boolean;
 }
 
-interface InteractiveCalcProps {
+export interface InteractiveCalcProps {
   category: PricingCategory;
   subtype: PricingSubtype;
   delivery: DeliveryState;
@@ -52,7 +52,7 @@ interface InteractiveCalcProps {
   billingOn: boolean;
 }
 
-function defaultCalcInputs(p: InteractiveCalcProps): CalcInputs {
+export function defaultCalcInputs(p: InteractiveCalcProps): CalcInputs {
   const firstDistTo = Number(p.delivery.distance.rows[0]?.to) || 5;
   const firstWeightTo = Number(p.delivery.weight.rows[0]?.to) || 5;
   return {
@@ -66,7 +66,7 @@ function defaultCalcInputs(p: InteractiveCalcProps): CalcInputs {
   };
 }
 
-function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExample {
+export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExample {
   const notes: string[] = [];
   const dims = (p.subtype as DeliveryDimensions) || { distance: false, weight: false };
   const modNotes = () => {
@@ -187,6 +187,53 @@ function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): WorkedExa
   return { steps: [], total: { label: "Total", amount: 0 }, notes: [] };
 }
 
+// Input jarak/berat buat kategori delivery — dipakai InteractiveCalc DAN
+// RevenueShareCalc (revenue-share-calc.tsx, kalkulator revenue skema Client
+// buat preview Revenue Share), biar gak duplikat markup input yang sama.
+export function DeliveryCalcInputs({
+  props,
+  inp,
+  onChange,
+}: {
+  props: InteractiveCalcProps;
+  inp: CalcInputs;
+  onChange: (p: Partial<CalcInputs>) => void;
+}) {
+  const dims = (props.subtype as { distance: boolean; weight: boolean }) || { distance: false, weight: false };
+  return (
+    <div className="flex flex-wrap gap-3">
+      {dims.distance && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">{props.delivery.distance.accumulate === "daily" ? "Total jarak hari ini (km)" : "Jarak (km)"}</span>
+          <input type="number" min="0" step="0.1" value={inp.distance} onChange={(e) => onChange({ distance: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+        </div>
+      )}
+      {dims.weight && props.delivery.weight.mode === "range" && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? "Total berat hari ini (kg)" : "Berat (kg)"}</span>
+          <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => onChange({ weight: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+        </div>
+      )}
+      {!dims.weight && props.delivery.weight_surcharge?.enabled && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">Berat (kg) — pemicu surcharge Distance</span>
+          <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => onChange({ weight: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+        </div>
+      )}
+      {dims.weight && props.delivery.weight.mode === "threshold_group" && (
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">Total berat sekelompok (kg)</span>
+          <input type="number" min="0" step="0.1" value={inp.totalKg} onChange={(e) => onChange({ totalKg: e.target.value })}
+            className="w-28 text-xs rounded border border-border bg-card px-2 py-1.5" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function InteractiveCalc(props: InteractiveCalcProps) {
   const [inp, setInp] = useState<CalcInputs>(() => defaultCalcInputs(props));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,41 +251,7 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
 
       {/* ── Inputs per tipe ── */}
       <div className="mb-3.5 space-y-2">
-        {props.category === "delivery" && (() => {
-          const dims = (props.subtype as { distance: boolean; weight: boolean }) || { distance: false, weight: false };
-          return (
-            <div className="flex flex-wrap gap-3">
-              {dims.distance && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-muted-foreground">{props.delivery.distance.accumulate === "daily" ? "Total jarak hari ini (km)" : "Jarak (km)"}</span>
-                  <input type="number" min="0" step="0.1" value={inp.distance} onChange={(e) => p({ distance: e.target.value })}
-                    className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
-                </div>
-              )}
-              {dims.weight && props.delivery.weight.mode === "range" && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? "Total berat hari ini (kg)" : "Berat (kg)"}</span>
-                  <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => p({ weight: e.target.value })}
-                    className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
-                </div>
-              )}
-              {!dims.weight && props.delivery.weight_surcharge?.enabled && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-muted-foreground">Berat (kg) — pemicu surcharge Distance</span>
-                  <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => p({ weight: e.target.value })}
-                    className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
-                </div>
-              )}
-              {dims.weight && props.delivery.weight.mode === "threshold_group" && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-muted-foreground">Total berat sekelompok (kg)</span>
-                  <input type="number" min="0" step="0.1" value={inp.totalKg} onChange={(e) => p({ totalKg: e.target.value })}
-                    className="w-28 text-xs rounded border border-border bg-card px-2 py-1.5" />
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {props.category === "delivery" && <DeliveryCalcInputs props={props} inp={inp} onChange={p} />}
 
         {props.category === "attendance" && (
           <div className="flex flex-wrap gap-3 items-end">

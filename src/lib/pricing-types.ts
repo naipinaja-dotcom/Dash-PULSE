@@ -113,16 +113,14 @@ export const DELIVERY_DIMENSIONS: DeliveryDimensionOption[] = [
     name: "Distance",
     desc: "Tarif berdasarkan jarak (km)",
     icon: "Ruler",
-    callout:
-      "Tabel range jarak — tiap band bisa Flat (harga tetap) atau Tier (base + naik per step). Bisa dicampur dalam 1 tabel.",
+    callout: "Tabel range jarak — tiap band Flat atau Tier, bisa dicampur.",
   },
   {
     key: "weight",
     name: "Weight",
     desc: "Tarif berdasarkan berat (kg) — atau kelipatan per store",
     icon: "Package",
-    callout:
-      "Sama seperti Distance (tabel range Flat/Tier) — atau ganti mode ke 'Kelipatan per Store' untuk grouping berat per area/store lalu dibagi threshold.",
+    callout: "Sama seperti Distance, atau mode 'Kelipatan per Store' (grouping per area, dibagi threshold).",
   },
 ];
 
@@ -134,7 +132,17 @@ export type PricingCalcType =
   | "threshold_multiple"
   | "attendance"
   | "combined"
-  | "modular_v2";
+  | "modular_v2"
+  | "revenue_share";
+
+/** Fee rider = persentase dari revenue client per AWB (mis. rider dapat 80%
+ * dari yang ditagihkan ke client, sisanya margin). Revenue-nya sendiri BUKAN
+ * diisi di sini — diambil dari hasil kalkulasi skema Client (scheme_for=
+ * "client") yang aktif untuk client+periode yang sama, lihat
+ * `calcScheme(env, rows, clientRevenueByRow)` di pricing-calc.ts. */
+export interface RevenueShareConfig {
+  percent_to_rider: number; // 0-100
+}
 
 export type SchemeFor = "rider" | "client";
 
@@ -152,16 +160,14 @@ export const PRICING_CATEGORIES: PricingCategoryOption[] = [
     name: "Per Pengiriman",
     desc: "Dibayar per kiriman",
     icon: "Truck",
-    callout:
-      "Fee dihitung dari data pengiriman (delivery_records). Pilih sub-tipe di bawah: Flat per Unit, Tier Jarak & Berat, atau Threshold Kelipatan.",
+    callout: "Fee dihitung dari data pengiriman — pilih dimensi Distance/Weight di kiri.",
   },
   {
     key: "attendance",
     name: "Per Kehadiran",
     desc: "Base harian + komponen (± kiriman)",
     icon: "CalendarDays",
-    callout:
-      "Base fee harian proporsional jam kerja (dari data absensi) + insentif opsional. Toggle 'Komponen per kiriman' untuk tambah fee per pengiriman (menggantikan tipe Kombinasi lama).",
+    callout: "Base fee harian proporsional jam kerja + insentif opsional. Bisa tambah komponen per kiriman.",
   },
   // "hybrid" tidak muncul di UI lagi — scheme lama tetap terbaca.
   // Skema baru pakai category "attendance" + delivery_component toggle.
@@ -204,6 +210,8 @@ export function calcTypeToCategory(calcType: string): { category: PricingCategor
       return { category: "delivery", subtype: { distance: false, weight: true } };
     case "modular_v2":
       return { category: "delivery", subtype: { distance: true, weight: true } }; // detail sebenarnya dibaca dari config
+    case "revenue_share":
+      return { category: "delivery", subtype: null };
     case "attendance":
       return { category: "attendance", subtype: null };
     case "combined":

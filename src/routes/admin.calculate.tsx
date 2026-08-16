@@ -332,7 +332,32 @@ function CalculatePage() {
         }
         setRiderNames(names);
 
-        const res = calcScheme(scheme.params, rows);
+        // Skema "revenue_share": fee rider = persen dari revenue client per
+        // AWB — revenue-nya diambil dari hasil calcScheme skema Client yang
+        // aktif buat client+periode yang sama (bukan tabel tarif sendiri).
+        let clientRevenueByRow: number[] | undefined;
+        if (scheme.params.type === "revenue_share") {
+          if (!clientId) {
+            toast.error("Skema Revenue Share butuh client dipilih (buat nyari revenue-nya).");
+            return;
+          }
+          const clientScheme = schemes.find(
+            (s) =>
+              s.scheme_for === "client" &&
+              s.client_id === clientId &&
+              s.category === "delivery" &&
+              s.effective_from <= to &&
+              (!s.effective_to || s.effective_to >= from),
+          );
+          if (!clientScheme) {
+            toast.error("Belum ada skema Client (Per Pengiriman) aktif untuk client & periode ini — revenue-nya gak bisa dihitung.");
+            return;
+          }
+          const clientRes = calcScheme(clientScheme.params, rows);
+          clientRevenueByRow = clientRes.perRow.map((r) => r.fee);
+        }
+
+        const res = calcScheme(scheme.params, rows, clientRevenueByRow);
         setResult(res);
         setRanScheme(scheme);
 

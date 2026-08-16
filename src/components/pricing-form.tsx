@@ -24,7 +24,7 @@ import {
   savePricingScheme,
   type MockClient,
 } from "@/lib/pricing-store";
-import { parseRupiah } from "@/lib/format";
+import { formatRupiah, parseRupiah } from "@/lib/format";
 import {
   ArrowLeft,
   Info,
@@ -45,6 +45,7 @@ import {
   buildStepTier,
   stepTierToState,
   emptyStepTier,
+  sanitizeDecimalInput,
   type StepTierState,
 } from "./pricing-form/shared";
 import {
@@ -63,6 +64,7 @@ import {
   type AttendanceState,
 } from "./pricing-form/attendance-fields";
 import { InteractiveCalc } from "./pricing-form/interactive-calc";
+import { RevenueShareCalc } from "./pricing-form/revenue-share-calc";
 import { loadDeliveryCompState } from "./pricing-form/attendance-delivery-comp";
 
 const CATEGORY_ICONS = { Truck, CalendarDays, Layers } as const;
@@ -76,6 +78,8 @@ interface FormState {
   addKg: StepTierState;
   multiDropOn: boolean;
   multiDropFee: string;
+  revenueShareOn: boolean;
+  revenueSharePercent: string;
   billingOn: boolean;
   billing: { min_charge: string; admin_fee_flat: string; management_fee_percent: string; ppn_percent: string };
 }
@@ -88,6 +92,8 @@ function emptyForm(): FormState {
     addKg: emptyStepTier(),
     multiDropOn: false,
     multiDropFee: "3000",
+    revenueShareOn: false,
+    revenueSharePercent: "80",
     billingOn: false,
     billing: { min_charge: "", admin_fee_flat: "", management_fee_percent: "", ppn_percent: "11" },
   };
@@ -99,6 +105,21 @@ function buildEnvelope(
   schemeFor: SchemeFor,
   f: FormState,
 ): PricingEnvelope {
+  // Revenue Share ganti total cara hitung base fee (persen dari revenue
+  // client, bukan dari dimensi Distance/Weight) — cuma masuk akal buat sisi
+  // Rider. Dims/Add-KG/Multi-drop diabaikan total kalau mode ini aktif,
+  // bukan ditumpuk di atasnya (fee-nya murni % revenue).
+  if (category === "delivery" && schemeFor === "rider" && f.revenueShareOn) {
+    return {
+      version: 1,
+      type: "revenue_share",
+      config: { percent_to_rider: Number(f.revenueSharePercent) || 0 },
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+    };
+  }
+
   const type: PricingEnvelope["type"] = category === "delivery" ? deliveryEnvelopeType(subtype, f.delivery) : "attendance";
   const config: Record<string, unknown> =
     category === "delivery"
@@ -163,7 +184,10 @@ function loadForm(scheme: PricingScheme | undefined): {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c = env.config as any;
 
-  if (category === "delivery") {
+  if (env.type === "revenue_share") {
+    form.revenueShareOn = true;
+    form.revenueSharePercent = String(c.percent_to_rider ?? "");
+  } else if (category === "delivery") {
     form.delivery = loadDeliveryState(subtype, env.type, c);
   } else if (rawCategory === "attendance") {
     form.attendance = loadAttendanceState(c);
@@ -428,8 +452,30 @@ function PricingFormInner({
             </div>
           </div>
 
+          {/* Revenue Share — fee rider = % dari revenue client per AWB (bukan
+              dari dimensi Distance/Weight). Cuma masuk akal buat sisi Rider:
+              revenue-nya sendiri diambil dari skema Client yang aktif pas
+              Hitung Fee (lihat admin.calculate.tsx), bukan diisi di sini. */}
+          {category === "delivery" && schemeFor === "rider" && (
+            <ToggleBlock
+              label="Revenue Share (% dari revenue client)"
+              hint="Fee rider = % dari revenue client per AWB, diambil dari skema Client aktif — bukan diisi manual."
+              on={f.revenueShareOn}
+              onToggle={(on) => patch({ revenueShareOn: on })}
+            >
+              <div className="flex flex-col gap-1.5 max-w-xs">
+                <FieldLabel>Persen ke Rider (%)</FieldLabel>
+                <TextInput
+                  value={f.revenueSharePercent}
+                  inputMode="decimal"
+                  onChange={(e) => patch({ revenueSharePercent: sanitizeDecimalInput(e.target.value) })}
+                />
+              </div>
+            </ToggleBlock>
+          )}
+
           {/* Dimensi delivery — checkbox Distance / Weight */}
-          {category === "delivery" && (
+          {category === "delivery" && !f.revenueShareOn && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-2">
                 Dimensi Pricing (pilih satu atau dua):
@@ -477,11 +523,12 @@ function PricingFormInner({
             <p className="text-xs text-foreground leading-relaxed">
               {category === "delivery"
                 ? (() => {
+                    if (f.revenueShareOn) return "Fee = % × revenue client (dari skema Client aktif), bukan dari tabel Distance/Weight.";
                     const dims = subtype as DeliveryDimensions | null;
                     if (!dims || (!dims.distance && !dims.weight)) return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
                     const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map((d) => d.name);
                     if (enabled.length === 1) return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
-                    return "Distance + Weight aktif — masing-masing punya tabel range sendiri, hasilnya dijumlah (sum).";
+                    return "Distance + Weight aktif, hasilnya dijumlah.";
                   })()
                 : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
             </p>
@@ -494,7 +541,7 @@ function PricingFormInner({
           {schemeFor === "client" && (
             <ToggleBlock
               label="Billing Add-ons"
-              hint="Urutan hitung: min charge (lantai) → + management fee (% operational) → + admin fee → × (1 + PPN%). PPN paling akhir. Management/PPN kosong = gak muncul di invoice."
+              hint="Urutan: min charge → management fee → admin fee → PPN. Kosong = gak muncul di invoice."
               on={f.billingOn}
               onToggle={(on) => patch({ billingOn: on })}
             >
@@ -512,7 +559,7 @@ function PricingFormInner({
                     value={f.billing.management_fee_percent}
                     inputMode="decimal"
                     onChange={(e) =>
-                      patch({ billing: { ...f.billing, management_fee_percent: e.target.value } })
+                      patch({ billing: { ...f.billing, management_fee_percent: sanitizeDecimalInput(e.target.value) } })
                     }
                   />
                 </div>
@@ -529,7 +576,7 @@ function PricingFormInner({
                     value={f.billing.ppn_percent}
                     inputMode="decimal"
                     onChange={(e) =>
-                      patch({ billing: { ...f.billing, ppn_percent: e.target.value } })
+                      patch({ billing: { ...f.billing, ppn_percent: sanitizeDecimalInput(e.target.value) } })
                     }
                   />
                 </div>
@@ -542,7 +589,16 @@ function PricingFormInner({
             Multi-drop), kalkulator hidup, semuanya dalam 1 panel biar keliatan
             bareng tanpa scroll jauh. */}
         <div className="pricing-builder rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4">
-          {category === "delivery" && subtype && (
+          {category === "delivery" && f.revenueShareOn && (
+            <RevenueShareCalc
+              clientId={clientId}
+              effFrom={effFrom}
+              effTo={effTo}
+              percentToRider={f.revenueSharePercent}
+            />
+          )}
+
+          {category === "delivery" && !f.revenueShareOn && subtype && (
             <DeliveryFields
               subtype={subtype}
               value={f.delivery}
@@ -554,10 +610,10 @@ function PricingFormInner({
             <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
           )}
 
-          {category === "delivery" && !(subtype as DeliveryDimensions | null)?.weight && (
+          {category === "delivery" && !f.revenueShareOn && !(subtype as DeliveryDimensions | null)?.weight && (
             <ToggleBlock
               label="Add-KG (surcharge berat)"
-              hint="Biaya tambahan berdasarkan berat, bertingkat. Nonaktif otomatis kalau dimensi Weight sudah dipakai (biar gak double-count)."
+              hint="Biaya tambahan per berat, bertingkat. Otomatis mati kalau Weight aktif."
               on={f.addKgOn}
               onToggle={(on) => patch({ addKgOn: on })}
             >
@@ -565,7 +621,7 @@ function PricingFormInner({
             </ToggleBlock>
           )}
 
-          {category === "delivery" && (
+          {category === "delivery" && !f.revenueShareOn && (
             <ToggleBlock
               label="Multi-drop (kiriman ke-2 dst)"
               hint="Otomatis mulai kiriman ke-2 dalam hari yang sama, per rider."
@@ -579,17 +635,19 @@ function PricingFormInner({
             </ToggleBlock>
           )}
 
-          <InteractiveCalc
-            category={category}
-            subtype={subtype}
-            delivery={f.delivery}
-            attendance={f.attendance}
-            schemeFor={schemeFor}
-            addKgOn={f.addKgOn}
-            multiDropOn={f.multiDropOn}
-            multiDropFee={f.multiDropFee}
-            billingOn={f.billingOn}
-          />
+          {!(category === "delivery" && f.revenueShareOn) && (
+            <InteractiveCalc
+              category={category}
+              subtype={subtype}
+              delivery={f.delivery}
+              attendance={f.attendance}
+              schemeFor={schemeFor}
+              addKgOn={f.addKgOn}
+              multiDropOn={f.multiDropOn}
+              multiDropFee={f.multiDropFee}
+              billingOn={f.billingOn}
+            />
+          )}
         </div>
       </div>
 

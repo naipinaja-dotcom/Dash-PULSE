@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toCSV, downloadCSV } from "@/lib/csv";
 import { useT } from "@/lib/i18n";
+import { formatTanggal } from "@/lib/format";
 import { toast } from "sonner";
-import { Download, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Download, Loader2, Search } from "lucide-react";
 import { FinanceWorksheet } from "@/components/finance-worksheet";
 import { DeductionSummary } from "@/components/deduction-summary";
 
@@ -66,18 +67,18 @@ function ReportsPage() {
 
   return (
     <AdminLayout title={t("reports.title")} subtitle={t("reports.subtitle")}>
-      <div className="mb-4 rounded-xl border border-border bg-card p-3">
-        <div className="flex w-full max-w-md rounded-lg bg-muted p-1">
+      <div className="mb-4 border-2 border-[#111827] bg-card p-3 shadow-[3px_3px_0_#111827]">
+        <div className="flex w-full max-w-md overflow-hidden border-2 border-[#111827] bg-[#FFFDF8] shadow-[2px_2px_0_#111827]">
           <button
             onClick={() => selectRunStatus("finalized")}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            className={`flex-1 border-l-2 border-[#111827] px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
           >
             Finalized
             <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "finalized").length}</span>
           </button>
           <button
             onClick={() => selectRunStatus("published")}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            className={`flex-1 border-l-2 border-[#111827] px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
           >
             Published
             <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "published").length}</span>
@@ -90,21 +91,8 @@ function ReportsPage() {
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div>
-          <label className="text-sm font-medium">Payroll Run</label>
-          <select
-            value={runId}
-            onChange={(e) => setRunId(e.target.value)}
-            className="mt-1 block min-w-[280px] rounded-md border border-border bg-background px-3 py-2 text-sm"
-          >
-            {visibleRuns.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} ({r.period_start} → {r.period_end}) · {r.status}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex gap-1 p-1 bg-muted rounded-md">
+        <PayrollRunPicker runs={visibleRuns} value={runId} onChange={setRunId} />
+        <div className="inline-flex w-fit flex-wrap overflow-hidden border-2 border-[#111827] bg-[#FFFDF8] shadow-[2px_2px_0_#111827]">
           {(
             [
               ["rider", "Per Rider (Finance)"],
@@ -115,7 +103,7 @@ function ReportsPage() {
             <button
               key={k}
               onClick={() => setMode(k)}
-              className={`px-3 py-1.5 text-sm rounded ${mode === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground"}`}
+              className={`border-l-2 border-[#111827] px-3 py-1.5 text-sm font-bold first:border-l-0 transition-colors ${mode === k ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
             >
               {l}
             </button>
@@ -136,6 +124,120 @@ function ReportsPage() {
         <DeductionSummary runId={runId} run={run} />
       )}
     </AdminLayout>
+  );
+}
+
+function payrollClientName(name: string) {
+  return name
+    .replace(/^payroll\s+/i, "")
+    .replace(/\s+periode\s+\d{4}-\d{2}-\d{2}\s*[→-].*$/i, "")
+    .trim() || name;
+}
+
+function PayrollRunPicker({
+  runs,
+  value,
+  onChange,
+}: {
+  runs: Run[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const selected = runs.find((run) => run.id === value);
+  const filteredRuns = runs.filter((run) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return `${payrollClientName(run.name)} ${run.period_start} ${run.period_end}`.toLowerCase().includes(needle);
+  });
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, []);
+
+  return (
+    <div ref={pickerRef} className="relative min-w-[280px] flex-1 max-w-xl">
+      <label className="inline-flex border-2 border-[#111827] bg-[#FFD45A] px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#111827] shadow-[2px_2px_0_#111827]">Payroll Run</label>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="mt-2 flex w-full items-center justify-between gap-3 rounded-none border-2 border-[#111827] bg-[#FFFDF8] px-4 py-2.5 text-left shadow-[3px_3px_0_#111827] transition-all hover:-translate-x-px hover:-translate-y-px hover:bg-[#FFF5D6] hover:shadow-[4px_4px_0_#111827] focus:outline-none focus:ring-2 focus:ring-primary"
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-black text-[#111827]">
+            {selected ? payrollClientName(selected.name) : "Pilih Payroll Run"}
+          </span>
+          {selected && (
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              {formatTanggal(selected.period_start)} – {formatTanggal(selected.period_end)}
+            </span>
+          )}
+        </span>
+        {selected && (
+          <span className={`shrink-0 border-2 border-[#111827] px-2 py-1 text-[10px] font-black uppercase tracking-wide ${selected.status === "published" ? "bg-[#FFD45A] text-[#513600]" : "bg-[#FFB4A8] text-[#6C2117]"}`}>
+            {selected.status === "published" ? "Published" : "Finalized"}
+          </span>
+        )}
+        <ChevronDown className={`h-5 w-5 shrink-0 text-[#111827] transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 mt-3 w-full overflow-hidden rounded-none border-2 border-[#111827] bg-[#FFFDF8] shadow-[4px_4px_0_#111827]">
+          <div className="border-b-2 border-[#111827] bg-[#F2E9FF] p-2.5">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => event.key === "Escape" && setOpen(false)}
+                placeholder="Cari client atau periode..."
+                className="w-full rounded-none border-2 border-[#111827] bg-[#FFFDF8] py-2.5 pl-9 pr-3 text-sm font-semibold text-[#111827] outline-none placeholder:text-[#5B6473] focus:bg-white focus:ring-2 focus:ring-[#7C4DFF]"
+              />
+            </label>
+          </div>
+          <div role="listbox" className="max-h-72 overflow-y-auto bg-[#FFFDF8] p-2">
+            {filteredRuns.length === 0 ? (
+              <p className="px-3 py-5 text-center text-xs text-muted-foreground">Payroll tidak ditemukan.</p>
+            ) : (
+              filteredRuns.map((run) => (
+                <button
+                  key={run.id}
+                  type="button"
+                  role="option"
+                  aria-selected={run.id === value}
+                  onClick={() => {
+                    onChange(run.id);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-none border-2 px-3 py-2.5 text-left transition-all ${run.id === value ? "mb-1.5 border-[#111827] bg-[#E4D4FF] shadow-[2px_2px_0_#111827]" : "border-transparent hover:border-[#111827] hover:bg-[#FFF0B5]"}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-black text-[#111827]">{payrollClientName(run.name)}</span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {formatTanggal(run.period_start)} – {formatTanggal(run.period_end)}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 border-2 border-[#111827] px-2 py-1 text-[10px] font-black uppercase tracking-wide ${run.status === "published" ? "bg-[#FFD45A] text-[#513600]" : "bg-[#FFB4A8] text-[#6C2117]"}`}>
+                    {run.status === "published" ? "Published" : "Finalized"}
+                  </span>
+                  {run.id === value && <Check className="h-5 w-5 shrink-0 text-[#5A23D8] stroke-[3]" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

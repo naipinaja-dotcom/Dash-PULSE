@@ -14,6 +14,7 @@ type ArrearRow = {
   type?: DType;
   client?: Client;
   info: string;
+  progress?: { remaining: number; total: number; paid: number };
   amount: number;
 };
 
@@ -53,6 +54,11 @@ export function ArrearsTab() {
           type: r.deduction_types,
           client: r.clients,
           info: `${remaining}/${r.installment_count ?? 0} ${t("dedarrears.installments")}`,
+          progress: {
+            remaining,
+            total: r.installment_count ?? 0,
+            paid: Math.max(0, Number(r.installments_paid ?? 0)),
+          },
           amount,
         };
       })
@@ -198,7 +204,26 @@ export function ArrearsTab() {
                     {r.type?.name}
                     {r.client && <span className="block text-[10px] font-medium text-primary">{r.client.name}</span>}
                   </td>
-                  <td className="p-3 text-muted-foreground">{r.info}</td>
+                  <td className="p-3 text-muted-foreground">
+                    {r.progress ? (
+                      <div className="leading-tight">
+                        <div className="font-medium text-foreground">
+                          {t("dedarrears.remainingLabel")} {r.progress.remaining} {t("dedarrears.ofLabel")} {r.progress.total} {t("dedarrears.installments")}
+                        </div>
+                        <div className="mt-1 text-[10px] text-muted-foreground">
+                          {r.progress.paid > 0
+                            ? `${t("dedarrears.paidLabel")}: ${t("dedarrears.installmentOrdinal")}1${r.progress.paid > 1 ? `–${r.progress.paid}` : ""}`
+                            : t("dedarrears.nonePaidLabel")}
+                        </div>
+                        <div className="mt-0.5 text-[10px] font-medium text-destructive">
+                          {t("dedarrears.dueLabel")}: {t("dedarrears.installmentOrdinal")}{r.progress.paid + 1}
+                          {r.progress.remaining > 1 ? `–${r.progress.total}` : ""}
+                        </div>
+                      </div>
+                    ) : (
+                      r.info
+                    )}
+                  </td>
                   <td className="p-3 text-right font-bold text-destructive tabular-nums font-mono">
                     Rp{r.amount.toLocaleString("id-ID")}
                   </td>

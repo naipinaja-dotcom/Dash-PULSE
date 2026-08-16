@@ -116,7 +116,7 @@ function UsersPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] overflow-hidden">
         <table className="w-full text-[12px]">
           <thead>
             <tr className="border-b border-border">
@@ -156,13 +156,13 @@ function UsersPage() {
                   >
                     <td className="p-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-primary-soft grid place-items-center text-[11px] font-semibold text-primary flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-border-strong grid place-items-center text-[11px] font-semibold flex-shrink-0">
                           {initialsOf(r)}
                         </div>
                         <div className="font-semibold text-foreground">
                           {r.full_name || "—"}
                           {isSelf && (
-                            <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary-soft text-primary-soft-foreground">
+                            <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground border-2 border-border-strong">
                               kamu
                             </span>
                           )}

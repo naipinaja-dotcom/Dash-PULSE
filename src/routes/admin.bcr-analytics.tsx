@@ -170,14 +170,11 @@ function BcrAnalyticsPage() {
 }
 
 function Kpi({ label, value, accent }: { label: string; value: string; accent?: "success" | "warning" | "destructive" }) {
-  const cls = accent === "success" ? "border-success/30 bg-success/5 text-success"
-    : accent === "warning" ? "border-warning/30 bg-warning/5 text-warning"
-    : accent === "destructive" ? "border-destructive/30 bg-destructive/5 text-destructive"
-    : "border-border bg-card";
+  const variant = accent === "success" ? "success" : accent === "warning" ? "warning" : accent === "destructive" ? "danger" : "default";
   return (
-    <div className={"rounded-xl border p-4 " + cls}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
+    <div className="admin-kpi-card p-4" data-variant={variant}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">{label}</div>
+      <div className="admin-metric-value text-[26px] font-bold font-mono tracking-tight">{value}</div>
     </div>
   );
 }

@@ -26,6 +26,8 @@ type InstallmentCard = {
   typeName: string;
   mode: "fixed" | "daily" | "monthly";
   notes: string | null;
+  totalAmount: number | null;
+  perPeriodAmount: number | null;
   installmentsPaid: number;
   installmentCount: number | null;
   periods: PeriodRow[];
@@ -43,7 +45,7 @@ function HistoryPage() {
     (async () => {
       setLoading(true);
       const { data: installments } = await sb.from("rider_installments")
-        .select("id, mode, notes, installment_count, installments_paid, deduction_types(name)")
+        .select("id, mode, notes, total_amount, per_period_amount, installment_count, installments_paid, deduction_types(name)")
         .eq("rider_id", rider.id)
         .eq("charge_target", "rider")
         .order("created_at", { ascending: false });
@@ -82,6 +84,8 @@ function HistoryPage() {
           typeName: r.deduction_types?.name ?? "Potongan",
           mode: r.mode,
           notes: r.notes,
+          totalAmount: r.total_amount == null ? null : Number(r.total_amount),
+          perPeriodAmount: r.per_period_amount == null ? null : Number(r.per_period_amount),
           installmentsPaid: r.installments_paid,
           installmentCount: r.installment_count,
           periods: (byInstallment.get(r.id) ?? []).sort((a, b) => b.periodEnd.localeCompare(a.periodEnd)),
@@ -107,6 +111,10 @@ function HistoryPage() {
           {cards.map((c) => {
             const isOpen = expanded.has(c.id);
             const modeLabel = c.mode === "daily" ? t("rider.daily") : c.mode === "fixed" ? t("rider.installment") : t("rider.auto");
+            const totalDebt = c.totalAmount ?? (c.perPeriodAmount ?? 0) * (c.installmentCount ?? 0);
+            const paidTotal = Math.min(totalDebt, c.periods.reduce((sum, period) => sum + period.paidAmount, 0));
+            const remainingDebt = Math.max(0, totalDebt - paidTotal);
+            const hasOutstandingDebt = c.mode === "fixed" && remainingDebt > 0.5;
             return (
               <div key={c.id} className="rounded-2xl border-2 border-border-strong bg-card overflow-hidden shadow-[5px_5px_0_0_var(--color-border-strong)]">
                 <button
@@ -119,11 +127,32 @@ function HistoryPage() {
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-border-strong bg-muted text-muted-foreground font-medium flex-shrink-0">{modeLabel}</span>
                   </div>
                   {c.mode === "fixed" && (
-                    <span className="text-[11px] text-muted-foreground flex-shrink-0 ml-2">
-                      {c.installmentsPaid}/{c.installmentCount ?? 0} {t("history.installmentProgress")}
+                    <span className={`text-[11px] font-semibold flex-shrink-0 ml-2 ${hasOutstandingDebt ? "text-warning" : "text-success"}`}>
+                      {hasOutstandingDebt ? "Masih ada sisa" : "Sudah selesai"}
                     </span>
                   )}
                 </button>
+                {c.mode === "fixed" && (
+                  <div className={`mx-3 mb-3 rounded-xl border-2 border-border-strong p-3 ${hasOutstandingDebt ? "bg-warning/10" : "bg-success/10"}`}>
+                    <div className={`text-[11px] font-bold ${hasOutstandingDebt ? "text-warning" : "text-success"}`}>
+                      {hasOutstandingDebt ? "Masih ada tunggakan" : "Tunggakan sudah selesai"}
+                    </div>
+                    <div className="mt-1 flex items-end justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] text-muted-foreground">Total tunggakan awal</div>
+                        <div className="text-[15px] font-bold tabular-nums">{formatRupiah(totalDebt)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-muted-foreground">Sisa yang harus dibayar</div>
+                        <div className={`text-[16px] font-bold tabular-nums ${hasOutstandingDebt ? "text-warning" : "text-success"}`}>{formatRupiah(remainingDebt)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border/50 pt-2 text-[10px] text-muted-foreground">
+                      <span>Sudah dibayar <b className="text-foreground tabular-nums">{formatRupiah(paidTotal)}</b></span>
+                      <span className="text-right">Sudah bayar <b className="text-foreground">{c.installmentsPaid} dari {c.installmentCount ?? 0} kali</b></span>
+                    </div>
+                  </div>
+                )}
                 {isOpen && (
                   <div className="px-3 pb-3 border-t border-border/50">
                     {c.notes && (
@@ -136,20 +165,20 @@ function HistoryPage() {
                         const unpaid = Math.max(0, p.amount - p.paidAmount);
                         return (
                           <div key={i} className="rounded-xl bg-muted/40 px-3 py-2">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-2">
                               <span className="text-[12px] font-medium truncate">{p.runName}</span>
                               {unpaid <= 0.5 ? (
-                                <span className="text-[11px] font-medium text-success flex-shrink-0">{t("history.statusPaid")}</span>
+                                <span className="text-[11px] font-medium text-success flex-shrink-0">Potongan berhasil</span>
                               ) : (
-                                <span className="text-[11px] font-medium text-warning flex-shrink-0">{t("history.statusShort")} {formatRupiah(unpaid)}</span>
+                                <span className="text-[11px] font-medium text-warning flex-shrink-0">Sisa {formatRupiah(unpaid)}</span>
                               )}
                             </div>
                             <div className="text-[10px] text-muted-foreground mt-0.5">
-                              {formatTanggal(p.periodStart)} — {formatTanggal(p.periodEnd)} · {p.clientName}
+                              Potongan gaji {formatTanggal(p.periodStart)} — {formatTanggal(p.periodEnd)} · {p.clientName}
                             </div>
                             <div className="flex justify-between text-[11px] mt-1 tabular-nums">
-                              <span className="text-muted-foreground">{t("history.charged")} {formatRupiah(p.amount)}</span>
-                              <span className="text-muted-foreground">{t("history.paid")} {formatRupiah(p.paidAmount)}</span>
+                              <span className="text-muted-foreground">Dipotong dari gaji {formatRupiah(p.amount)}</span>
+                              <span className="text-muted-foreground">Sudah dibayar {formatRupiah(p.paidAmount)}</span>
                             </div>
                           </div>
                         );

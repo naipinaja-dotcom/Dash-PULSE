@@ -127,7 +127,7 @@ export function PayrollReminderPanel() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm p-4 space-y-4">
+    <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-sm">Jadwal Reminder Disbursement</h3>
@@ -190,7 +190,7 @@ export function PayrollReminderPanel() {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => toggleActive(s)}
-                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${s.active ? "border-success/40 bg-success/10 text-success" : "border-border text-muted-foreground bg-muted"}`}
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border-2 transition-colors ${s.active ? "border-border-strong bg-success text-success-foreground" : "border-border text-muted-foreground bg-muted"}`}
                 >
                   {s.active ? "Aktif" : "Nonaktif"}
                 </button>

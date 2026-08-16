@@ -102,8 +102,10 @@
   --chart-grad-to: oklch(0.44 0.20 290);
   --brutal-accent: #f6c445;
   /* Gradients are reserved for depth, never for data text. */
-  --page-gradient: linear-gradient(135deg, oklch(0.985 0.024 88) 0%, oklch(0.968 0.027 305) 52%, oklch(0.965 0.032 245) 100%);
-  --surface-gradient: linear-gradient(150deg, oklch(0.998 0.006 88), oklch(0.974 0.022 300));
+  /* Neo Brutal ground stays neutral: cream into cool paper-blue.  Violet is
+     reserved for active controls and workflow cues, never a page-wide haze. */
+  --page-gradient: linear-gradient(135deg, oklch(0.987 0.022 88) 0%, oklch(0.978 0.014 92) 48%, oklch(0.964 0.022 245) 100%);
+  --surface-gradient: linear-gradient(150deg, oklch(0.998 0.006 88), oklch(0.976 0.014 245));
 }
 
 .dark {
@@ -561,6 +563,141 @@
     .deduction-save-button { min-height: 2.75rem; }
   }
 
+  /* Reminder setup is a deliberate operational workflow, not a plain dialog. */
+  .reminder-modal-backdrop {
+    background: color-mix(in oklch, var(--color-foreground) 58%, transparent);
+    backdrop-filter: blur(3px);
+  }
+  .reminder-schedule-modal {
+    border: 2px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: var(--color-card);
+    box-shadow: 9px 9px 0 var(--color-border-strong);
+  }
+  .reminder-modal-header {
+    position: relative;
+    overflow: hidden;
+    padding: 1.25rem 1.35rem 1.1rem;
+    border-bottom: 2px solid var(--color-border-strong);
+    background: linear-gradient(135deg, color-mix(in oklch, var(--color-primary) 16%, var(--color-card)), color-mix(in oklch, var(--brutal-accent) 22%, var(--color-card)));
+  }
+  .reminder-modal-header::before {
+    content: "";
+    position: absolute;
+    right: -1rem;
+    bottom: -2.25rem;
+    width: 8rem;
+    height: 8rem;
+    border: 2px solid color-mix(in oklch, var(--color-primary) 35%, transparent);
+    border-radius: 999px;
+  }
+  .reminder-modal-header h2 { margin-top: .28rem; font-size: 1.2rem; line-height: 1.2; }
+  .reminder-modal-header p { max-width: 27rem; margin-top: .35rem; color: var(--color-muted-foreground); font-size: .78rem; line-height: 1.45; }
+  .reminder-modal-number {
+    position: absolute;
+    z-index: 0;
+    right: 1.35rem;
+    top: 1.1rem;
+    color: color-mix(in oklch, var(--color-primary) 25%, transparent);
+    font: 800 3.2rem/.9 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: -.12em;
+  }
+  .reminder-modal-header :is([data-eyebrow], h2, p) { position: relative; z-index: 1; }
+  .reminder-modal-body { padding: 1.1rem 1.35rem 1.25rem; }
+  .reminder-field > label { display: block; color: var(--color-foreground); }
+  .reminder-field :is(input, select) { background: var(--color-input); }
+  .reminder-picker > label::before,
+  .reminder-weekdays > label::before {
+    display: inline-grid;
+    width: 1.15rem;
+    height: 1.15rem;
+    place-items: center;
+    margin-right: .38rem;
+    border: 1px solid var(--color-border-strong);
+    background: var(--brutal-accent);
+    color: var(--color-foreground);
+    font: 800 .62rem/1 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .reminder-picker > label::before { content: "01"; }
+  .reminder-picker + .reminder-picker > label::before { content: "02"; background: color-mix(in oklch, var(--color-primary) 28%, var(--color-card)); }
+  .reminder-weekdays > label::before { content: "03"; background: color-mix(in oklch, var(--color-success) 32%, var(--color-card)); }
+  .reminder-picker > div { background: color-mix(in oklch, var(--color-card) 93%, #efeaff); }
+  .reminder-picker label[class*="cursor-pointer"]:has(input:checked) { background: color-mix(in oklch, var(--color-primary) 14%, var(--color-card)); font-weight: 700; }
+  .reminder-selection-chip {
+    display: inline-block;
+    padding: .2rem .45rem;
+    border: 1px solid var(--color-border-strong);
+    background: var(--brutal-accent);
+    color: var(--color-foreground);
+    font: 800 .62rem/1 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .reminder-weekdays {
+    padding: .85rem;
+    border: 1px dashed color-mix(in oklch, var(--color-border-strong) 65%, transparent);
+    background: color-mix(in oklch, var(--color-primary) 4%, var(--color-card));
+  }
+  .reminder-weekday { min-width: 3.7rem; font-weight: 700; transition: transform .14s ease, box-shadow .14s ease; }
+  .reminder-weekday:hover { border-color: var(--color-primary); transform: translateY(-1px); }
+  .reminder-weekday.bg-primary { box-shadow: 3px 3px 0 var(--color-border-strong); transform: translate(-1px, -1px); }
+  .reminder-period-panel { background: color-mix(in oklch, var(--brutal-accent) 13%, var(--color-card)); }
+  .reminder-modal-footer {
+    padding: .9rem 1.35rem 1.2rem;
+    border-top: 1px dashed color-mix(in oklch, var(--color-border-strong) 55%, transparent);
+    background: color-mix(in oklch, var(--color-card) 94%, #f4efff);
+  }
+  .reminder-cancel-button { background: var(--color-card); font-weight: 700; }
+  .reminder-save-button { min-width: 7rem; border: 2px solid var(--color-border-strong); box-shadow: 3px 3px 0 var(--color-border-strong); font-weight: 800; }
+  .reminder-save-button:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--color-border-strong); }
+
+  /* Executive date range is a control surface, not a thin utility row. */
+  .exec-period-filter {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(110deg, color-mix(in oklch, var(--color-card) 96%, #fff4d3), color-mix(in oklch, var(--color-card) 93%, #e5f2ff));
+  }
+  .exec-period-filter::before {
+    content: "PERIODE LAPORAN";
+    position: absolute;
+    right: 1rem;
+    top: .5rem;
+    color: color-mix(in oklch, var(--color-primary) 36%, transparent);
+    font: 800 .58rem/1 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: .14em;
+    pointer-events: none;
+  }
+  .exec-period-filter > * { position: relative; z-index: 1; }
+  .exec-period-label { color: var(--color-foreground) !important; font: 800 .62rem/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .1em; }
+  .exec-period-input {
+    min-height: 2.5rem;
+    border: 2px solid var(--color-border-strong) !important;
+    background: color-mix(in oklch, var(--color-card) 84%, #fff7df) !important;
+    box-shadow: 2px 2px 0 color-mix(in oklch, var(--color-border-strong) 75%, transparent);
+    font-weight: 700;
+  }
+  .exec-period-input:hover,
+  .exec-period-input:focus { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--color-border-strong); }
+  .exec-period-reset {
+    min-height: 2.5rem;
+    border: 2px solid var(--color-border-strong) !important;
+    background: var(--brutal-accent);
+    color: var(--color-foreground) !important;
+    box-shadow: 3px 3px 0 var(--color-border-strong);
+    font-weight: 800;
+  }
+  .exec-period-reset:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--color-border-strong); }
+  .exec-date-trigger { display: inline-flex; min-width: 10.25rem; align-items: center; justify-content: space-between; gap: .8rem; text-align: left; }
+  .exec-date-popover {
+    border: 2px solid var(--color-border-strong) !important;
+    border-radius: var(--radius-md) !important;
+    background: var(--color-card) !important;
+    box-shadow: 6px 6px 0 var(--color-border-strong) !important;
+  }
+  .exec-date-popover .group\/calendar { padding: .85rem; background: linear-gradient(145deg, color-mix(in oklch, var(--color-card) 96%, #fff2ce), color-mix(in oklch, var(--color-card) 93%, #e7f2ff)); }
+  .exec-date-popover button { border-radius: 0; font-weight: 700; }
+  .exec-date-popover button[data-selected-single="true"] { box-shadow: 2px 2px 0 var(--color-border-strong); }
+  .exec-date-popover .rdp-caption_label { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .75rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .exec-date-popover .rdp-weekday { color: var(--color-primary-soft-foreground); font-size: .65rem; font-weight: 800; }
+
   .admin-content > * { min-width: 0; }
   .admin-nav-item { transition-property: color, background-color, box-shadow, opacity, transform; }
   /* Data labels are operational content, not decoration.  Keep every small
@@ -795,21 +932,21 @@
    mode regardless of source order. */
 :root[data-design="classic"]:not(.dark) {
   --radius: 0.75rem;
-  --background: oklch(0.975 0.004 280);
-  --card: oklch(1 0 0);
-  --popover: oklch(1 0 0);
-  --secondary: oklch(0.97 0.005 280);
-  --muted: oklch(0.96 0.005 280);
+  --background: oklch(0.982 0.002 95);
+  --card: oklch(0.995 0.001 95);
+  --popover: oklch(0.995 0.001 95);
+  --secondary: oklch(0.965 0.003 95);
+  --muted: oklch(0.955 0.003 95);
   --destructive: #e94f37;
   --destructive-foreground: #17131d;
   --success: #087f5b;
   --success-foreground: oklch(0.99 0 0);
   --warning: #f59e0b;
   --warning-foreground: #17131d;
-  --border: oklch(0.93 0.01 285);
-  --border-strong: oklch(0.86 0.015 285);
-  --input: oklch(0.975 0.004 280);
-  --sidebar: oklch(0.985 0.008 285);
+  --border: oklch(0.91 0.004 95);
+  --border-strong: oklch(0.82 0.008 95);
+  --input: oklch(0.985 0.002 95);
+  --sidebar: oklch(0.978 0.003 95);
 }
 
 .dark[data-design="classic"] {
@@ -879,6 +1016,20 @@
 }
 [data-design="classic"] .deductions-panel::before { display: none; }
 [data-design="classic"] .deductions-panel-heading::after { display: none; }
+[data-design="classic"] .reminder-schedule-modal {
+  border-width: 1px;
+  border-color: var(--color-border);
+  box-shadow: 0 20px 55px color-mix(in oklch, var(--color-foreground) 18%, transparent);
+}
+[data-design="classic"] .reminder-modal-header { background: color-mix(in oklch, var(--color-card) 90%, var(--color-primary-soft)); border-bottom-width: 1px; }
+[data-design="classic"] .reminder-modal-number,
+[data-design="classic"] .reminder-picker > label::before,
+[data-design="classic"] .reminder-weekdays > label::before { display: none; }
+[data-design="classic"] .reminder-save-button { border-width: 0; box-shadow: none; }
+[data-design="classic"] .exec-period-filter { background: color-mix(in oklch, var(--color-card) 88%, transparent); }
+[data-design="classic"] .exec-period-filter::before { display: none; }
+[data-design="classic"] .exec-period-input,
+[data-design="classic"] .exec-period-reset { border-width: 1px !important; box-shadow: none; }
 [data-design="classic"] .admin-stat-card,
 [data-design="classic"] .admin-kpi-card {
   border-width: 1px !important;
@@ -905,6 +1056,21 @@
   background: color-mix(in oklch, var(--color-muted) 68%, transparent);
 }
 [data-design="classic"] .admin-avatar-orb { border-width: 0 !important; box-shadow: none !important; }
+
+/* Shared client picker: vivid enough for Neo Brutal, calm and glass-safe in Classic. */
+.client-combobox-content {
+  border: 2px solid var(--color-border-strong) !important;
+  border-radius: .5rem !important;
+  background: var(--color-card) !important;
+  box-shadow: 5px 5px 0 var(--color-border-strong) !important;
+}
+.client-combobox-command [cmdk-input-wrapper] { border-bottom: 2px solid var(--color-border-strong); }
+.client-combobox-item { border-radius: .25rem; font-weight: 600; }
+.client-combobox-item[data-selected="true"] { background: var(--color-primary) !important; color: var(--color-primary-foreground) !important; }
+[data-design="classic"] .client-combobox-trigger { border-width: 1px !important; font-weight: 500; }
+[data-design="classic"] .client-combobox-content { border-width: 1px !important; box-shadow: 0 12px 28px color-mix(in oklch, var(--color-foreground) 12%, transparent) !important; }
+[data-design="classic"] .client-combobox-command [cmdk-input-wrapper] { border-bottom-width: 1px; }
+[data-design="classic"] .client-combobox-item[data-selected="true"] { background: var(--color-primary-soft) !important; color: var(--color-primary-soft-foreground) !important; }
 
 /* Stat/KPI cards: brutal paints the whole card in the tone color; classic
    keeps the card neutral and tints only the icon chip, like the pre-redesign

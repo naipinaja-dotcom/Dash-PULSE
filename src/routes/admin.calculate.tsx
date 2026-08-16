@@ -736,7 +736,7 @@ function CalculatePage() {
 
           {/* Warning */}
           {result.warnings.length > 0 && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 mb-4 flex items-start gap-2.5 text-xs text-warning">
+            <div className="rounded-md border-[3px] border-border-strong bg-warning shadow-[6px_6px_0_0_var(--color-border-strong)] px-3.5 py-2.5 mb-4 flex items-start gap-2.5 text-xs text-warning-foreground">
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div>
                 {result.warnings.map((w, i) => (
@@ -775,7 +775,7 @@ function CalculatePage() {
 
           {/* Anomali */}
           {result.anomalies.length > 0 && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 mb-4 text-xs text-warning">
+            <div className="rounded-md border-[3px] border-border-strong bg-warning shadow-[6px_6px_0_0_var(--color-border-strong)] px-3.5 py-2.5 mb-4 text-xs text-warning-foreground">
               <div className="flex items-center gap-2 font-medium mb-1.5">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {result.anomalies.length} baris
                 anomali terdeteksi — cek manual, tidak otomatis di-skip
@@ -931,7 +931,7 @@ function CalculatePage() {
           )}
 
           {combinedResult.warnings.length > 0 && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 mb-4 flex items-start gap-2.5 text-xs text-warning">
+            <div className="rounded-md border-[3px] border-border-strong bg-warning shadow-[6px_6px_0_0_var(--color-border-strong)] px-3.5 py-2.5 mb-4 flex items-start gap-2.5 text-xs text-warning-foreground">
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div>
                 {combinedResult.warnings.map((w, i) => (
@@ -964,7 +964,7 @@ function CalculatePage() {
           )}
 
           {combinedResult.anomalies.length > 0 && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 mb-4 text-xs text-warning">
+            <div className="rounded-md border-[3px] border-border-strong bg-warning shadow-[6px_6px_0_0_var(--color-border-strong)] px-3.5 py-2.5 mb-4 text-xs text-warning-foreground">
               <div className="flex items-center gap-2 font-medium mb-1.5">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />{" "}
                 {combinedResult.anomalies.length} baris anomali
@@ -1104,7 +1104,7 @@ function CalculatePage() {
           )}
 
           {attResult.warnings.length > 0 && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3.5 py-2.5 mb-4 flex items-start gap-2.5 text-xs text-warning">
+            <div className="rounded-md border-[3px] border-border-strong bg-warning shadow-[6px_6px_0_0_var(--color-border-strong)] px-3.5 py-2.5 mb-4 flex items-start gap-2.5 text-xs text-warning-foreground">
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div>
                 {attResult.warnings.map((w, i) => (
@@ -1276,15 +1276,9 @@ function SummaryCard({
   highlight?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-lg border p-4 ${highlight ? "border-primary bg-primary-soft" : "border-border bg-card"}`}
-    >
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div
-        className={`text-lg font-semibold mt-1 ${highlight ? "text-primary-soft-foreground" : ""}`}
-      >
-        {value}
-      </div>
+    <div className="admin-kpi-card p-4" data-variant={highlight ? "primary" : "default"}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="admin-metric-value text-[22px] font-bold mt-1">{value}</div>
     </div>
   );
 }

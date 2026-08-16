@@ -39,7 +39,7 @@ export function ClientCombobox({
           type="button"
           disabled={disabled}
           className={cn(
-            "flex items-center justify-between gap-2 rounded-lg border-2 border-border-strong bg-card px-2.5 py-1.5 text-[11px] font-medium outline-none focus:ring-1 focus:ring-ring transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+            "client-combobox-trigger flex items-center justify-between gap-2 rounded-md border-2 border-border-strong bg-card px-3 py-2 text-[12px] font-semibold outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
             className,
           )}
         >
@@ -47,8 +47,8 @@ export function ClientCombobox({
           <ChevronsUpDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-0" align="start">
-        <Command shouldFilter={false}>
+      <PopoverContent className="client-combobox-content w-[260px] p-0" align="start">
+        <Command className="client-combobox-command" shouldFilter={false}>
           <CommandInput
             placeholder="Cari client..."
             value={search}
@@ -69,7 +69,7 @@ export function ClientCombobox({
                     setSearch("");
                     setOpen(false);
                   }}
-                  className="text-[12px]"
+                  className="client-combobox-item text-[12px]"
                 >
                   <Check className={cn("w-3.5 h-3.5", value === o.value ? "opacity-100" : "opacity-0")} />
                   {o.label}

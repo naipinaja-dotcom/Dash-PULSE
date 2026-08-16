@@ -49,7 +49,7 @@ export function ConfirmHost() {
       <div className="relative w-full max-w-sm rounded-xl border-2 border-border-strong bg-card p-5 shadow-[8px_8px_0_0_var(--color-border-strong)] animate-in fade-in zoom-in-95">
         <div className="flex items-start gap-3">
           {danger && (
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border-2 border-border-strong bg-destructive/10 text-destructive">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-destructive text-destructive-foreground">
               <AlertTriangle className="h-5 w-5" />
             </span>
           )}

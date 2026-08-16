@@ -16,7 +16,7 @@ export function PageSizeSelect({ pageSize, setPageSize }: { pageSize: number; se
           setCustomOpen(false);
           setPageSize(Number(e.target.value));
         }}
-        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        className="rounded-lg border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
       >
         {PRESETS.map((n) => <option key={n} value={n}>{n}</option>)}
         <option value="custom">Custom{!isPreset ? ` (${pageSize})` : ""}</option>
@@ -27,7 +27,7 @@ export function PageSizeSelect({ pageSize, setPageSize }: { pageSize: number; se
           min={1}
           autoFocus
           placeholder="Jumlah"
-          className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="w-20 rounded-lg border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
           onChange={(e) => {
             const n = parseInt(e.target.value, 10);
             if (n > 0) setPageSize(n);
@@ -48,12 +48,12 @@ export function PaginationBar({
       <span>Menampilkan {from}–{to} dari {total}</span>
       <div className="flex items-center gap-2">
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-          className="px-3 py-1 rounded-md border border-border disabled:opacity-40 hover:bg-muted">
+          className="px-3 py-1 rounded-lg border-2 border-border-strong font-medium shadow-[2px_2px_0_0_var(--color-border-strong)] disabled:opacity-40 disabled:shadow-none hover:bg-muted active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[transform,box-shadow]">
           Sebelumnya
         </button>
         <span>Halaman {page} / {totalPages}</span>
         <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-          className="px-3 py-1 rounded-md border border-border disabled:opacity-40 hover:bg-muted">
+          className="px-3 py-1 rounded-lg border-2 border-border-strong font-medium shadow-[2px_2px_0_0_var(--color-border-strong)] disabled:opacity-40 disabled:shadow-none hover:bg-muted active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[transform,box-shadow]">
           Berikutnya
         </button>
       </div>

@@ -39,7 +39,7 @@ export function ClientCombobox({
           type="button"
           disabled={disabled}
           className={cn(
-            "flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+            "flex items-center justify-between gap-2 rounded-lg border-2 border-border-strong bg-card px-2.5 py-1.5 text-[11px] font-medium outline-none focus:ring-1 focus:ring-ring transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
             className,
           )}
         >

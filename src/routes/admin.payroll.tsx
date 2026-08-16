@@ -2075,7 +2075,7 @@ function PayrollPage() {
           }
         }}
       >
-        <DialogContent className="max-w-md rounded-2xl border-border bg-card p-0 overflow-hidden">
+        <DialogContent className="max-w-md rounded-2xl bg-card p-0 overflow-hidden">
           <div className="h-1 bg-gradient-to-r from-warning via-primary to-primary" />
           <div className="p-6">
             <DialogHeader>
@@ -2142,7 +2142,7 @@ function PayrollPage() {
       </Dialog>
 
       <Dialog open={spendControlOpen} onOpenChange={setSpendControlOpen}>
-        <DialogContent className="max-w-4xl rounded-2xl border-border bg-card p-0 overflow-hidden">
+        <DialogContent className="max-w-4xl rounded-2xl bg-card p-0 overflow-hidden">
           <div className="h-1 bg-gradient-to-r from-primary via-warning to-primary" />
           <div className="p-6">
             <DialogHeader>

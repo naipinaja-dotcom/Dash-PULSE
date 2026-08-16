@@ -22,15 +22,15 @@ function ProfilePage() {
 
   return (
     <RiderLayout title={t("profile.title")}>
-      <div className="relative overflow-hidden rounded-[1.75rem] border border-primary/20 bg-gradient-to-br from-primary-soft via-card to-card px-5 py-7 shadow-lg shadow-primary/10 dark:from-primary/20 dark:via-card dark:to-card">
+      <div className="relative overflow-hidden rounded-[1.75rem] border-2 border-border-strong bg-gradient-to-br from-primary-soft via-card to-card px-5 py-7 shadow-[8px_8px_0_0_var(--color-border-strong)]">
         <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full bg-primary/20 blur-2xl" />
         <div className="relative flex flex-col items-center">
-        <div className="w-[4.5rem] h-[4.5rem] rounded-2xl border-4 border-card bg-gradient-to-br from-primary to-violet-700 text-primary-foreground grid place-items-center text-2xl font-bold shadow-lg">
+        <div className="w-[4.5rem] h-[4.5rem] rounded-2xl border-2 border-border-strong bg-gradient-to-br from-primary to-violet-700 text-primary-foreground grid place-items-center text-2xl font-bold shadow-[3px_3px_0_0_var(--color-border-strong)]">
           {user?.fullName?.charAt(0) ?? "R"}
         </div>
         <div className="mt-3 text-base font-bold">{rider?.full_name ?? user?.fullName}</div>
         <div className="text-xs text-muted-foreground mt-0.5">{rider?.employee_id ?? user?.employeeId}</div>
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-success/15 px-3 py-1 text-[10px] font-semibold text-success"><BadgeCheck className="w-3.5 h-3.5" />{rider ? (STATUS_LABEL[rider.status] ?? rider.status) : "Rider"}</div>
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-success/15 px-3 py-1 text-[10px] font-semibold text-success"><BadgeCheck className="w-3.5 h-3.5" />{rider ? (STATUS_LABEL[rider.status] ?? rider.status) : "Rider"}</div>
         </div>
       </div>
       {loading ? (
@@ -50,7 +50,7 @@ function ProfilePage() {
           ].map((r, index) => (
             <div key={r.k}>
               {(index === 0 || index === 4) && <p className="mb-2 text-[10px] font-semibold tracking-[.14em] uppercase text-primary">{index === 0 ? "Identitas & kontak" : "Pencairan & status"}</p>}
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card/80 px-3 py-3 shadow-sm mb-2 transition-colors hover:border-primary/30 dark:bg-white/[.035]">
+            <div className="flex items-center justify-between gap-3 rounded-2xl border-2 border-border-strong bg-card px-3 py-3 shadow-[4px_4px_0_0_var(--color-border-strong)] mb-2 transition-colors hover:border-primary/60">
               <div className="flex items-center gap-3 min-w-0"><span className="w-9 h-9 rounded-xl bg-primary/10 text-primary grid place-items-center flex-shrink-0"><r.icon className="w-4 h-4" /></span><span className="text-xs text-muted-foreground min-w-0">{r.k}</span></div>
               <span className="text-sm font-medium text-right min-w-0 break-words">{r.v}</span>
             </div>

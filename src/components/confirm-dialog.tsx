@@ -46,10 +46,10 @@ export function ConfirmHost() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => close(false)} />
-      <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl animate-in fade-in zoom-in-95">
+      <div className="relative w-full max-w-sm rounded-xl border-2 border-border-strong bg-card p-5 shadow-[8px_8px_0_0_var(--color-border-strong)] animate-in fade-in zoom-in-95">
         <div className="flex items-start gap-3">
           {danger && (
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border-2 border-border-strong bg-destructive/10 text-destructive">
               <AlertTriangle className="h-5 w-5" />
             </span>
           )}
@@ -60,11 +60,11 @@ export function ConfirmHost() {
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button ref={cancelRef} onClick={() => close(false)}
-            className="rounded-md border border-border bg-card px-3.5 py-1.5 text-sm hover:bg-muted">
+            className="rounded-lg border-2 border-border-strong bg-card px-3.5 py-1.5 text-sm font-medium hover:bg-muted">
             {opts.cancelText ?? "Batal"}
           </button>
           <button onClick={() => close(true)}
-            className={`rounded-md px-3.5 py-1.5 text-sm font-medium hover:opacity-90 ${danger ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}>
+            className={`rounded-lg border-2 border-border-strong px-3.5 py-1.5 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow] ${danger ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}>
             {opts.confirmText ?? "Hapus"}
           </button>
         </div>

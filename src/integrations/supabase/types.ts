@@ -950,6 +950,7 @@ export type Database = {
           period_end_weekday: number | null
           period_start_weekday: number | null
           rider_id: string | null
+          run_time: string | null
           updated_at: string
           weekdays: number[]
         }
@@ -963,6 +964,7 @@ export type Database = {
           period_end_weekday?: number | null
           period_start_weekday?: number | null
           rider_id?: string | null
+          run_time?: string | null
           updated_at?: string
           weekdays: number[]
         }
@@ -976,6 +978,7 @@ export type Database = {
           period_end_weekday?: number | null
           period_start_weekday?: number | null
           rider_id?: string | null
+          run_time?: string | null
           updated_at?: string
           weekdays?: number[]
         }

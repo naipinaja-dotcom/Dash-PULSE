@@ -1,12 +1,11 @@
 -- Live Fee Auto-Sync — pg_cron scheduling
 --
--- STATUS: SUDAH AKTIF di production sejak 2026-08-13 (job 'live-fee-sync-h1-morning'
--- & 'live-fee-sync-h0-close' di cron.job) — dijalankan langsung lewat Supabase SQL
--- Editor / execute_sql, BUKAN lewat migration runner otomatis (project ini gak
--- punya migration runner utk pg_cron; lihat CATATAN di bawah). File ini didokumentasikan
--- di sini SUPAYA gak dikira "belum pernah diaktifin" kayak insiden 2026-08-13 —
--- SELALU cek `select * from cron.job;` langsung ke production buat status riil,
--- jangan cuma percaya file ini di-comment atau enggak.
+-- SUPERSEDED (2026-08-17): 'live-fee-sync-h1-morning' & 'live-fee-sync-h0-close'
+-- sudah di-unschedule dari production. Diganti sync di 4 checkpoint seragam
+-- (01:00, 06:00, 10:00, 16:00 WIB) — lihat 20260817000000_unified_checkpoint_cron.sql.
+-- File ini dibiarkan sebagai riwayat, JANGAN jalanin ulang block cron.schedule
+-- di sini — SELALU cek `select * from cron.job;` langsung ke production buat
+-- jadwal yang beneran aktif.
 --
 -- Jadwal aktif: 2 job terpisah, TIAP JOB kirim {from,to} EKSPLISIT untuk SATU
 -- hari kalender (bukan window rolling 2 hari default) — supaya fee tiap hari

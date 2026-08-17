@@ -133,17 +133,23 @@ async function loadClientPeriodSchedules(
     .select("client_id, period_start_weekday, period_end_weekday, close_same_day")
     .not("client_id", "is", null)
     .is("rider_id", null) // periode = konsep level-client, bukan per-rider
-    .eq("active", true)
-    .not("period_start_weekday", "is", null);
+    .eq("active", true);
   if (error) throw new Error(`Gagal ambil jadwal periode: ${error.message}`);
 
   const byClient = new Map<string, { start: number; end: number; closeSameDay: boolean }[]>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const s of (data ?? []) as any[]) {
     const arr = byClient.get(s.client_id) ?? [];
+    // period_start_weekday/period_end_weekday NULL = "reguler Senin–Minggu"
+    // (lihat hint di schedule-form-modal.tsx: "Kosongin kalau client ini
+    // mingguan Senin–Minggu biasa") — sebelumnya baris NULL ini malah
+    // di-exclude total lewat .not("period_start_weekday", "is", null) di
+    // query atas, jadi client dengan periode reguler gak PERNAH kepilih sama
+    // cron ini walau udah jatuh tempo (bug: PT. Salam Sehat Indonesia dkk
+    // gak pernah keproses H-1 walau hari Senin, harusnya due).
     arr.push({
-      start: s.period_start_weekday,
-      end: s.period_end_weekday,
+      start: s.period_start_weekday ?? 1, // Senin
+      end: s.period_end_weekday ?? 0, // Minggu
       closeSameDay: !!s.close_same_day,
     });
     byClient.set(s.client_id, arr);

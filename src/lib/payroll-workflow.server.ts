@@ -604,9 +604,15 @@ export async function runPayrollWorkflow(opts: {
   }
 
   const result: PayrollWorkflowResult = { runs, skippedClients };
+  // Cron sekarang polling tiap 15 menit (dulu 4x/hari) — kalau tiap tick
+  // kosong (gak ada yang jatuh tempo, gak ada error) tetap kirim notif,
+  // Slack/email kebanjiran "gak ada periode" puluhan kali sehari. Trigger
+  // manual/event (aksi eksplisit admin) tetap dikasih notif walau hasilnya
+  // kosong, itu bukan noise — itu konfirmasi dari aksi yang mereka minta.
+  const isEmptyCronTick = opts.triggeredBy === "cron" && runs.length === 0 && !hardError;
   const notif = buildNotification(result);
-  const slackResult = await sendSlackMessage(notif.text);
-  const emailResult = await sendEmail({ subject: notif.subject, html: notif.html });
+  const slackResult = isEmptyCronTick ? null : await sendSlackMessage(notif.text);
+  const emailResult = isEmptyCronTick ? null : await sendEmail({ subject: notif.subject, html: notif.html });
 
   const status = hardError ? (runs.length > 0 ? "partial" : "failed") : "completed";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

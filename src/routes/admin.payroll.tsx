@@ -22,6 +22,7 @@ import {
   Pencil,
   AlertTriangle,
   ArrowUpRight,
+  SkipForward,
 } from "lucide-react";
 import { generatePayrollDetails, computeInstallmentAdvance, DEDUCTION_PRIORITY } from "@/lib/payroll-generate";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
@@ -513,6 +514,51 @@ function PayrollPage() {
     setEditAmount(d.amount);
     setEditDescription(d.description ?? "");
     setEditTypeId(d.deduction_type_id);
+  };
+
+  // "Skip periode ini" buat cicilan/sewa yang nunjuk ke rider_installments
+  // (installment_id != null) — rider yang fee-nya kecil/butuh uang gak
+  // kepotong periode ini SAMA SEKALI, tanpa nambah beban ke periode
+  // berikutnya (bukan akumulasi/dobel bayar, cuma nambah tenor). Mekanismenya
+  // majuin next_deduction_date ke abis period_end run ini — generatePayrollDetails
+  // nge-filter installments pakai `.lte(next_deduction_date, run.period_end)`
+  // (lihat payroll-generate.ts), jadi installment ini otomatis ke-exclude dari
+  // charging run ini, installments_paid-nya gak ke-sentuh, lanjut normal begitu
+  // next_deduction_date udah lewat di run berikutnya.
+  const [skippingInstallmentId, setSkippingInstallmentId] = useState<string | null>(null);
+  const skipInstallmentThisPeriod = async (d: Deduction) => {
+    if (!activeRun || !d.installment_id) return;
+    if (
+      !(await confirmDialog({
+        title: "Skip potongan ini periode ini?",
+        description:
+          "Rider gak kepotong buat item ini di periode ini sama sekali. Progress cicilan (kalau ada) TETAP di angka sekarang — lanjut normal mulai periode berikutnya, BUKAN digabung/dobel nanti. Run ini akan digenerate ulang otomatis buat nerapin ini.",
+        confirmText: "Skip periode ini",
+        danger: false,
+      }))
+    )
+      return;
+    setSkippingInstallmentId(d.installment_id);
+    try {
+      const nextDate = new Date(`${activeRun.period_end}T00:00:00Z`);
+      nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+      const { error: e1 } = await supabase
+        .from("rider_installments")
+        .update({ next_deduction_date: nextDate.toISOString().slice(0, 10) })
+        .eq("id", d.installment_id);
+      if (e1) throw e1;
+      const { detailCount } = await generatePayrollDetails(activeRun);
+      posthog.capture("payroll_installment_skipped", {
+        run_id: activeRun.id,
+        installment_id: d.installment_id,
+      });
+      toast.success(`Di-skip periode ini. Run digenerate ulang: ${detailCount} detail.`);
+      loadDetails(activeRun.id);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSkippingInstallmentId(null);
+    }
   };
 
   // Habis 1 baris payroll_deductions ditambah/diedit, total_deduction/net_pay
@@ -1948,6 +1994,20 @@ function PayrollPage() {
                                             <span className="w-32 text-right tabular-nums font-medium">
                                               Rp{Number(ded.amount).toLocaleString("id-ID")}
                                             </span>
+                                            {activeRun.status !== "published" && ded.installment_id && (
+                                              <button
+                                                onClick={() => skipInstallmentThisPeriod(ded)}
+                                                disabled={skippingInstallmentId === ded.installment_id}
+                                                title="Skip periode ini (gak kepotong sekarang, lanjut normal periode berikutnya)"
+                                                className="text-muted-foreground hover:text-warning disabled:opacity-50"
+                                              >
+                                                {skippingInstallmentId === ded.installment_id ? (
+                                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                  <SkipForward className="w-3.5 h-3.5" />
+                                                )}
+                                              </button>
+                                            )}
                                             {activeRun.status !== "published" && (
                                               <button
                                                 onClick={() => startEditDeduction(ded)}

@@ -1,11 +1,13 @@
 -- Payroll Workflow — pg_cron scheduling
 --
--- STATUS: SUDAH AKTIF di production ('payroll-workflow-h1' & 'payroll-workflow-same-day'
--- di cron.job) — dijalankan langsung lewat Supabase SQL Editor / execute_sql,
--- BUKAN lewat migration runner otomatis. File ini didokumentasikan di sini biar
--- gak dikira "belum pernah diaktifin" — SELALU cek `select * from cron.job;`
--- langsung ke production buat status riil, jangan cuma percaya file ini
--- di-comment atau enggak.
+-- SUPERSEDED (2026-08-17): 'payroll-workflow-h1' & 'payroll-workflow-same-day'
+-- sudah di-unschedule dari production. Diganti 4 checkpoint seragam (01:00,
+-- 06:00, 10:00, 16:00 WIB), tiap checkpoint cek SEMUA client due tanpa
+-- closeSameDayFilter — lihat 20260817000000_unified_checkpoint_cron.sql.
+-- File ini dibiarkan sebagai riwayat/referensi cara kerja resolvePeriodIfDue
+-- & findOrCreatePayrollRun di bawah, JANGAN jalanin ulang block cron.schedule
+-- di sini — SELALU cek `select * from cron.job;` langsung ke production
+-- buat jadwal yang beneran aktif.
 --
 -- Jadwal aktif: SETIAP HARI, 2 cron TERPISAH berdasarkan tipe tutup buku:
 --

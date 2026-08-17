@@ -1,0 +1,115 @@
+-- Unified checkpoint schedule — pg_cron scheduling
+--
+-- STATUS: SUDAH AKTIF di production (8 job baru di cron.job, dijalankan
+-- langsung lewat execute_sql, BUKAN lewat migration runner — project ini gak
+-- punya migration runner utk pg_cron). SELALU cek `select * from cron.job;`
+-- langsung ke production buat status riil.
+--
+-- Ganti total dari jadwal lama (live-fee-sync-h1-morning/h0-close jam
+-- 06:00/15:50 WIB, payroll-workflow-h1/same-day jam 09:00/16:00 WIB — lihat
+-- 20260720000001_payroll_workflow_cron.sql & 20260730000001_live_fee_sync_cron.sql,
+-- KEDUANYA SEKARANG SUPERSEDED, jangan jalanin ulang block cron.schedule di
+-- file itu) jadi 4 CHECKPOINT SERAGAM: 01:00, 06:00, 10:00, 16:00 WIB. Di
+-- tiap checkpoint, 2 job jalan berurutan (sync dulu, payroll-workflow 5 menit
+-- kemudian, biar data yang baru di-sync udah kebaca):
+--
+--   01:00 WIB (18:00 UTC hari sebelumnya) — sync KEMARIN, lalu cek payroll
+--   06:00 WIB (23:00 UTC hari sebelumnya) — sync KEMARIN, lalu cek payroll
+--   10:00 WIB (03:00 UTC)                 — sync HARI INI, lalu cek payroll
+--   16:00 WIB (09:00 UTC)                 — sync HARI INI, lalu cek payroll
+--
+-- payroll-workflow di keempat checkpoint SEKARANG TANPA closeSameDayFilter —
+-- cek & proses SEMUA client yang due (h-1 maupun same-day sekaligus), gak
+-- dipisah lagi kayak jadwal lama. Karena sekarang dicek 4x sehari (bukan 1x
+-- per tipe), client jenis apapun tetap kekejar; findOrCreatePayrollRun sudah
+-- idempotent per client+periode (baca 20260720000001_payroll_workflow_cron.sql),
+-- jadi kena cek berkali-kali dalam sehari itu aman — cuma recompute kalau
+-- masih draft, tidak bikin baris/publish dobel.
+--
+-- Alasan berhenti di jam 16:00 (bukan lanjut ke malam): semua jadwal payroll
+-- yang di-setup di Reminder Calendar sejauh ini gak ada yang due lewat dari
+-- jam 6 sore — kalau nanti ada client yang butuh checkpoint lebih malam,
+-- tambah pasangan job baru di sini (ikuti pola yang sama).
+--
+-- Biaya log: tiap invocation (match atau enggak) nyatet 1 baris ke
+-- payroll_workflow_runs (result JSON kecil kalau kosong) — di 8 job/hari
+-- (4 sync + 4 payroll-workflow) itu ~120 baris/bulan buat payroll_workflow_runs
+-- sendiri, jauh di bawah skala yang perlu dikhawatirin buat Postgres. Belum
+-- ada retention policy; tambahin kalau suatu saat dirasa perlu.
+--
+-- Cara ganti/matikan (jalankan di Supabase SQL Editor):
+--   select cron.unschedule('live-fee-sync-0100');
+--   select cron.unschedule('payroll-workflow-0100');
+--   select cron.unschedule('live-fee-sync-0600');
+--   select cron.unschedule('payroll-workflow-0600');
+--   select cron.unschedule('live-fee-sync-1000');
+--   select cron.unschedule('payroll-workflow-1000');
+--   select cron.unschedule('live-fee-sync-1600');
+--   select cron.unschedule('payroll-workflow-1600');
+
+-- create extension if not exists pg_cron;
+-- create extension if not exists pg_net;
+--
+-- -- Checkpoint 01:00 WIB — sync KEMARIN
+-- select cron.schedule('live-fee-sync-0100', '0 18 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'),
+--     body := jsonb_build_object('from', ((now() at time zone 'Asia/Jakarta')::date - 1)::text, 'to', ((now() at time zone 'Asia/Jakarta')::date - 1)::text)
+--   );
+-- $$);
+-- select cron.schedule('payroll-workflow-0100', '5 18 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/payroll-workflow',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'),
+--     body := '{"trigger": "scheduler"}'::jsonb
+--   );
+-- $$);
+--
+-- -- Checkpoint 06:00 WIB — sync KEMARIN
+-- select cron.schedule('live-fee-sync-0600', '0 23 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'),
+--     body := jsonb_build_object('from', ((now() at time zone 'Asia/Jakarta')::date - 1)::text, 'to', ((now() at time zone 'Asia/Jakarta')::date - 1)::text)
+--   );
+-- $$);
+-- select cron.schedule('payroll-workflow-0600', '5 23 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/payroll-workflow',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'),
+--     body := '{"trigger": "scheduler"}'::jsonb
+--   );
+-- $$);
+--
+-- -- Checkpoint 10:00 WIB — sync HARI INI
+-- select cron.schedule('live-fee-sync-1000', '0 3 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'),
+--     body := jsonb_build_object('from', ((now() at time zone 'Asia/Jakarta')::date)::text, 'to', ((now() at time zone 'Asia/Jakarta')::date)::text)
+--   );
+-- $$);
+-- select cron.schedule('payroll-workflow-1000', '5 3 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/payroll-workflow',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'),
+--     body := '{"trigger": "scheduler"}'::jsonb
+--   );
+-- $$);
+--
+-- -- Checkpoint 16:00 WIB — sync HARI INI
+-- select cron.schedule('live-fee-sync-1600', '0 9 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'),
+--     body := jsonb_build_object('from', ((now() at time zone 'Asia/Jakarta')::date)::text, 'to', ((now() at time zone 'Asia/Jakarta')::date)::text)
+--   );
+-- $$);
+-- select cron.schedule('payroll-workflow-1600', '5 9 * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/payroll-workflow',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'),
+--     body := '{"trigger": "scheduler"}'::jsonb
+--   );
+-- $$);

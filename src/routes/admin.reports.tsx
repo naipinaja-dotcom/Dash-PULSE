@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
@@ -12,7 +12,27 @@ import { Check, ChevronDown, Download, Loader2, Search } from "lucide-react";
 import { FinanceWorksheet } from "@/components/finance-worksheet";
 import { DeductionSummary } from "@/components/deduction-summary";
 
-export const Route = createFileRoute("/admin/reports")({ component: ReportsPage });
+// Search params opsional — bikin link ke halaman ini (mis. dilampirin ke
+// Spend Control request) langsung kebuka ke run+mode yang persis lagi
+// dilihat, bukan reset ke default. Disinkron DUA ARAH: dibaca sekali pas
+// buka (seed initial state), lalu di-tulis balik ke address bar tiap kali
+// runId/mode ganti (lihat effect di bawah) — jadi address bar SELALU
+// representasi state yang lagi tampil, kapan pun mau di-copy.
+interface ReportsSearch {
+  runId?: string;
+  mode?: "client" | "rider" | "deduction";
+}
+
+export const Route = createFileRoute("/admin/reports")({
+  component: ReportsPage,
+  validateSearch: (search: Record<string, unknown>): ReportsSearch => ({
+    runId: typeof search.runId === "string" ? search.runId : undefined,
+    mode:
+      search.mode === "client" || search.mode === "rider" || search.mode === "deduction"
+        ? search.mode
+        : undefined,
+  }),
+});
 
 type Run = {
   id: string;
@@ -26,10 +46,15 @@ type ReportRunStatus = "finalized" | "published";
 
 function ReportsPage() {
   const { t } = useT();
+  const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
   const [runs, setRuns] = useState<Run[]>([]);
-  const [runId, setRunId] = useState("");
+  const [runId, setRunId] = useState(search.runId ?? "");
   const [runStatus, setRunStatus] = useState<ReportRunStatus>("finalized");
-  const [mode, setMode] = useState<"client" | "rider" | "deduction">("rider");
+  const [mode, setMode] = useState<"client" | "rider" | "deduction">(search.mode ?? "rider");
+  // Cegah effect sync-ke-URL nulis-timpa `search.runId` dari link SEBELUM
+  // daftar run kelar di-fetch & runId hasil URL diverifikasi valid.
+  const [runsLoaded, setRunsLoaded] = useState(false);
 
   useEffect(() => {
     // client_id dipakai finance-worksheet.tsx buat nentuin export template
@@ -45,17 +70,34 @@ function ReportsPage() {
           (run) => run.status === "finalized" || run.status === "published",
         );
         setRuns(reportRuns);
-        const firstFinalized = reportRuns.find((run) => run.status === "finalized");
-        const firstPublished = reportRuns.find((run) => run.status === "published");
-        if (firstFinalized) {
-          setRunStatus("finalized");
-          setRunId(firstFinalized.id);
-        } else if (firstPublished) {
-          setRunStatus("published");
-          setRunId(firstPublished.id);
+        const fromLink = search.runId ? reportRuns.find((run) => run.id === search.runId) : undefined;
+        if (fromLink) {
+          setRunStatus(fromLink.status as ReportRunStatus);
+          setRunId(fromLink.id);
+        } else {
+          const firstFinalized = reportRuns.find((run) => run.status === "finalized");
+          const firstPublished = reportRuns.find((run) => run.status === "published");
+          if (firstFinalized) {
+            setRunStatus("finalized");
+            setRunId(firstFinalized.id);
+          } else if (firstPublished) {
+            setRunStatus("published");
+            setRunId(firstPublished.id);
+          }
         }
+        setRunsLoaded(true);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Tulis balik ke address bar begitu runId/mode berubah (klik run lain,
+  // ganti tab mode) — `replace: true` biar tombol Back browser gak numpuk
+  // 1 entry history per klik.
+  useEffect(() => {
+    if (!runsLoaded) return;
+    navigate({ search: { runId: runId || undefined, mode }, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runsLoaded, runId, mode]);
 
   const visibleRuns = runs.filter((run) => run.status === runStatus);
   const run = visibleRuns.find((r) => r.id === runId);

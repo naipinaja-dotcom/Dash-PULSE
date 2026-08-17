@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { triggerPayrollReminderManual } from "@/lib/api/payroll-reminder.functions";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Loader2, Plus, Trash2, Send, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle } from "lucide-react";
 import { ScheduleFormModal } from "./payroll-reminder-panel/schedule-form-modal";
 import { useT } from "@/lib/i18n";
 
@@ -54,6 +54,7 @@ export function PayrollReminderPanel() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -205,6 +206,12 @@ export function PayrollReminderPanel() {
                   {s.active ? t("reminderPanel.active") : t("reminderPanel.inactive")}
                 </button>
                 <button
+                  onClick={() => setEditingSchedule(s)}
+                  className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
                   onClick={() => deleteSchedule(s)}
                   className="p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-md transition-colors"
                 >
@@ -278,21 +285,30 @@ export function PayrollReminderPanel() {
         </div>
       )}
 
-      {formOpen && (
+      {(formOpen || editingSchedule) && (
         <ScheduleFormModal
+          key={editingSchedule?.id ?? "new"}
           clients={clients}
           riders={riders}
           saving={saving}
-          onClose={() => setFormOpen(false)}
-          onSave={async (rows) => {
+          editing={editingSchedule}
+          onClose={() => {
+            setFormOpen(false);
+            setEditingSchedule(null);
+          }}
+          onSave={async (rows, editingId) => {
             setSaving(true);
-            const { error } = await (supabase as any)
-              .from("payroll_reminder_schedules")
-              .insert(rows);
+            const { error } = editingId
+              ? await (supabase as any)
+                  .from("payroll_reminder_schedules")
+                  .update(rows[0])
+                  .eq("id", editingId)
+              : await (supabase as any).from("payroll_reminder_schedules").insert(rows);
             setSaving(false);
             if (error) return toast.error(error.message);
-            toast.success(t("reminderPanel.scheduleCreated"));
+            toast.success(editingId ? t("reminderPanel.scheduleUpdated") : t("reminderPanel.scheduleCreated"));
             setFormOpen(false);
+            setEditingSchedule(null);
             load();
           }}
         />

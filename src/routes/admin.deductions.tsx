@@ -54,7 +54,7 @@ function DeductionsPage() {
           {tab === "molis" && <MolisTypesTab />}
           {tab === "add" && <AddTab />}
           {tab === "active" && <ActiveTab />}
-          {tab === "arrears" && <ArrearsTab />}
+          {tab === "arrears" && <ArrearsTab onGoToActiveTab={() => setTab("active")} />}
           {tab === "recap" && <RecapTab />}
           {tab === "recipients" && <RecipientsTab />}
           {tab === "settlement" && <KasbonSettlementTab />}

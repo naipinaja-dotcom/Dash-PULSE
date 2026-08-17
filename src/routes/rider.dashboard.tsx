@@ -74,7 +74,7 @@ function DashboardPage() {
         const latestUnpaid = await latestRentalUnpaid(rentalRows.map((i: any) => i.id));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const i of rentalRows as any[]) {
-          info.set(i.id, { notes: i.notes, tunggakan: latestUnpaid.get(i.id) ?? 0, progress: null });
+          info.set(i.id, { notes: i.notes, tunggakan: latestUnpaid.get(i.id)?.unpaid ?? 0, progress: null });
         }
       }
       return { fixedTotal, info };

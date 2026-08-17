@@ -144,7 +144,7 @@ function DashboardPage() {
             name: r.riders?.full_name ?? "Rider",
             remaining: 1,
             total: 1,
-            amountValue: latestUnpaid.get(r.id) ?? 0,
+            amountValue: latestUnpaid.get(r.id)?.unpaid ?? 0,
             installments: "Tunggakan sewa",
           }))
           .filter((r) => r.amountValue > 0);

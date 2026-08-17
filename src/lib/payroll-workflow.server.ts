@@ -148,8 +148,12 @@ export function nowInWib(rawNow: Date = new Date()): Date {
 // 2 tick sekaligus match & proses dobel (aman sih karena findOrCreatePayrollRun
 // idempotent, tapi buang-buang kerjaan).
 export function matchesRunTime(nowMinutesOfDay: number, runTime: string | null, toleranceMinutes = 7): boolean {
-  const [h, m] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00").split(":").map(Number);
-  const target = (h || 0) * 60 + (m || 0);
+  const [rawH, rawM] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00").split(":").map(Number);
+  // Clamp: regex hanya cek format, bukan rentang (mis. "23:99" lolos regex).
+  // Tanpa ini, target bisa >1439 dan bikin `1440 - diff` negatif -> false match di jam manapun.
+  const h = Math.min(23, Math.max(0, rawH || 0));
+  const m = Math.min(59, Math.max(0, rawM || 0));
+  const target = h * 60 + m;
   const diff = Math.abs(nowMinutesOfDay - target);
   return Math.min(diff, 1440 - diff) <= toleranceMinutes; // Math.min(...) buat wrap-around lewat tengah malam
 }

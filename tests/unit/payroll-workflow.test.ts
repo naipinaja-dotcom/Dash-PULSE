@@ -107,4 +107,15 @@ describe("matchesRunTime", () => {
   it("format run_time yang gak valid fallback ke default 09:00 (gak crash)", () => {
     expect(matchesRunTime(toMinutes(9, 0), "bukan-jam")).toBe(true);
   });
+
+  it("run_time lolos regex tapi rentangnya invalid (mis. menit 99) di-clamp, bukan bikin diff negatif", () => {
+    // Tanpa clamp: target = 23*60+99 = 1479 (overflow, di luar 0-1439). Di
+    // jam 00:10 (n=10), diff mentah = |10-1479| = 1469, 1440-1469 = -29,
+    // min(1469,-29) = -29 <= 7 -> match SALAH (harusnya jauh dari target).
+    // Dengan clamp, target jadi 23:59 (1439), diff = 1429, 1440-1429 = 11,
+    // 11 <= 7 salah -> gak match, sesuai ekspektasi.
+    expect(matchesRunTime(toMinutes(0, 10), "23:99")).toBe(false);
+    // Ter-clamp jadi 23:59 -> tetap match kalau sekarang emang di sekitar 23:59.
+    expect(matchesRunTime(toMinutes(23, 58), "23:99")).toBe(true);
+  });
 });

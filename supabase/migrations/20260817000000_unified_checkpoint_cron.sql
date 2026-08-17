@@ -1,9 +1,13 @@
 -- Unified checkpoint schedule — pg_cron scheduling
 --
--- STATUS: SUDAH AKTIF di production (8 job baru di cron.job, dijalankan
--- langsung lewat execute_sql, BUKAN lewat migration runner — project ini gak
--- punya migration runner utk pg_cron). SELALU cek `select * from cron.job;`
--- langsung ke production buat status riil.
+-- STATUS: PARSIAL SUPERSEDED (2026-08-17). Keempat live-fee-sync-XXXX di
+-- bawah masih AKTIF apa adanya (tarik data doang, gak berubah). Keempat
+-- payroll-workflow-XXXX SUDAH DIGANTI jadi 1 job `payroll-workflow-15min`
+-- (*/15 * * * *) — lihat 20260817000001_payroll_workflow_15min_cron.sql —
+-- karena payroll-workflow sekarang punya jam trigger custom per client
+-- (`run_time` di payroll_reminder_schedules, dicek via matchesRunTime() di
+-- payroll-workflow.server.ts), bukan cuma 4 jam fixed. SELALU cek
+-- `select * from cron.job;` langsung ke production buat status riil.
 --
 -- Ganti total dari jadwal lama (live-fee-sync-h1-morning/h0-close jam
 -- 06:00/15:50 WIB, payroll-workflow-h1/same-day jam 09:00/16:00 WIB — lihat

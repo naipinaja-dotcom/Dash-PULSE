@@ -1,0 +1,46 @@
+-- payroll-workflow: dari 4 checkpoint fixed jadi polling 15 menit — pg_cron
+--
+-- STATUS: SUDAH AKTIF di production (dijalankan langsung lewat execute_sql,
+-- BUKAN lewat migration runner — project ini gak punya migration runner utk
+-- pg_cron). SELALU cek `select * from cron.job;` langsung ke production
+-- buat status riil.
+--
+-- KENAPA: admin sekarang bisa set jam trigger payroll custom per-client lewat
+-- Reminder Calendar (`run_time` di payroll_reminder_schedules, kolom text
+-- "HH:MM", default null = 09:00 kalau kosong). 4 checkpoint fixed
+-- (01:00/06:00/10:00/16:00 WIB) gak bisa nyerap jam custom bebas, jadi
+-- payroll-workflow sekarang jalan tiap 15 menit dan self-filter lewat
+-- matchesRunTime() di payroll-workflow.server.ts: tiap tick, tiap
+-- client-period dicek apakah jam SEKARANG (WIB) ada dalam toleransi ±7 menit
+-- dari run_time yang di-set (7 menit dipilih SENGAJA supaya PAS SATU tick
+-- yang match per target — lihat komentar di matchesRunTime()). Hari jatuh
+-- tempo (resolvePeriodIfDue) tetap logic yang sama, gak berubah.
+--
+-- Ganti dari 4 job `payroll-workflow-0100/0600/1000/1600` (lihat
+-- 20260817000000_unified_checkpoint_cron.sql, SUDAH SUPERSEDED untuk bagian
+-- payroll-workflow-nya — live-fee-sync-XXXX di file itu TETAP AKTIF apa
+-- adanya, gak disentuh) jadi 1 job `payroll-workflow-15min`.
+--
+-- Biaya log: findOrCreatePayrollRun tetap idempotent per client+periode
+-- (baca 20260720000001_payroll_workflow_cron.sql) — dicek 96x/hari per
+-- client-period, tapi cuma benar-benar match jendela ±7 menit SEKALI per
+-- target run_time (lihat penjelasan matchesRunTime di atas), jadi gak
+-- nge-generate/publish dobel. Tiap invocation (match atau enggak) nyatet 1
+-- baris ke payroll_workflow_runs — di 96 invocation/hari itu ~2900
+-- baris/bulan, masih jauh di bawah skala yang perlu dikhawatirin buat
+-- Postgres. Belum ada retention policy; tambahin kalau suatu saat dirasa
+-- perlu.
+--
+-- Cara ganti/matikan (jalankan di Supabase SQL Editor):
+--   select cron.unschedule('payroll-workflow-15min');
+
+-- create extension if not exists pg_cron;
+-- create extension if not exists pg_net;
+--
+-- select cron.schedule('payroll-workflow-15min', '*/15 * * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/payroll-workflow',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'),
+--     body := '{"trigger": "scheduler"}'::jsonb
+--   );
+-- $$);

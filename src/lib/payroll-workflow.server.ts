@@ -543,7 +543,12 @@ export async function runPayrollWorkflow(opts: {
       for (const p of clientPeriods) {
         const period = resolvePeriodIfDue(today, p.start, p.end, p.closeSameDay);
         if (!period) continue; // periode ini belum jatuh tempo hari ini
-        if (!matchesRunTime(nowMinutesOfDay, p.runTime)) continue; // belum jam custom client ini
+        // run_time cuma buat nge-gate cron polling 15-menitan biar gak numpuk
+        // proses di luar jam yang di-set client. Trigger manual/event = admin
+        // eksplisit minta "jalanin SEKARANG" — gak masuk akal ikut nunggu jam
+        // custom itu juga (sebelumnya ini bikin tombol "Run Workflow Sekarang"
+        // kelihatan gak jalan kalau diklik di luar jendela ±7 menit itu).
+        if (opts.triggeredBy === "cron" && !matchesRunTime(nowMinutesOfDay, p.runTime)) continue;
 
         const run = await findOrCreatePayrollRun(
           {

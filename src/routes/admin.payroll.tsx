@@ -1656,29 +1656,29 @@ function PayrollPage() {
                   Sumber: fee_calculation_audit_log (dicatat tiap commit di Hitung Fee). */}
               {feeAuditLog.length > 0 && (
                 <div className="rounded-xl border-2 border-border-strong shadow-[5px_5px_0_0_var(--color-border-strong)] overflow-x-auto mb-4">
-                  <div className="px-3 py-2 bg-muted/60 text-[12px] font-medium text-muted-foreground">
+                  <div className="px-3 py-2 bg-muted/60 text-[12px] font-semibold text-foreground">
                     Riwayat Hitung Fee periode ini ({feeAuditLog.length}) — cek dulu sebelum
                     Generate/Finalize
                   </div>
                   <table className="w-full text-sm">
                     <thead className="bg-muted/40 text-left">
                       <tr>
-                        <th className="px-3 py-2 font-medium text-[12px] text-muted-foreground">
+                        <th className="px-3 py-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                           Client
                         </th>
-                        <th className="px-2 py-2 font-medium text-[12px] text-muted-foreground">
+                        <th className="px-2 py-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                           Skema
                         </th>
-                        <th className="px-2 py-2 font-medium text-[12px] text-muted-foreground">
+                        <th className="px-2 py-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                           Periode
                         </th>
-                        <th className="px-2 py-2 font-medium text-[12px] text-muted-foreground">
+                        <th className="px-2 py-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                           Baris
                         </th>
-                        <th className="px-2 py-2 font-medium text-[12px] text-muted-foreground">
+                        <th className="px-2 py-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                           Total
                         </th>
-                        <th className="px-2 py-2 font-medium text-[12px] text-muted-foreground">
+                        <th className="px-2 py-2 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                           Kapan
                         </th>
                         <th className="px-2 py-2 w-36" />
@@ -1750,34 +1750,34 @@ function PayrollPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/60 text-left">
                     <tr>
-                      <th className="px-3 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-3 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Rider
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Deliv
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Fee Deliv
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Fee Absensi
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Insentif
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Penalty
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Gross
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Potongan
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Net Pay
                       </th>
-                      <th className="px-2 py-2.5 font-medium text-[12px] text-muted-foreground">
+                      <th className="px-2 py-2.5 font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
                         Pembayaran
                       </th>
                     </tr>
@@ -1859,7 +1859,7 @@ function PayrollPage() {
                                   </p>
                                 </div>
                               ) : activeRun.status === "draft" ? (
-                                <span className="text-[11px] text-muted-foreground">Finalize dulu</span>
+                                <span className="text-[11px] font-medium text-muted-foreground">Finalize dulu</span>
                               ) : (
                                 <button
                                   onClick={() => {

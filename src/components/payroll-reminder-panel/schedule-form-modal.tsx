@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
+import { sanitizeTimeInput } from "@/components/pricing-form/shared";
 
 type Client = { id: string; name: string };
 type Rider = { id: string; full_name: string; employee_id: string };
@@ -23,6 +24,7 @@ export type ScheduleRow = {
   period_start_weekday: number | null;
   period_end_weekday: number | null;
   close_same_day: boolean;
+  run_time: string | null;
 };
 
 export function ScheduleFormModal({
@@ -50,6 +52,7 @@ export function ScheduleFormModal({
   const [periodStartWeekday, setPeriodStartWeekday] = useState(1); // Senin
   const [periodEndWeekday, setPeriodEndWeekday] = useState(0); // Minggu
   const [closeSameDay, setCloseSameDay] = useState(false);
+  const [runTime, setRunTime] = useState("");
 
   const toggleDay = (d: number) =>
     setWeekdays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
@@ -74,11 +77,11 @@ export function ScheduleFormModal({
       return toast.error(t("reminderModal.pickAtLeastOneClientOrRider"));
     if (weekdays.length === 0) return toast.error(t("reminderModal.pickAtLeastOneDay"));
     const period = periodOn
-      ? { period_start_weekday: periodStartWeekday, period_end_weekday: periodEndWeekday, close_same_day: closeSameDay }
-      : { period_start_weekday: null, period_end_weekday: null, close_same_day: false };
+      ? { period_start_weekday: periodStartWeekday, period_end_weekday: periodEndWeekday, close_same_day: closeSameDay, run_time: runTime.trim() || null }
+      : { period_start_weekday: null, period_end_weekday: null, close_same_day: false, run_time: null };
     const rows: ScheduleRow[] = [
       ...clientIds.map((id) => ({ label: label.trim(), client_id: id, rider_id: null, weekdays, ...period })),
-      ...riderIds.map((id) => ({ label: label.trim(), client_id: null, rider_id: id, weekdays, period_start_weekday: null, period_end_weekday: null, close_same_day: false })),
+      ...riderIds.map((id) => ({ label: label.trim(), client_id: null, rider_id: id, weekdays, period_start_weekday: null, period_end_weekday: null, close_same_day: false, run_time: null })),
     ];
     onSave(rows);
   };
@@ -256,6 +259,23 @@ export function ScheduleFormModal({
                     </span>
                   </span>
                 </label>
+              )}
+              {periodOn && (
+                <div className="mt-2.5">
+                  <label className="text-xs font-medium">{t("reminderModal.runTimeLabel")}</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="09:00"
+                      value={runTime}
+                      onChange={(e) => setRunTime(sanitizeTimeInput(e.target.value))}
+                      maxLength={5}
+                      className="w-20 text-xs rounded-md border-2 border-border-strong bg-background px-2 py-1.5 outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-[11px] text-muted-foreground">{t("reminderModal.runTimeHint")}</span>
+                  </div>
+                </div>
               )}
             </div>
           )}

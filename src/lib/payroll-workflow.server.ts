@@ -124,19 +124,49 @@ export function resolvePeriodIfDue(
   return { periodStart: fmt(start), periodEnd: fmt(refDay) };
 }
 
+// `new Date()` mentahan itu instant UTC — kalau dibaca langsung pake
+// getUTCDate()/getUTCDay() (kayak resolvePeriodIfDue di atas), jam 00:00-06:59
+// WIB itu MASIH tanggal/hari KEMARIN di UTC (WIB = UTC+7). Cron cuma dulu
+// aman karena jam-jamnya (02:00 & 09:00 UTC) kebetulan gak pernah nyebrang
+// batas hari UTC vs WIB — begitu ditambah checkpoint 01:00/06:00 WIB (=
+// 18:00/23:00 UTC HARI SEBELUMNYA), atau begitu di-poll tiap 15 menit
+// sepanjang hari (nyentuh jendela itu tiap malam), baca UTC mentah bakal
+// salah hari. Geser instant-nya +7 jam dulu SEBELUM dibaca — setelah itu
+// getUTCDate()/getUTCDay()/getUTCHours() dari hasil geseran ini merepresentasikan
+// tanggal/jam WIB yang benar (trik standar buat "baca tanggal lokal" tanpa
+// Intl/timezone lib).
+export function nowInWib(rawNow: Date = new Date()): Date {
+  return new Date(rawNow.getTime() + 7 * 60 * 60 * 1000);
+}
+
+// Cron pengecekan jalan tiap 15 menit (00:00, 00:15, 00:30, ...) — tiap
+// tick, cek apakah jam SEKARANG (WIB) lagi paling dekat sama jam custom yang
+// di-set client (`run_time`, format "HH:MM", default "09:00" kalau kosong).
+// Toleransi 7 menit (bukan 15) SENGAJA dipilih supaya PAS SATU tick yang
+// match per target (jarak antar tick 15 menit, jadi tiap target cuma masuk
+// jendela ±7 menit dari SATU tick terdekat) — toleransi 15 penuh bakal bikin
+// 2 tick sekaligus match & proses dobel (aman sih karena findOrCreatePayrollRun
+// idempotent, tapi buang-buang kerjaan).
+export function matchesRunTime(nowMinutesOfDay: number, runTime: string | null, toleranceMinutes = 7): boolean {
+  const [h, m] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00").split(":").map(Number);
+  const target = (h || 0) * 60 + (m || 0);
+  const diff = Math.abs(nowMinutesOfDay - target);
+  return Math.min(diff, 1440 - diff) <= toleranceMinutes; // Math.min(...) buat wrap-around lewat tengah malam
+}
+
 async function loadClientPeriodSchedules(
   admin: SupabaseAdmin,
-): Promise<Map<string, { start: number; end: number; closeSameDay: boolean }[]>> {
+): Promise<Map<string, { start: number; end: number; closeSameDay: boolean; runTime: string | null }[]>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (admin as any)
     .from("payroll_reminder_schedules")
-    .select("client_id, period_start_weekday, period_end_weekday, close_same_day")
+    .select("client_id, period_start_weekday, period_end_weekday, close_same_day, run_time")
     .not("client_id", "is", null)
     .is("rider_id", null) // periode = konsep level-client, bukan per-rider
     .eq("active", true);
   if (error) throw new Error(`Gagal ambil jadwal periode: ${error.message}`);
 
-  const byClient = new Map<string, { start: number; end: number; closeSameDay: boolean }[]>();
+  const byClient = new Map<string, { start: number; end: number; closeSameDay: boolean; runTime: string | null }[]>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const s of (data ?? []) as any[]) {
     const arr = byClient.get(s.client_id) ?? [];
@@ -151,6 +181,7 @@ async function loadClientPeriodSchedules(
       start: s.period_start_weekday ?? 1, // Senin
       end: s.period_end_weekday ?? 0, // Minggu
       closeSameDay: !!s.close_same_day,
+      runTime: s.run_time ?? null, // null = default "09:00" (lihat matchesRunTime)
     });
     byClient.set(s.client_id, arr);
   }
@@ -467,10 +498,13 @@ function buildNotification(result: PayrollWorkflowResult): {
 export async function runPayrollWorkflow(opts: {
   triggeredBy: "cron" | "manual" | "event";
   triggeredByUserId?: string;
-  closeSameDayFilter?: "h-1" | "same-day";
 }): Promise<PayrollWorkflowResult> {
   const admin = getSupabaseAdmin();
-  const today = new Date();
+  // WIB, bukan UTC mentah — lihat komentar nowInWib(). Penting sejak cron
+  // ini dipoll tiap 15 menit sepanjang hari (termasuk jendela 00:00-06:59
+  // WIB yang secara UTC masih "kemarin").
+  const today = nowInWib();
+  const nowMinutesOfDay = today.getUTCHours() * 60 + today.getUTCMinutes();
   const startedAt = new Date().toISOString();
 
   const [{ data: clients, error: clientsErr }, periodsByClient, { data: schemesRaw }] =
@@ -503,10 +537,9 @@ export async function runPayrollWorkflow(opts: {
       if (!pickPricingScheme(schemes, c.id, "rider")) continue;
 
       for (const p of clientPeriods) {
-        if (opts.closeSameDayFilter === "h-1" && p.closeSameDay) continue;
-        if (opts.closeSameDayFilter === "same-day" && !p.closeSameDay) continue;
         const period = resolvePeriodIfDue(today, p.start, p.end, p.closeSameDay);
         if (!period) continue; // periode ini belum jatuh tempo hari ini
+        if (!matchesRunTime(nowMinutesOfDay, p.runTime)) continue; // belum jam custom client ini
 
         const run = await findOrCreatePayrollRun(
           {

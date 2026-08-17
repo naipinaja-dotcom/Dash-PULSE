@@ -20,6 +20,7 @@ type Schedule = {
   period_start_weekday: number | null;
   period_end_weekday: number | null;
   close_same_day: boolean;
+  run_time: string | null;
   active: boolean;
   clients: { name: string } | null;
   riders: { full_name: string; employee_id: string } | null;
@@ -68,7 +69,7 @@ export function PayrollReminderPanel() {
     (supabase as any)
       .from("payroll_reminder_schedules")
       .select(
-        "id, label, client_id, rider_id, weekdays, period_start_weekday, period_end_weekday, close_same_day, active, clients(name), riders(full_name, employee_id)",
+        "id, label, client_id, rider_id, weekdays, period_start_weekday, period_end_weekday, close_same_day, run_time, active, clients(name), riders(full_name, employee_id)",
       )
       .order("created_at", { ascending: false })
       .then(({ data }: { data: Schedule[] | null }) => setSchedules(data ?? []));
@@ -191,6 +192,7 @@ export function PayrollReminderPanel() {
                       · {t("reminderPanel.periodLabel")} {dayName(s.period_start_weekday)}–
                       {dayName(s.period_end_weekday)}
                       {s.close_same_day ? ` ${t("reminderPanel.closeSameDaySuffix")}` : ""}
+                      {` @ ${s.run_time ?? "09:00"}`}
                     </span>
                   )}
                 </div>

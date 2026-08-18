@@ -28,6 +28,7 @@ function PnlPage() {
   const { from, to } = useIntelligenceDate();
   const [running, setRunning] = useState(false);
   const [rows, setRows] = useState<PnlRow[] | null>(null);
+  const [tab, setTab] = useState<"margin" | "clientAnalyst">("margin");
 
   // Ga ada filter sendiri di sini — tanggal acuan diatur dari Executive
   // Dashboard (lihat use-intelligence-date.ts), halaman ini otomatis hitung
@@ -96,6 +97,25 @@ function PnlPage() {
             <Kpi label="Margin %" value={totPct.toFixed(1) + "%"} accent="success" />
           </div>
 
+          <div className="inline-flex border-2 border-border-strong rounded-md bg-card shadow-[4px_4px_0_0_var(--color-border-strong)] w-fit mb-4 overflow-hidden">
+            {(
+              [
+                ["margin", "Margin"],
+                ["clientAnalyst", "Client Analyst"],
+              ] as [typeof tab, string][]
+            ).map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`px-4 py-1.5 text-sm font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${tab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {tab === "margin" && (
+          <>
           {/* Tabel per client */}
           <div className="rounded-lg border border-border overflow-hidden">
             <div className="overflow-x-auto">
@@ -161,6 +181,50 @@ function PnlPage() {
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-warning" />
             <span>Baris kuning = margin tipis (0–15%). Baris merah = 🔴 RUGI (cost lebih besar dari revenue). "Belum ada skema client" = revenue-nya belum bisa dihitung karena client itu belum punya skema pricing sisi client. Angka Revenue/Cost dihitung live dari skema + data pengiriman (belum termasuk PPN).</span>
           </div>
+          </>
+          )}
+
+          {tab === "clientAnalyst" && (
+          <div className="rounded-lg border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-muted text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="p-3">Client</th>
+                    <th className="p-3 text-right">Revenue</th>
+                    <th className="p-3 text-right">Total Order</th>
+                    <th className="p-3 text-right">Total Cost</th>
+                    <th className="p-3 text-right">Total Driver Aktif</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
+                  ) : rows.map((r) => (
+                    <tr key={r.clientId} className="border-t border-border">
+                      <td className="p-3 font-medium">{r.client}</td>
+                      <td className="p-3 text-right">{r.revenue === null ? <span className="text-muted-foreground">— belum ada skema client</span> : formatRupiah(r.revenue)}</td>
+                      <td className="p-3 text-right">{r.deliveryCount.toLocaleString("id-ID")}</td>
+                      <td className="p-3 text-right text-muted-foreground">{formatRupiah(r.cost)}</td>
+                      <td className="p-3 text-right">{r.driverCount.toLocaleString("id-ID")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {rows.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-muted font-medium">
+                      <td className="p-3">TOTAL</td>
+                      <td className="p-3 text-right">{formatRupiah(totRevenue)}</td>
+                      <td className="p-3 text-right">{rows.reduce((s, r) => s + r.deliveryCount, 0).toLocaleString("id-ID")}</td>
+                      <td className="p-3 text-right">{formatRupiah(totCost)}</td>
+                      <td className="p-3 text-right">{rows.reduce((s, r) => s + r.driverCount, 0).toLocaleString("id-ID")}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+          )}
         </>
       )}
 

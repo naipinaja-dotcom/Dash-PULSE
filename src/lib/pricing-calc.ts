@@ -226,7 +226,7 @@ function allocInt(total: number, weights: number[]): number[] {
 // mis. multi-drop toko yang sama). Dipakai calcFlatComponent (mesin lama,
 // calc_type="flat_unit") DAN calcModularDeliveryComponent (jalur flat murni)
 // — satu tempat biar dua-duanya konsisten.
-function billableByUniqueAddress(rows: DeliveryRow[]): Set<DeliveryRow> {
+export function billableByUniqueAddress(rows: DeliveryRow[]): Set<DeliveryRow> {
   const billable = new Set<DeliveryRow>();
   const byRider = groupBy(rows, riderKey);
   for (const [, rrows] of byRider) {

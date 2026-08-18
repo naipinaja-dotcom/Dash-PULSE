@@ -8,7 +8,7 @@
 // — mis. Alfagift, murni attendance — dia malah gak pernah MUNCUL di
 // perClient sama sekali, karena grouping dulu cuma dari delivery_records).
 // =========================================================
-import { calcScheme, calcAttendanceScheme, calcHybridScheme, type DeliveryRow, type AttendanceLogRow } from "./pricing-calc";
+import { calcScheme, calcAttendanceScheme, calcHybridScheme, billableByUniqueAddress, isCompleted, type DeliveryRow, type AttendanceLogRow } from "./pricing-calc";
 import type { PricingScheme, SchemeFor } from "./pricing-types";
 
 export type ClientLite = { id: string; name: string };
@@ -26,6 +26,7 @@ export interface ClientPnl {
   margin: number | null;
   marginPct: number | null;
   deliveryCount: number;
+  driverCount: number;
   earliestDelivery: string | null;
   costRows: { date: string; fee: number }[];
   revenueRows: { date: string; fee: number }[];
@@ -72,6 +73,23 @@ export function pickPricingScheme(
 }
 
 const normName = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
+const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) => r.rider_id || r.driver_code || null;
+
+// Cuma order status COMPLETED yang dianggap "order" — samain sama Hitung Fee
+// (admin.calculate.tsx) & generatePayrollDetails (lihat payroll-generate.ts),
+// yang emang cuma nge-zip baris COMPLETED ke delivery_count. Tanpa filter ini
+// FAILED/PENDING_PICKUP ikut ngisi, jadi angkanya beda dari Payroll/Payslip/Reports.
+// Lalu ikutin unit_basis skema CLIENT itu sendiri: "unique_address" = 1 alamat
+// unik per rider per hari cuma dihitung sekali (samain sama gimana revenue-nya
+// beneran ke-bill lewat billableByUniqueAddress di pricing-calc.ts), "awb"
+// (default, termasuk skema yang gak punya unit_basis mis. tier/hybrid) = total
+// baris/AWB apa adanya.
+function orderCount(crows: DeliveryRow[], clientScheme: PricingScheme | undefined): number {
+  const completed = crows.filter(isCompleted);
+  const unitBasis = (clientScheme?.params?.config as { unit_basis?: string } | undefined)?.unit_basis;
+  if (unitBasis === "unique_address") return billableByUniqueAddress(completed).size;
+  return completed.length;
+}
 
 // Dispatch ke engine yang sesuai kategori skema — inilah fix-nya: sebelumnya
 // SELALU calcScheme (engine delivery), yang balikin subtotal 0 buat
@@ -141,6 +159,7 @@ export function computePnl(
     const margin = revenue === null ? null : revenue - cost;
     const marginPct = revenue && revenue > 0 && margin !== null ? (margin / revenue) * 100 : null;
     const dates = crows.map((r) => r.delivery_date).filter(Boolean).sort();
+    const drivers = new Set([...crows.map(riderKey), ...cattendance.map(riderKey)].filter((k): k is string => k !== null));
     perClient.push({
       clientId: cid,
       client: nameOf.get(cid) ?? "(tanpa client)",
@@ -148,7 +167,8 @@ export function computePnl(
       cost,
       margin,
       marginPct,
-      deliveryCount: crows.length,
+      deliveryCount: orderCount(crows, clientS),
+      driverCount: drivers.size,
       earliestDelivery: dates[0] ?? null,
       costRows: costResult?.perRow ?? [],
       revenueRows: revResult?.perRow ?? [],

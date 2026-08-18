@@ -525,6 +525,23 @@ function CalculatePage() {
         if (err) throw err;
         done += chunk.length;
       }
+      // Client cuma punya SATU skema kategori aktif per periode. Kalau skema
+      // client ini PERNAH diganti kategori (mis. Attendance -> Hybrid) dan
+      // periode yang sama di-Hitung-Fee ulang, fee lama yang masih nyantol
+      // di tabel yang UDAH GAK DIPAKAI bakal ke-jumlah dobel sama fee baru
+      // pas generatePayrollDetails (dia selalu jumlahin delivery_records.fee
+      // + attendance_logs.fee apa adanya, gak tau skema mana yang aktif).
+      // Cuma jalan kalau client spesifik dipilih — run "Semua Client" lintas
+      // banyak client sekaligus, ketebakan gede kalau ikut di-reset di sini.
+      if (clientId) {
+        const otherTable = table === "attendance_logs" ? "delivery_records" : "attendance_logs";
+        const dateCol = otherTable === "attendance_logs" ? "log_date" : "delivery_date";
+        const { error: resetErr } = await (supabase as any).from(otherTable).update({ fee: 0 })
+          .eq("client_id", clientId)
+          .gte(dateCol, from).lte(dateCol, to)
+          .neq("fee", 0);
+        if (resetErr) toast.warning(`Fee tersimpan, tapi gagal bersihin sisa fee lama di ${otherTable}: ${resetErr.message}`);
+      }
       // Audit trail: catat siapa yang commit, kapan, skema/config PERSIS yang
       // dipakai (snapshot, bukan referensi hidup ke pricing_schemes yang bisa
       // berubah belakangan), dan total fee — biar bisa ditelusuri kalau nanti

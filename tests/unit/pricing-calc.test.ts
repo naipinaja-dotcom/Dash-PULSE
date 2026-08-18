@@ -466,6 +466,50 @@ describe("calcAttendanceScheme", () => {
     expect(res.absentRows).toBe(1);
     expect(res.perRider[0].daysWorked).toBe(0);
   });
+
+  it("does not pay delivery_component for an absent day even if completed deliveries exist that day", () => {
+    const withDelivComp = env({
+      type: "attendance",
+      config: {
+        ...base.config,
+        delivery_component: { enabled: true, method: "flat", unit: "per_order", flat_rate: 5000, rate_by: "flat" },
+      },
+    });
+    const res = calcAttendanceScheme(
+      withDelivComp,
+      [{ rider_id: "R1", log_date: "2026-07-01", duration_minutes: 0, is_absent: true }],
+      [row({ rider_id: "R1", delivery_date: "2026-07-01" })],
+    );
+    expect(res.perRow[0].delivery_component).toBe(0);
+    expect(res.perRow[0].fee).toBe(0);
+  });
+
+  // Shift 23:00-07:00 (lewat tengah malam), batas ontime jam 01:00. Clock-in
+  // 23:30 jelas ontime — dulu dibandingin sebagai menit mentah (1410 > 60)
+  // jadi keitung TELAT, insentif ontime ilang padahal harusnya cair.
+  const overnightShift = env({
+    type: "attendance",
+    config: {
+      full_fee: 0,
+      standard_minutes: 480,
+      shifts: [{ shift_number: 1, label: "Malam", start_time: "23:00", end_time: "07:00", full_fee: 100000, standard_minutes: 480, late_after: "01:00" }],
+      incentives: [{ name: "Ontime", condition: "ontime_only", amount: 10000 }],
+    },
+  });
+
+  it("does not flag a clock-in shortly after an overnight shift starts as late", () => {
+    const res = calcAttendanceScheme(overnightShift, [
+      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 480, clock_in: "23:30", is_absent: false },
+    ]);
+    expect(res.perRow[0].incentive).toBe(10000); // ontime bonus cair
+  });
+
+  it("still flags a clock-in past the overnight late_after cutoff as late", () => {
+    const res = calcAttendanceScheme(overnightShift, [
+      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 480, clock_in: "01:30", is_absent: false },
+    ]);
+    expect(res.perRow[0].incentive).toBe(0); // telat, ontime bonus gak cair
+  });
 });
 
 // ==================================================================

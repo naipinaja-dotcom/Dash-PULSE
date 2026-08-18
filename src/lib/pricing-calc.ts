@@ -724,6 +724,14 @@ export function findShiftFor(clockIn: string | null | undefined, shifts: ShiftCo
   return null;
 }
 
+// Jarak dari jam mulai shift ke `clock`, dalam menit, wrap ke hari berikutnya
+// kalau perlu (mis. shift mulai 23:00, clock 00:30 -> 90 menit, bukan -1350).
+// Dipakai buat bandingin dua jam-of-day yang jendelanya bisa lewat tengah
+// malam (late_after vs clock_in) tanpa salah arah kayak perbandingan mentah.
+function minutesSinceShiftStart(clock: number, shiftStart: number): number {
+  return (clock - shiftStart + 1440) % 1440;
+}
+
 export interface AttendanceRowFee {
   id?: string | null;
   rider: string;
@@ -830,9 +838,14 @@ export function calcAttendanceComponent(logs: AttendanceLogRow[], cfg: any): Att
 
     // Telat: kalau shift punya `late_after`, hitung dari clock-in vs jam itu
     // (config-driven, per-client). Kalau tidak, pakai flag is_late dari data.
+    // Dibandingin sebagai jarak dari jam mulai shift (bukan menit mentah) —
+    // shift yang lewat tengah malam (mis. 23:00-07:00) bikin perbandingan
+    // mentah salah arah: clock-in 23:30 (jelas ontime) vs late_after 01:00
+    // bakal keitung TELAT kalau dibandingin apa adanya (1410 > 60).
     let late = !!r.is_late;
     if (shift && shift.late_after && r.clock_in) {
-      late = timeToMinutes(r.clock_in) > timeToMinutes(shift.late_after);
+      const shiftStart = timeToMinutes(shift.start_time);
+      late = minutesSinceShiftStart(timeToMinutes(r.clock_in), shiftStart) > minutesSinceShiftStart(timeToMinutes(shift.late_after), shiftStart);
     }
 
     let incentive = 0;
@@ -1027,7 +1040,12 @@ export function calcAttendanceScheme(env: PricingEnvelope, logs: AttendanceLogRo
   const perRow: AttendanceRowFee[] = logs.map((r, i) => {
     if (r.is_absent) absentRows++;
     const c = comp[i];
-    const delivComp = delivCompMap.get(riderKey(r) + "|" + r.log_date) ?? 0;
+    // Absen = fee 0 total, termasuk delivery_component — tanpa ini baris
+    // absen yang kebetulan punya delivery_records completed di tanggal yang
+    // sama (mis. rider gantiin shift orang lain tanpa absen tercatat) tetap
+    // kebayar delivery_component penuh, kontradiksi sama warning di bawah
+    // ("N baris absen (fee 0)").
+    const delivComp = r.is_absent ? 0 : (delivCompMap.get(riderKey(r) + "|" + r.log_date) ?? 0);
     return {
       id: r.id ?? null,
       rider: riderKey(r),

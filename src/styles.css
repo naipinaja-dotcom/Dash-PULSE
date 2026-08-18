@@ -862,6 +862,16 @@
     color: var(--color-primary-soft-foreground) !important;
   }
   [data-design="classic"] .admin-nav-active svg { color: var(--color-primary-soft-foreground) !important; }
+  /* The border-2+bg-primary swap above only recolors the element that
+     carries both classes. Children with their own hardcoded text-primary-
+     foreground/text-muted-foreground/text-primary (brutal's solid-fill
+     contrast colors) don't inherit that fix and go near-invisible on the
+     new soft background — e.g. payroll run list subtitle, deduction-mode
+     card description. Catch them here instead of per-file. */
+  [data-design="classic"] [class*="border-2"][class*="bg-primary"] :is(.text-primary-foreground, .text-muted-foreground, .text-primary) {
+    color: var(--color-primary-soft-foreground) !important;
+    opacity: .85;
+  }
   [data-design="classic"] .pricing-rail :is(
     [data-pricing-side].bg-primary,
     [data-pricing-category].bg-primary,
@@ -1098,14 +1108,14 @@
 }
 [data-design="classic"] .admin-stat-card[data-tone="success"] .stat-icon-chip,
 [data-design="classic"] .admin-kpi-card[data-variant="success"] .stat-icon-chip {
-  background: color-mix(in oklch, var(--color-success) 12%, transparent) !important;
+  background: color-mix(in oklch, var(--color-success) 22%, transparent) !important;
 }
 [data-design="classic"] .admin-stat-card[data-tone="destructive"] .stat-icon-chip,
 [data-design="classic"] .admin-kpi-card[data-variant="danger"] .stat-icon-chip {
-  background: color-mix(in oklch, var(--color-destructive) 12%, transparent) !important;
+  background: color-mix(in oklch, var(--color-destructive) 22%, transparent) !important;
 }
 [data-design="classic"] .admin-kpi-card[data-variant="warning"] .stat-icon-chip {
-  background: color-mix(in oklch, var(--color-warning) 12%, transparent) !important;
+  background: color-mix(in oklch, var(--color-warning) 22%, transparent) !important;
 }
 
 /* Badges/alerts/pills: every one of these was hand-written per file as
@@ -1114,13 +1124,13 @@
    classic wants the pre-redesign tint + tone-colored text instead. Requires
    border-2 (not border-[3px]) so Button/Card's own solid CTAs are untouched. */
 [data-design="classic"] [class*="border-2"][class*="bg-destructive"] {
-  background: color-mix(in oklch, var(--color-destructive) 12%, transparent) !important;
-  border-color: color-mix(in oklch, var(--color-destructive) 30%, transparent) !important;
+  background: color-mix(in oklch, var(--color-destructive) 22%, transparent) !important;
+  border-color: color-mix(in oklch, var(--color-destructive) 40%, transparent) !important;
   color: var(--color-destructive) !important;
 }
 [data-design="classic"] [class*="border-2"][class*="bg-success"] {
-  background: color-mix(in oklch, var(--color-success) 12%, transparent) !important;
-  border-color: color-mix(in oklch, var(--color-success) 30%, transparent) !important;
+  background: color-mix(in oklch, var(--color-success) 22%, transparent) !important;
+  border-color: color-mix(in oklch, var(--color-success) 40%, transparent) !important;
   color: var(--color-success) !important;
 }
 [data-design="classic"] [class*="border-2"][class*="bg-primary"] {
@@ -1129,12 +1139,12 @@
   color: var(--color-primary-soft-foreground) !important;
 }
 [data-design="classic"] [class*="border-2"][class*="bg-warning"] {
-  background: color-mix(in oklch, var(--color-warning) 18%, transparent) !important;
-  border-color: color-mix(in oklch, var(--color-warning) 35%, transparent) !important;
+  background: color-mix(in oklch, var(--color-warning) 28%, transparent) !important;
+  border-color: color-mix(in oklch, var(--color-warning) 45%, transparent) !important;
 }
 /* --warning-foreground is dark ink year-round (it's tuned for a solid bright-
    yellow fill), which reads fine in light mode's tint too — but in dark mode
-   the same 18% tint sits on a near-black page, so dark-on-dark goes invisible. */
+   the same tint sits on a near-black page, so dark-on-dark goes invisible. */
 .dark[data-design="classic"] [class*="border-2"][class*="bg-warning"] {
   color: var(--color-warning) !important;
 }

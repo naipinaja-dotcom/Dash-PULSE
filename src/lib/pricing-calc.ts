@@ -618,6 +618,16 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     !!modCfg?.distance?.enabled &&
     (modCfg.rate_by === "flat" || (modCfg.distance.rows ?? []).some((b) => b.type !== "flat"));
   const dependsOnDistance = (["tier", "tier_daily"].includes(env.type) && !!cfg?.distance) || distanceDrivesAmount;
+  // Skema unit_basis "unique_address" (flat_unit: cfg.unit, modular_v2:
+  // cfg.unit_basis — nama field beda per tipe, lihat calcFlatComponent &
+  // calcModularDeliveryComponent) SENGAJA nge-nol-in fee kunjungan ke-2+ ke
+  // alamat sama, rider sama, hari sama (multi-drop). Baris begini valid,
+  // BUKAN "gak ada tarif yang cocok" — tanpa exclude ini, tiap multi-drop
+  // normal nongol sebagai anomali palsu yang bikin admin cek manual sia-sia.
+  const usesUniqueAddress =
+    (env.type === "flat_unit" && cfg?.unit === "unique_address") ||
+    (env.type === "modular_v2" && modCfg?.unit_basis === "unique_address");
+  const uniqueAddressBillable = usesUniqueAddress ? billableByUniqueAddress(completed) : null;
   const anomalies: RowAnomaly[] = [];
   completed.forEach((r, i) => {
     const fee = perRow[i].fee;
@@ -628,7 +638,7 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     if (dependsOnWeight && (r.weight_kg === null || r.weight_kg === undefined)) {
       anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "missing_weight", detail: "Berat kosong padahal skema butuh berat" });
     }
-    if (fee === 0) {
+    if (fee === 0 && !(uniqueAddressBillable && !uniqueAddressBillable.has(r))) {
       anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "zero_fee", detail: "Fee 0 padahal status COMPLETED — cek apakah ada tarif yang cocok" });
     }
   });

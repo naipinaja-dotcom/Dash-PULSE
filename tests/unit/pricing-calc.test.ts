@@ -412,6 +412,29 @@ describe("calcScheme / anomalies", () => {
     const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 5 })]);
     expect(res.anomalies.some((a) => a.kind === "zero_fee")).toBe(true);
   });
+
+  it("does not flag zero_fee for a unique_address multi-drop's 2nd+ visit to the same address (intentional dedup, not a missing rate)", () => {
+    const e = env({
+      type: "modular_v2",
+      config: {
+        _dims: { distance: false, weight: false },
+        distance: null,
+        weight: null,
+        rate_by: "column",
+        match_column: "Area",
+        rates: [{ key: "Jakarta Barat", rate: 14000 }],
+        default_rate: 0,
+        unit_basis: "unique_address",
+      },
+    });
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", district: "Jakarta Barat", destination_address: "Jl. Sama No 1" }),
+      row({ rider_id: "R1", district: "Jakarta Barat", destination_address: "Jl. Sama No 1" }), // 2nd drop, same address+rider+day
+    ]);
+    expect(res.perRow[0].fee).toBe(14000);
+    expect(res.perRow[1].fee).toBe(0); // dedup, not unpaid
+    expect(res.anomalies.some((a) => a.kind === "zero_fee")).toBe(false);
+  });
 });
 
 // ==================================================================

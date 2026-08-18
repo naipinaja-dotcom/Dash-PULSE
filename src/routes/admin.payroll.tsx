@@ -3,6 +3,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { usePostHog } from "@posthog/react";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
+import { useAuth } from "@/lib/auth";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   SkipForward,
+  Lock,
 } from "lucide-react";
 import { generatePayrollDetails, computeInstallmentAdvance, DEDUCTION_PRIORITY } from "@/lib/payroll-generate";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
@@ -190,6 +192,7 @@ async function fetchKasbonRecipientRows(payableDetails: Detail[]): Promise<BulkP
 function PayrollPage() {
   const { t } = useT();
   const posthog = usePostHog();
+  const { user } = useAuth();
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [details, setDetails] = useState<Detail[]>([]);
@@ -2008,15 +2011,21 @@ function PayrollPage() {
                                                 )}
                                               </button>
                                             )}
-                                            {activeRun.status !== "published" && (
-                                              <button
-                                                onClick={() => startEditDeduction(ded)}
-                                                title="Edit potongan ini"
-                                                className="text-muted-foreground hover:text-primary"
-                                              >
-                                                <Pencil className="w-3.5 h-3.5" />
-                                              </button>
-                                            )}
+                                            {activeRun.status !== "published" &&
+                                              (!ded.description?.toLowerCase().includes("tunggakan") ||
+                                              user?.isMasterAdmin ? (
+                                                <button
+                                                  onClick={() => startEditDeduction(ded)}
+                                                  title="Edit potongan ini"
+                                                  className="text-muted-foreground hover:text-primary"
+                                                >
+                                                  <Pencil className="w-3.5 h-3.5" />
+                                                </button>
+                                              ) : (
+                                                <span title="Ada komponen tunggakan — cuma master admin yang bisa ubah nominalnya">
+                                                  <Lock className="w-3.5 h-3.5 text-muted-foreground/50" />
+                                                </span>
+                                              ))}
                                           </>
                                         )}
                                       </div>

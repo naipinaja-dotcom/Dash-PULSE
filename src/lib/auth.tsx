@@ -11,6 +11,10 @@ export interface AppUser {
   fullName: string;
   role: Role;
   employeeId?: string;
+  // Tier di atas admin biasa — cuma dipakai buat gate aksi spesifik yang
+  // sensitif (mis. edit nominal potongan yang ada komponen tunggakannya di
+  // Payroll Run, lihat admin.payroll.tsx). BUKAN pengganti role "admin".
+  isMasterAdmin: boolean;
 }
 
 interface AuthCtx {
@@ -33,12 +37,15 @@ async function hydrateUser(session: Session | null): Promise<AppUser | null> {
     supabase.from("profiles").select("full_name, email, employee_id").eq("id", uid).maybeSingle(),
   ]);
   const isAdmin = roles?.some((r) => r.role === "admin");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isMasterAdmin = (roles ?? []).some((r: any) => r.role === "master_admin");
   return {
     id: uid,
     email: session.user.email ?? profile?.email ?? "",
     fullName: profile?.full_name ?? session.user.email ?? "",
     role: isAdmin ? "admin" : "rider",
     employeeId: profile?.employee_id ?? undefined,
+    isMasterAdmin,
   };
 }
 

@@ -379,6 +379,11 @@ const T = {
   "dedactive.deleteSingleSuccess": { id: "Cicilan dihapus", en: "Installment deleted" },
 
   // ── Arrears tab (arrears-tab.tsx) ─────────────────────────────────────────
+  "dedarrears.saveBtn": { id: "Simpan", en: "Save" },
+  "dedarrears.cancelBtn": { id: "Batal", en: "Cancel" },
+  "dedarrears.editTooltip": { id: "Koreksi nominal tunggakan (master admin)", en: "Correct the arrears amount (master admin)" },
+  "dedarrears.editInActiveTabTooltip": { id: "Edit di tab Cicilan Aktif", en: "Edit in the Active Installments tab" },
+  "dedarrears.correctionSaved": { id: "Koreksi tunggakan disimpan", en: "Arrears correction saved" },
   "dedarrears.ridersInArrears": { id: "Rider Nunggak", en: "Riders in Arrears" },
   "dedarrears.totalArrears": { id: "Total Tunggakan", en: "Total Arrears" },
   "dedarrears.searchPlaceholder": { id: "Cari nama / kode rider…", en: "Search rider name / code…" },

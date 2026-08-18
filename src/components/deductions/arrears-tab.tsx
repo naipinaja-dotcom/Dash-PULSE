@@ -3,31 +3,42 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pencil, ExternalLink } from "lucide-react";
 import { useT } from "@/lib/i18n";
-import { fixedRemaining, latestRentalUnpaid } from "@/lib/arrears";
+import { fixedRemaining, latestRentalUnpaid, type RentalUnpaid } from "@/lib/arrears";
+import { useAuth } from "@/lib/auth";
+import { parseRupiah } from "@/lib/format";
 import type { Client, DType, Inst, Rider } from "./types";
 
 type ArrearRow = {
   id: string;
+  mode: Inst["mode"];
   rider?: Rider;
   type?: DType;
   client?: Client;
   info: string;
   progress?: { remaining: number; total: number; paid: number };
   amount: number;
+  // Cuma keisi buat baris sewa (mode daily/monthly) — dedId nunjuk ke baris
+  // payroll_deductions PERSIS sumber angka ini, dipakai buat koreksi manual
+  // (master admin only, lihat RLS "pded update tunggakan gated").
+  rental?: RentalUnpaid;
 };
 
 // Rumus tunggakannya ada di src/lib/arrears.ts (satu tempat, dipakai juga di
 // admin.dashboard.tsx & rider.dashboard.tsx) — sama kayak getCarriedArrears()
 // di payroll-generate.ts, di sini cuma buat dibaca & ditampilin, gak nyentuh
 // perhitungan/publish payroll sama sekali.
-export function ArrearsTab() {
+export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }) {
   const { t } = useT();
+  const { user } = useAuth();
   const [rows, setRows] = useState<ArrearRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState(0);
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -43,7 +54,7 @@ export function ArrearsTab() {
       return;
     }
 
-    const fixedRows: (ArrearRow & { mode: Inst["mode"] })[] = (installments ?? [])
+    const fixedRows: ArrearRow[] = (installments ?? [])
       .filter((r: any) => r.mode === "fixed")
       .map((r: any) => {
         const { remaining, amount } = fixedRemaining(r.installment_count, r.installments_paid, r.per_period_amount);
@@ -65,7 +76,7 @@ export function ArrearsTab() {
       .filter((r: ArrearRow) => r.amount > 0);
 
     const rentalRows = (installments ?? []).filter((r: any) => r.mode === "daily" || r.mode === "monthly");
-    let rentalArrears: (ArrearRow & { mode: Inst["mode"] })[] = [];
+    let rentalArrears: ArrearRow[] = [];
     if (rentalRows.length > 0) {
       const latestUnpaid = await latestRentalUnpaid(rentalRows.map((r: any) => r.id));
       rentalArrears = rentalRows
@@ -76,7 +87,8 @@ export function ArrearsTab() {
           type: r.deduction_types,
           client: r.clients,
           info: r.mode === "monthly" ? t("dedarrears.monthlyRental") : t("dedarrears.dailyRental"),
-          amount: latestUnpaid.get(r.id) ?? 0,
+          amount: latestUnpaid.get(r.id)?.unpaid ?? 0,
+          rental: latestUnpaid.get(r.id),
         }))
         .filter((r: ArrearRow) => r.amount > 0);
     }
@@ -88,6 +100,31 @@ export function ArrearsTab() {
   useEffect(() => {
     load();
   }, []);
+
+  // Koreksi tunggakan sewa (mode daily/monthly) — master admin only, di-enforce
+  // di RLS ("pded update tunggakan gated"), UI cuma nyembunyiin biar gak
+  // ketemu error. Admin masukin nominal tunggakan yang BENER, kita balik hitung
+  // paid_amount-nya (amount - tunggakanBaru) langsung ke baris payroll_deductions
+  // sumber angka ini (r.rental.dedId) — bukan bikin baris/angka baru.
+  const saveArrearsEdit = async (r: ArrearRow) => {
+    if (!r.rental) return;
+    if (editAmount < 0 || editAmount > r.rental.amount) {
+      return toast.error(
+        `Nominal harus antara Rp0 dan Rp${r.rental.amount.toLocaleString("id-ID")} (total potongan periode itu).`,
+      );
+    }
+    setSaving(true);
+    const newPaidAmount = r.rental.amount - editAmount;
+    const { error } = await (supabase as any)
+      .from("payroll_deductions")
+      .update({ paid_amount: newPaidAmount })
+      .eq("id", r.rental.dedId);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success(t("dedarrears.correctionSaved"));
+    setEditingId(null);
+    load();
+  };
 
   const typeOptions = [...new Map(rows.filter((r) => r.type).map((r) => [r.type!.id, r.type!])).values()];
   const filtered = rows.filter((r) => {
@@ -224,8 +261,58 @@ export function ArrearsTab() {
                       r.info
                     )}
                   </td>
-                  <td className="p-3 text-right font-bold text-destructive tabular-nums font-mono">
-                    Rp{r.amount.toLocaleString("id-ID")}
+                  <td className="p-3 text-right">
+                    {editingId === r.id ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <input
+                          autoFocus
+                          inputMode="numeric"
+                          value={editAmount ? editAmount.toLocaleString("id-ID") : ""}
+                          onChange={(e) => setEditAmount(parseRupiah(e.target.value))}
+                          className="w-28 rounded-md border-2 border-border-strong bg-background px-2 py-1 text-right text-[12px] tabular-nums outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <button
+                          onClick={() => saveArrearsEdit(r)}
+                          disabled={saving}
+                          className="rounded-md bg-primary text-primary-foreground px-2 py-1 text-[11px] disabled:opacity-50"
+                        >
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("dedarrears.saveBtn")}
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          {t("dedarrears.cancelBtn")}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="font-bold text-destructive tabular-nums font-mono">
+                          Rp{r.amount.toLocaleString("id-ID")}
+                        </span>
+                        {r.rental && user?.isMasterAdmin && (
+                          <button
+                            onClick={() => {
+                              setEditingId(r.id);
+                              setEditAmount(r.amount);
+                            }}
+                            title={t("dedarrears.editTooltip")}
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {!r.rental && onGoToActiveTab && (
+                          <button
+                            onClick={onGoToActiveTab}
+                            title={t("dedarrears.editInActiveTabTooltip")}
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))

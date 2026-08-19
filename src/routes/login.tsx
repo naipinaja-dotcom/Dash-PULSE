@@ -26,6 +26,21 @@ export const Route = createFileRoute("/login")({
   }),
 });
 
+// Link ini duduk sejajar sama "Lupa Kata Sandi?" di kolom sempit (mobile) —
+// tanpa ini teksnya wrap asal-asalan (kata terakhir sendirian di baris ke-3).
+// Pecah manual jadi 2 baris tepat setelah tanda tanya pertama.
+function breakAfterQuestion(text: string) {
+  const idx = text.indexOf("? ");
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx + 1)}
+      <br />
+      {text.slice(idx + 2)}
+    </>
+  );
+}
+
 function LoginPage() {
   const { user, loginAdmin, loginRider, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -261,11 +276,11 @@ function LoginPage() {
                   <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••"
                     className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
                 </div>
-                <div className="flex flex-col items-start gap-1.5">
-                  <button type="button" onClick={() => setRiderSubMode("firstTime")} className="text-xs text-primary hover:underline text-left">
-                    {t("login.firstTimeLink")}
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setRiderSubMode("firstTime")} className="flex-1 text-xs text-primary hover:underline text-left">
+                    {breakAfterQuestion(t("login.firstTimeLink"))}
                   </button>
-                  <button type="button" onClick={() => setForgotMode(true)} className="text-xs text-primary hover:underline text-left">
+                  <button type="button" onClick={() => setForgotMode(true)} className="flex-shrink-0 text-xs text-primary hover:underline text-left">
                     {t("forgot.title")}?
                   </button>
                 </div>

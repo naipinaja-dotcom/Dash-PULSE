@@ -7,7 +7,7 @@ import { Loader2, Pencil, ExternalLink } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { fixedRemaining, latestRentalUnpaid, type RentalUnpaid } from "@/lib/arrears";
 import { useAuth } from "@/lib/auth";
-import { parseRupiah } from "@/lib/format";
+import { formatRupiah, parseRupiah } from "@/lib/format";
 import type { Client, DType, Inst, Rider } from "./types";
 
 type ArrearRow = {
@@ -255,6 +255,7 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
                         <div className="mt-0.5 text-[10px] font-medium text-destructive">
                           {t("dedarrears.dueLabel")}: {t("dedarrears.installmentOrdinal")}{r.progress.paid + 1}
                           {r.progress.remaining > 1 ? `–${r.progress.total}` : ""}
+                          {" · "}{formatRupiah(r.amount)}
                         </div>
                       </div>
                     ) : (

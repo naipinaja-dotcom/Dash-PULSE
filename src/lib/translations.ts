@@ -398,7 +398,7 @@ const T = {
   "dedarrears.paidLabel": { id: "Sudah terbayar", en: "Paid" },
   "dedarrears.nonePaidLabel": { id: "Belum ada cicilan terbayar", en: "No installments paid yet" },
   "dedarrears.installmentOrdinal": { id: "Cicilan ke-", en: "Installment #" },
-  "dedarrears.dueLabel": { id: "Masih tertagih", en: "Still due" },
+  "dedarrears.dueLabel": { id: "Belum kepotong", en: "Not yet deducted" },
   "dedarrears.monthlyRental": { id: "Sewa bulanan", en: "Monthly rental" },
   "dedarrears.dailyRental": { id: "Sewa harian", en: "Daily rental" },
   "dedarrears.emptyState": { id: "Gak ada tunggakan aktif", en: "No active arrears" },

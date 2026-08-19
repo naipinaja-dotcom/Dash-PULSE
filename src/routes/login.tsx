@@ -261,11 +261,11 @@ function LoginPage() {
                   <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••"
                     className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
                 </div>
-                <div className="flex gap-3">
-                  <button type="button" onClick={() => setRiderSubMode("firstTime")} className="text-xs text-primary hover:underline">
+                <div className="flex flex-col items-start gap-1.5">
+                  <button type="button" onClick={() => setRiderSubMode("firstTime")} className="text-xs text-primary hover:underline text-left">
                     {t("login.firstTimeLink")}
                   </button>
-                  <button type="button" onClick={() => setForgotMode(true)} className="text-xs text-primary hover:underline">
+                  <button type="button" onClick={() => setForgotMode(true)} className="text-xs text-primary hover:underline text-left">
                     {t("forgot.title")}?
                   </button>
                 </div>

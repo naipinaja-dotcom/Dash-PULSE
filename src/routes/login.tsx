@@ -110,7 +110,7 @@ function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen grid lg:grid-cols-2 bg-background">
+    <main className="min-h-screen grid grid-rows-[auto_1fr] lg:grid-rows-none lg:grid-cols-2 bg-background">
       <div className="lg:hidden flex flex-col items-center text-center gap-3 px-6 pt-10 pb-8 bg-primary text-primary-foreground rounded-b-3xl">
         <img
           src="/dash-logo.png"

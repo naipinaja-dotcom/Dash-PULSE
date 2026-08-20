@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildDeliveryConfig, emptyDeliveryState } from "@/components/pricing-form/delivery-fields";
 import { sanitizeDecimalInput, sanitizeTimeInput } from "@/components/pricing-form/shared";
+import { computeInteractive, defaultCalcInputs, type InteractiveCalcProps } from "@/components/pricing-form/interactive-calc";
+import { emptyAttendanceState } from "@/components/pricing-form/attendance-fields";
 
 describe("sanitizeDecimalInput", () => {
   it("replaces comma with dot (ID keyboards type decimals with comma)", () => {
@@ -61,5 +63,42 @@ describe("buildDeliveryConfig", () => {
 
     expect(config.distance).toBeNull();
     expect(config._dims).toEqual({ distance: false, weight: false });
+  });
+});
+
+describe("computeInteractive (pricing scheme preview calculator)", () => {
+  // Komu Komu Bakehouse's real client scheme: rate_by="delivery_type" with
+  // only a "Return" override configured, Distance bands 0-7km flat / 7.1km+
+  // tiered. A normal delivery order never matches "Return", so its price
+  // should move with km — before the fix, the preview locked to the first
+  // configured rate key ("Return") regardless of rate_by, always hitting the
+  // override and making Distance look like it did nothing.
+  it("prices by the Distance band, not the unrelated Return override, for a normal delivery", () => {
+    const state = emptyDeliveryState();
+    state.rate_by = "delivery_type";
+    state.rates = [{ key: "Return", rate: "25000" }];
+    state.distance.rows = [
+      { type: "flat", from: "0", to: "7", base_fee: "25000", step: "0", add_per_step: "0" },
+      { type: "tier", from: "7.1", to: "100", base_fee: "25000", step: "1", add_per_step: "2000" },
+    ];
+
+    const props: InteractiveCalcProps = {
+      category: "delivery",
+      subtype: { distance: true, weight: false },
+      delivery: state,
+      attendance: emptyAttendanceState(),
+      schemeFor: "client",
+      addKgOn: false,
+      multiDropOn: false,
+      multiDropFee: "0",
+      billingOn: false,
+    };
+
+    const near = computeInteractive(props, { ...defaultCalcInputs(props), distance: "5" });
+    const far = computeInteractive(props, { ...defaultCalcInputs(props), distance: "10" });
+
+    expect(near.total.amount).toBe(25000); // flat band [0-7)
+    expect(far.total.amount).toBe(31000); // tier band: 25000 + ceil((10-7.1)/1) * 2000
+    expect(far.total.amount).not.toBe(near.total.amount);
   });
 });

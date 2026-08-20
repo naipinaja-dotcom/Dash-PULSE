@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Navigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePostHog } from "@posthog/react";
 import { useAuth } from "@/lib/auth";
 import { setFirstTimeRiderPin, riderForgotPin, adminResetPassword } from "@/lib/api/rider-auth.functions";
@@ -61,6 +61,25 @@ function LoginPage() {
   const [newPinConfirm, setNewPinConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { t } = useT();
+
+  // AdminLayout's initDesign()/initTheme() never run on this route (login
+  // isn't wrapped in AdminLayout), so <html> keeps whatever attributes it
+  // last had — usually none, which falls back to Neo Brutal + light. Force
+  // the intended first-impression look (Glass/classic + light) here instead
+  // of leaving it to chance, and restore prior attributes on unmount so an
+  // already-logged-in admin's saved theme isn't clobbered mid-navigation.
+  useEffect(() => {
+    const html = document.documentElement;
+    const prevDesign = html.getAttribute("data-design");
+    const prevDark = html.classList.contains("dark");
+    html.setAttribute("data-design", "classic");
+    html.classList.remove("dark");
+    return () => {
+      if (prevDesign) html.setAttribute("data-design", prevDesign);
+      else html.removeAttribute("data-design");
+      html.classList.toggle("dark", prevDark);
+    };
+  }, []);
 
   if (authLoading) return null;
   if (user)

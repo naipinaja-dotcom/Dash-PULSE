@@ -1020,18 +1020,25 @@ function PayrollPage() {
       return toast.error("Belum ada detail payroll untuk run ini");
     setExportingBulk(true);
     try {
-      // Rider yang pernah di-hold tetap selalu keluar dari bulk reguler,
-      // termasuk setelah release. Release membuat payout susulan sendiri,
-      // jadi tidak mungkin terbayar dua kali dari file reguler.
+      // Rider yang pernah di-hold tetap selalu keluar dari bulk reguler
+      // (net pay-nya), termasuk setelah release — release bikin payout
+      // susulan sendiri, jadi gak mungkin terbayar dua kali dari file
+      // reguler. Kasbon-nya BEDA: itu udah jadi kewajiban rider yang
+      // amount-nya sudah dipotong dari fee (gross_earning), gak ikut
+      // ditahan — tetap ditransfer ke penerima kasbon lewat bulk reguler
+      // ini walau net pay rider-nya lagi di-hold (lihat fetchKasbonRecipientRows
+      // di bawah, dipanggil dengan `details` penuh, bukan `payableDetails`).
       const payableDetails = details.filter((detail) => !paymentHolds[detail.id]);
       const heldCount = details.length - payableDetails.length;
-      if (payableDetails.length === 0)
-        return toast.error("Semua rider pada run ini sedang/sempat ditahan. Gunakan pembayaran susulan setelah hold dilepas.");
+      // Gak early-return lagi walau SEMUA rider di run ini lagi ditahan —
+      // kasbon-nya (di bawah, dari `details` penuh) tetap harus jalan.
       const riderIds = [...new Set(payableDetails.map((d) => d.rider_id))];
-      const { data: bankData, error } = await (supabase as any)
-        .from("riders")
-        .select("id, full_name, bank_name, bank_account, bank_account_holder")
-        .in("id", riderIds);
+      const { data: bankData, error } = riderIds.length > 0
+        ? await (supabase as any)
+            .from("riders")
+            .select("id, full_name, bank_name, bank_account, bank_account_holder")
+            .in("id", riderIds)
+        : { data: [] as unknown[], error: null };
       if (error) throw error;
       const bankOf = new Map((bankData ?? []).map((r: any) => [r.id, r]));
 
@@ -1070,7 +1077,7 @@ function PayrollPage() {
         );
       }
 
-      const kasbonRows = await fetchKasbonRecipientRows(payableDetails);
+      const kasbonRows = await fetchKasbonRecipientRows(details);
       rows.push(...kasbonRows);
 
       if (rows.length === 0)
@@ -1082,7 +1089,7 @@ function PayrollPage() {
       toast.success(
         `Bulk payment ${rows.length} rider berhasil di-generate` +
           (kasbonRows.length ? `, termasuk ${kasbonRows.length} transfer ke penerima kasbon` : "") +
-          (heldCount ? `; ${heldCount} detail hold dikeluarkan dari file reguler.` : ""),
+          (heldCount ? `; ${heldCount} net pay rider yang di-hold dikeluarkan dari file reguler (kasbonnya tetap ikut ditransfer).` : ""),
       );
     } catch (e) {
       toast.error((e as Error).message);
@@ -1270,14 +1277,9 @@ function PayrollPage() {
         toast.warning(`${missingBank.length} rider susulan dilewati karena data bank belum lengkap.`);
       }
 
-      // Detail yang di-hold gak pernah masuk bulk payment reguler sama sekali
-      // (termasuk potongan kasbonnya) — jadi penerima kasbon rider ini juga
-      // baru bisa ditransfer dari sini, pas hold-nya dilepas.
-      const readyDetailIds = Object.values(paymentHolds)
-        .filter((hold) => (hold.payroll_follow_up_payments ?? []).some((p) => p.status === "ready"))
-        .map((hold) => hold.detail_id);
-      const kasbonRows = await fetchKasbonRecipientRows(details.filter((d) => readyDetailIds.includes(d.id)));
-      rows.push(...kasbonRows);
+      // Kasbon rider yang di-hold sudah ikut ditransfer dari Bulk Payment
+      // reguler (lihat exportBulkPayment) — cuma net pay-nya yang ditahan,
+      // jadi TIDAK diulang di sini lagi biar penerima kasbon gak ketransfer dobel.
 
       if (rows.length === 0) return toast.error("Tidak ada pembayaran susulan dengan data bank lengkap.");
 
@@ -1290,10 +1292,7 @@ function PayrollPage() {
         .update({ status: "exported", exported_at: new Date().toISOString() })
         .in("id", exportIds);
       if (markError) throw markError;
-      toast.success(
-        `Pembayaran susulan ${exportIds.length} rider berhasil diexport` +
-          (kasbonRows.length ? `, termasuk ${kasbonRows.length} transfer ke penerima kasbon.` : "."),
-      );
+      toast.success(`Pembayaran susulan ${exportIds.length} rider berhasil diexport.`);
       await loadPaymentHolds(details.map((row) => row.id));
     } catch (e) {
       toast.error((e as Error).message);

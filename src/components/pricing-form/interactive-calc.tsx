@@ -87,7 +87,15 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
     // GANTI total fee baris ini, dipakai sekali doang oleh dimensi pertama yang
     // aktif — bukan ditambahin ke distance MAUPUN weight (dulu bug: baris yang
     // match di dua-duanya dobel-charge, lihat regresi Wicked Pies).
-    const overrideHit = p.delivery.rate_by !== "flat" ? p.delivery.rates.find((r) => norm(r.key) === norm(inp.area)) : undefined;
+    // rate_by="delivery_type" match-nya BUKAN ke inp.area (itu match_column
+    // "Area"/kolom biasa) — di mesin asli (resolveRateHit, pricing-calc.ts)
+    // dicoba dulu ke delivery_type baris (DELIVERY/RETURN), baru fallback ke
+    // district. Preview ini simulasiin order NORMAL ("Delivery"), jadi rate
+    // "Return" (kalau ada) sengaja gak match — tanpa ini, skema yang punya
+    // override "Return" bakal kekunci ke situ dan Distance/Weight kelihatan
+    // kayak gak ngaruh sama sekali (kejadian di Komu Komu Bakehouse).
+    const overrideMatchValue = p.delivery.rate_by === "delivery_type" ? "Delivery" : inp.area;
+    const overrideHit = p.delivery.rate_by !== "flat" ? p.delivery.rates.find((r) => norm(r.key) === norm(overrideMatchValue)) : undefined;
     let overrideUsed = false;
     const consumeOverride = (): number | null => {
       if (!overrideHit || overrideUsed) return null;
@@ -149,10 +157,14 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
     const steps: ExStep[] = [];
     let total = 0;
     if (p.delivery.rate_by !== "flat") {
-      const hit = p.delivery.rates.find((r) => norm(r.key) === norm(inp.area));
+      // Sama kayak override di atas: rate_by="delivery_type" match ke tipe
+      // order (DELIVERY/RETURN), bukan ke inp.area — preview simulasiin
+      // order NORMAL ("Delivery").
+      const matchValue = p.delivery.rate_by === "delivery_type" ? "Delivery" : inp.area;
+      const hit = p.delivery.rates.find((r) => norm(r.key) === norm(matchValue));
       const fee = hit ? parseRupiah(hit.rate) : parseRupiah(p.delivery.default_rate ?? "0");
       steps.push({
-        text: `Flat per ${p.delivery.rate_by === "delivery_type" ? "Antar/Kembali" : "kolom"}: "${inp.area}"${hit ? "" : " (tidak ada tarif cocok, pakai rate default)"}`,
+        text: `Flat per ${p.delivery.rate_by === "delivery_type" ? "Antar/Kembali" : "kolom"}: "${matchValue}"${hit ? "" : " (tidak ada tarif cocok, pakai rate default)"}`,
         amount: fee,
       });
       total += fee;

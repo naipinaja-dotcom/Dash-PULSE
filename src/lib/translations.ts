@@ -247,7 +247,7 @@ const T = {
   "dtypes.ridersAffected": { id: "Rider yang kena", en: "Riders affected by" },
   "dtypes.searchRiderPlaceholder": { id: "Cari nama / kode rider…", en: "Search rider name / code…" },
   "dtypes.noRidersFound": { id: "Ga ada rider cocok", en: "No matching riders" },
-  "dtypes.clientPriorityTitle": { id: "Client prioritas — null pakai client rumah rider", en: "Priority client — null uses the rider's home client" },
+  "dtypes.clientPriorityTitle": { id: "Client prioritas — kosongkan untuk pakai client rumah rider", en: "Priority client — leave empty to use the rider's home client" },
   "dtypes.homeClientOption": { id: "— client rumah rider —", en: "— rider's home client —" },
   "dtypes.bulkLabel": { id: "jenis potongan", en: "deduction types" },
   "dtypes.errCodeName": { id: "Kode & nama wajib diisi", en: "Code & name are required" },
@@ -285,7 +285,7 @@ const T = {
   "dedadd.optional": { id: "opsional", en: "optional" },
   "dedadd.useHomeClientPlaceholder": { id: "— pakai client rumah rider —", en: "— use rider's home client —" },
   "dedadd.clientPriorityHint": { id: "Potongan ini cuma kepotong di payroll run client ini. Kalau fee rider di client ini gak cukup, sisa kurangnya bisa \"dititip\" ke client lain lewat netting manual di Payroll Run (butuh approve admin dulu, gak otomatis kepotong).", en: "This deduction is only charged in this client's payroll run. If the rider's fee at this client isn't enough, the shortfall can be \"carried over\" to another client via manual netting in Payroll Run (requires admin approval first, not deducted automatically)." },
-  "dedadd.kasbonGiver": { id: "Pemberi Kasbon", en: "Kasbon Giver" },
+  "dedadd.kasbonGiver": { id: "Penerima Kasbon", en: "Kasbon Recipient" },
   "dedadd.selectRecipientPlaceholder": { id: "— pilih penerima transfer —", en: "— select transfer recipient —" },
   "dedadd.kasbonSettlementHint": { id: "Dana yang benar-benar tertagih akan masuk settlement ke rekening ini.", en: "Funds that are actually collected will be settled to this account." },
   "dedadd.kasbonNoRecipientHint": { id: "Belum ada penerima? Tambahkan dari menu master Penerima Kasbon terlebih dahulu.", en: "No recipient yet? Add one from the Kasbon Recipients master menu first." },
@@ -328,7 +328,7 @@ const T = {
   "dedactive.colType": { id: "Jenis", en: "Type" },
   "dedactive.colModeRate": { id: "Mode / Tarif", en: "Mode / Rate" },
   "dedactive.colProgress": { id: "Progress", en: "Progress" },
-  "dedactive.kasbonGiver": { id: "Pemberi Kasbon", en: "Kasbon Recipient" },
+  "dedactive.kasbonGiver": { id: "Penerima Kasbon", en: "Kasbon Recipient" },
   "dedactive.colStart": { id: "Mulai", en: "Start" },
   "dedactive.noActiveInstallments": { id: "Tidak ada cicilan aktif", en: "No active installments" },
   "dedactive.priorityLabel": { id: "Prioritas:", en: "Priority:" },
@@ -429,7 +429,7 @@ const T = {
 
   // ── Kasbon Recipients tab (recipients-tab.tsx) ───────────────────────────
   "kasbonrecip.formTitle": { id: "Tambah Penerima Kasbon", en: "Add Kasbon Recipient" },
-  "kasbonrecip.recipientNameLabel": { id: "Nama pemberi kasbon", en: "Recipient name" },
+  "kasbonrecip.recipientNameLabel": { id: "Nama penerima kasbon", en: "Recipient name" },
   "kasbonrecip.bank": { id: "Bank", en: "Bank" },
   "kasbonrecip.accountNumber": { id: "Nomor rekening", en: "Account number" },
   "kasbonrecip.accountHolderLabel": { id: "Nama pemilik rekening", en: "Account holder name" },
@@ -456,7 +456,7 @@ const T = {
   "kasbonsettle.colPayroll": { id: "Payroll", en: "Payroll" },
   "kasbonsettle.colCollected": { id: "Tertagih", en: "Collected" },
   "kasbonsettle.emptyState": { id: "Belum ada kasbon tertagih dari payroll published.", en: "No kasbon collected yet from published payroll." },
-  "kasbonlunas.emptyState": { id: "Recap kasbon lunas akan muncul setelah data cicilan berstatus inactive memiliki riwayat paid_amount.", en: "The paid-off kasbon recap will appear once installment data with inactive status has a paid_amount history." },
+  "kasbonlunas.emptyState": { id: "Rekap kasbon lunas akan muncul otomatis setelah cicilan rider berhenti (nonaktif) dan sudah ada riwayat pembayaran.", en: "The paid-off kasbon recap will appear automatically once a rider's installment stops (goes inactive) and has a payment history." },
 
   // ── Recap tab ──────────────────────────────────────────────────────────
   "recap.period": { id: "Periode", en: "Period" },
@@ -563,7 +563,7 @@ const T = {
   "login.createPinSubmit": { id: "Buat PIN & Masuk", en: "Create PIN & Sign In" },
   "login.success": { id: "Berhasil masuk", en: "Welcome back!" },
   "login.pinCreated": { id: "PIN berhasil dibuat, berhasil masuk", en: "PIN's set — you're in!" },
-  "login.failed": { id: "Login gagal", en: "Login failed" },
+  "login.failed": { id: "Login gagal — cek lagi email/kode mitra dan password/PIN Anda.", en: "Login failed — double-check your email/partner code and password/PIN." },
   "login.emailRequired": { id: "Email & password wajib diisi", en: "Email & password are required" },
   "login.riderRequired": { id: "Kode Mitra & PIN wajib diisi", en: "Employee ID & PIN are required" },
   "login.allFieldsRequired": { id: "Semua kolom wajib diisi", en: "All fields are required" },

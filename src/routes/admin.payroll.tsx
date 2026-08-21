@@ -1894,13 +1894,13 @@ function PayrollPage() {
                                     disabled={paymentHoldBusyId === d.id}
                                     className="text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
                                   >
-                                    {paymentHoldBusyId === d.id ? "Memproses…" : "Lepaskan hold"}
+                                    {paymentHoldBusyId === d.id ? "Memproses…" : "Lepaskan tahanan"}
                                   </button>
                                 </div>
                               ) : paymentHolds[d.id]?.status === "released" ? (
                                 <div className="space-y-1">
                                   <span className="inline-flex rounded-full border-2 border-border-strong bg-success px-2 py-0.5 font-medium text-success-foreground">
-                                    Susulan
+                                    Susulan Pembayaran
                                   </span>
                                   <p className="text-[10px] text-muted-foreground">
                                     {paymentHolds[d.id].payroll_follow_up_payments?.[0]?.status === "exported" ? "Sudah diexport" : "Siap diexport"}
@@ -1918,7 +1918,7 @@ function PayrollPage() {
                                   title={Number(d.net_pay) <= 0 ? "Net pay harus lebih dari Rp0" : "Tahan dari bulk payment reguler"}
                                   className="rounded-md border-2 border-border-strong bg-warning px-2 py-1 text-[11px] font-semibold text-warning-foreground hover:bg-warning/85 disabled:opacity-50"
                                 >
-                                  {paymentHoldBusyId === d.id ? "Memproses…" : "Hold payment"}
+                                  {paymentHoldBusyId === d.id ? "Memproses…" : "Tahan pembayaran"}
                                 </button>
                               )}
                             </td>

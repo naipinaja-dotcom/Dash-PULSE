@@ -88,19 +88,20 @@ function groupNavItems(items: readonly NavItem[]) {
 }
 
 // ── Dark mode helper (toggle class on <html>) ──────────────────────────────
+// Default = light regardless of OS preference — a first-time user (no
+// stored choice yet) should land on the intended Glass/light first
+// impression (same as /login), not whatever their system happens to prefer.
 function initTheme() {
   if (typeof window === "undefined") return;
   const stored = localStorage.getItem(THEME_KEY);
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const dark = stored ? stored === "dark" : prefersDark;
-  document.documentElement.classList.toggle("dark", dark);
+  document.documentElement.classList.toggle("dark", stored === "dark");
 }
 
 // ── Design toggle (data-design attribute on <html>) ────────────────────────
 function initDesign() {
   if (typeof window === "undefined") return;
   const stored = localStorage.getItem(DESIGN_KEY) as Design | null;
-  document.documentElement.setAttribute("data-design", stored ?? "brutal");
+  document.documentElement.setAttribute("data-design", stored ?? "classic");
 }
 
 export function AdminLayout({
@@ -132,13 +133,12 @@ export function AdminLayout({
 
   const [dark, setDark] = useState(() => {
     if (typeof window === "undefined") return false;
-    const s = localStorage.getItem(THEME_KEY);
-    return s ? s === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return localStorage.getItem(THEME_KEY) === "dark";
   });
 
   const [design, setDesign] = useState<Design>(() => {
-    if (typeof window === "undefined") return "brutal";
-    return (localStorage.getItem(DESIGN_KEY) as Design | null) ?? "brutal";
+    if (typeof window === "undefined") return "classic";
+    return (localStorage.getItem(DESIGN_KEY) as Design | null) ?? "classic";
   });
 
   // Sync mode when navigating via back/forward

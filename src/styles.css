@@ -48,7 +48,11 @@
 }
 
 :root {
-  --radius: 0.2rem;
+  /* neobrutalism.dev's own reference tokens use 5px, not a full 0 — blocky
+     but not razor-sharp reads as more genuinely "neo" than fully square.
+     Classic/Glass overrides --radius to 0.75rem separately below, so this
+     only ever affects Neo Brutal. */
+  --radius: 0.3125rem;
   /* Warm cream neutrals (hue ~90) — neo-brutal: cream ground + violet accent
      + ink borders. Cards sit a touch lighter than the page so they lift. */
   --background: oklch(0.965 0.018 88);
@@ -83,10 +87,14 @@
   --success-foreground: oklch(0.99 0 0);
   --warning: #f59e0b;
   --warning-foreground: #17131d;
-  --border: oklch(0.15 0.04 265);
-  --border-strong: oklch(0.15 0.04 265);
+  /* Pure black, not ink-tint — max contrast is the whole point of "extreme"
+     Neo Brutal. Classic/Glass keeps its own softer border tokens below. */
+  --border: #000000;
+  --border-strong: #000000;
   --input: oklch(0.982 0.012 88);
-  --ring: oklch(0.56 0.22 290);
+  /* neobrutalism.dev keeps its focus ring as stark as its border (black in
+     light, white in dark) instead of a soft brand-color ring — matched here. */
+  --ring: #000000;
   --sidebar: oklch(0.984 0.012 88);
   --sidebar-foreground: oklch(0.095 0.03 265);
   --sidebar-primary: oklch(0.56 0.22 290);
@@ -140,7 +148,9 @@
   --border: oklch(0.96 0.01 285);
   --border-strong: oklch(0.96 0.01 285);
   --input: oklch(0.22 0.035 285);
-  --ring: oklch(0.65 0.2 290);
+  /* neobrutalism.dev keeps its focus ring as stark as its border (black in
+     light, white in dark) instead of a soft brand-color ring — matched here. */
+  --ring: oklch(0.96 0.01 285);
   /* sidebar #110e22 */
   --sidebar: oklch(0.16 0.035 285);
   --sidebar-foreground: oklch(0.96 0.01 285);
@@ -173,13 +183,26 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* neobrutalism.dev's --base-font-weight is 500 (medium), not the
+       browser default 400 — body copy carries a bit of weight too, not
+       just headings. Glass/classic keeps the lighter 400 feel below. */
+    font-weight: 500;
   }
+  [data-design="classic"] body { font-weight: 400; }
 
   h1, h2, h3, [data-display] {
     font-family: 'Sora', 'Manrope', system-ui, sans-serif;
     font-feature-settings: normal;
-    font-weight: 700;
+    /* Neo Brutal wants a chunkier headline weight than Glass — kept at 700
+       for Glass (below) since it's meant to read calmer/softer. !important
+       is needed because most headings also carry their own Tailwind
+       font-bold/font-semibold utility class inline, which otherwise wins on
+       specificity (a class beats a bare element selector) over this rule. */
+    font-weight: 900 !important;
     letter-spacing: -0.025em;
+  }
+  [data-design="classic"] :is(h1, h2, h3, [data-display]) {
+    font-weight: 700 !important;
   }
 
   [data-eyebrow] {
@@ -259,6 +282,18 @@
   }
   .admin-stat-card [data-eyebrow], .admin-stat-card .text-muted-foreground { color: inherit; opacity: .8; }
   .stat-icon-chip { background: color-mix(in oklch, currentColor 18%, transparent); border: 3px solid currentColor; }
+
+  /* "Sticker" tilt for small non-interactive badges/pills — same instinct as
+     .admin-stat-card's rotation above, scaled down. No shadow: neobrutalism.dev's
+     own Badge component is deliberately flat (border only) — shadows there are
+     reserved for elevated/interactive things (buttons, cards). Glass mode stays
+     flat (see [data-design="classic"] reset below); never apply to buttons/links,
+     a rotated click target reads as broken, not playful. */
+  .brutal-sticker {
+    display: inline-flex;
+    transform: rotate(-4deg);
+  }
+  [data-design="classic"] .brutal-sticker { transform: none; }
 
   .admin-kpi-card {
     border: 3px solid var(--color-border-strong);
@@ -963,6 +998,9 @@
   --border-strong: oklch(0.82 0.008 95);
   --input: oklch(0.985 0.002 95);
   --sidebar: oklch(0.978 0.003 95);
+  /* Neo Brutal's --ring is stark black/white (see :root/.dark above) —
+     Classic keeps the calmer brand-color ring it always had. */
+  --ring: oklch(0.56 0.22 290);
 }
 
 .dark[data-design="classic"] {
@@ -979,6 +1017,7 @@
   --border-strong: oklch(0.35 0.05 285);
   --input: oklch(0.22 0.035 285);
   --sidebar: oklch(0.16 0.035 285);
+  --ring: oklch(0.65 0.2 290);
 }
 
 [data-design="classic"] [data-eyebrow] { font-weight: 600; letter-spacing: 0.1em; }

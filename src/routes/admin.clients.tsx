@@ -298,7 +298,7 @@ function ClientsPage() {
                       {(() => {
                         const bu = buOf.get(c.name.trim().toLowerCase());
                         return bu ? (
-                          <span className="text-[11px] font-medium bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 rounded-full">
+                          <span className="brutal-sticker text-[11px] font-medium bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 rounded-full">
                             {bu}
                           </span>
                         ) : (

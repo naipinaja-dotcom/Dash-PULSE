@@ -175,7 +175,7 @@ function PricingListPage() {
         </span>
       </td>
       <td className="px-4 py-3">
-        <span className="inline-flex items-center rounded-md bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 text-[11px] font-medium">
+        <span className="brutal-sticker items-center rounded-md bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 text-[11px] font-medium">
           {pricingLabel(s.category, s.subtype)}
         </span>
       </td>

@@ -35,6 +35,7 @@ import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { usePayrollOverdue } from "@/lib/use-payroll-overdue";
 import { useT, LangToggle } from "@/lib/i18n";
+import { GlassDarkBackground } from "@/components/glass-dark-background";
 
 type NavMode = "payroll" | "intelligence";
 const NAV_MODE_KEY = "dash-admin-nav-mode";
@@ -341,10 +342,8 @@ export function AdminLayout({
 
   return (
     <div className="admin-shell flex min-h-screen w-full bg-background">
-      <div className="admin-ambient" aria-hidden="true">
-        <span className="admin-ambient-orb admin-ambient-orb-a" />
-        <span className="admin-ambient-orb admin-ambient-orb-b" />
-        <span className="admin-ambient-grid" />
+      <div className="admin-ambient">
+        <GlassDarkBackground />
       </div>
       {/* Desktop sidebar */}
       <aside

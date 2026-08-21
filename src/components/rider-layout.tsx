@@ -27,9 +27,6 @@ export function RiderLayout({ children, title }: { children: ReactNode; title: s
   }, [dark]);
   return (
     <div className="rider-shell relative isolate min-h-screen flex flex-col overflow-x-hidden">
-      <div className="rider-stars" aria-hidden="true" />
-      <div className="rider-meteor" aria-hidden="true" />
-      <div className="rider-meteor rider-meteor-b" aria-hidden="true" />
       <header className="h-16 border-b border-border/50 bg-background/65 backdrop-blur-xl flex items-center justify-between px-5 sticky top-0 z-10">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-violet-500 text-primary-foreground grid place-items-center font-black text-sm shadow-lg shadow-primary/25">P</div>

@@ -231,17 +231,29 @@
   }
 
   /* Neo Brutal keeps the finance workspace illustration from the approved
-     localhost design.  It is an absolute layer, so it never creates unused
-     page height or competes with the operational data above it. */
+     localhost design for LIGHT mode.  It is an absolute layer, so it never
+     creates unused page height or competes with the operational data above
+     it. Dark mode swaps to the deep-dark frame backdrop below — the
+     near-black frame image would just look like a rendering bug sitting on
+     light mode's cream ground. */
   .admin-shell::before {
     content: "";
     position: absolute;
     z-index: 0;
     inset: 3.5rem 0 0;
     pointer-events: none;
-    opacity: .34;
-    background: url('/payroll-finance-pattern-v2.png') center top / cover no-repeat;
-    mix-blend-mode: multiply;
+    opacity: .9;
+    background: url('/neobrutalism-frame-light.png') center center / cover no-repeat fixed;
+    mix-blend-mode: normal;
+  }
+  /* Deep-dark frame of bold flat shapes, darkened only in its background
+     fill (not the shapes — they stay at full saturation) so it reads as a
+     wallpaper behind the UI instead of competing with it. Fixed so the
+     frame's own empty middle stays roughly where content sits when scrolled. */
+  .dark .admin-shell::before {
+    opacity: .85;
+    background: url('/neobrutalism-frame-bg.jpg') center center / cover no-repeat fixed;
+    mix-blend-mode: normal;
   }
 
   .admin-shell h1,
@@ -378,9 +390,7 @@
   .admin-chart-card p { font-size: .8125rem; line-height: 1.45; }
   .admin-chart-card a { font-size: .8125rem; font-weight: 700; }
 
-  .admin-ambient,
-  .admin-ambient-orb,
-  .admin-ambient-grid {
+  .admin-ambient {
     display: none;
   }
 
@@ -390,17 +400,16 @@
     background: color-mix(in oklch, var(--color-sidebar) 96%, transparent);
     border-right: 2px solid var(--color-border-strong);
   }
+  /* No background image here — the sidebar is a narrow scrolling list, and
+     the bold frame illustration (tested in both a zoomed crop and an
+     edge crop) always ends up competing with the nav text instead of
+     reading as a subtle backdrop. Sidebar stays a plain solid surface. */
   .admin-sidebar::before {
     content: "";
     position: absolute;
     z-index: 0;
     inset: 3.5rem 0 0;
-    opacity: .32;
     pointer-events: none;
-    background: url('/payroll-finance-pattern-v2.png') left top / 900px auto no-repeat;
-    mix-blend-mode: multiply;
-    -webkit-mask-image: linear-gradient(180deg, #000 0 38%, transparent 78%);
-    mask-image: linear-gradient(180deg, #000 0 38%, transparent 78%);
   }
   .admin-sidebar > * { position: relative; z-index: 1; }
 
@@ -856,6 +865,19 @@
   .rider-shell {
     background: var(--color-background);
   }
+  /* Same deep-dark frame backdrop as the admin app (.admin-shell::before) —
+     dark mode only, riders don't have a Neo Brutal/Glass toggle to scope
+     against. Header/nav already sit above it via z-10/z-20 + their own
+     backdrop-blur, same "glass" reveal as the admin sidebar/header. */
+  .dark .rider-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: .85;
+    background: url('/neobrutalism-frame-bg.jpg') center center / cover no-repeat fixed;
+  }
 
   .rider-pulse-line {
     background-image: linear-gradient(90deg, transparent, color-mix(in oklch, var(--color-primary) 70%, transparent), transparent);
@@ -866,8 +888,6 @@
   .rider-enter-delay-2 { animation-delay: .12s; }
   .rider-enter-delay-3 { animation-delay: .18s; }
   .rider-orb { animation: rider-orb 13s ease-in-out infinite alternate; }
-
-  .rider-stars, .rider-meteor { display: none; }
 
   /* Classic-mode overrides that must beat the OTHER important rules already
      in this layer (nav-active, mode-active, the stat/kpi faint-text safety
@@ -954,7 +974,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rider-enter, .rider-orb, .rider-meteor, .admin-ambient-orb,
+  .rider-enter, .rider-orb,
   .admin-content, .admin-chart-card, .admin-stat-card, .admin-sidebar::before,
   .animate-spin, .animate-pulse { animation: none !important; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
@@ -1043,9 +1063,18 @@
 [data-design="classic"] .pricing-builder::before {
   display: none !important;
 }
-[data-design="classic"] .admin-ambient,
-[data-design="classic"] .admin-ambient-orb,
-[data-design="classic"] .admin-ambient-grid { display: block; }
+/* Only shown in dark mode — the starfield/wave canvas reads as noise on
+   Glass's light cream ground. Sits behind .admin-sidebar/.admin-header,
+   which reveal it through their own backdrop-filter: blur (that blur IS
+   the "glass" the theme is named for). */
+.dark[data-design="classic"] .admin-ambient {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
 [data-design="classic"] .admin-sidebar {
   background: color-mix(in oklch, var(--color-sidebar) 86%, transparent);
   backdrop-filter: blur(22px);

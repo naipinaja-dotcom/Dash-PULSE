@@ -400,6 +400,12 @@
     background: color-mix(in oklch, var(--color-sidebar) 96%, transparent);
     border-right: 2px solid var(--color-border-strong);
   }
+  /* --color-sidebar's dark value carries a blue-violet tint that reads as
+     navy next to the near-black (rgb(10,5,12)) frame backdrop behind the
+     rest of the shell — match that neutral black so the seam disappears. */
+  .dark .admin-sidebar {
+    background: color-mix(in oklch, rgb(10 5 12) 96%, transparent);
+  }
   /* No background image here — the sidebar is a narrow scrolling list, and
      the bold frame illustration (tested in both a zoomed crop and an
      edge crop) always ends up competing with the nav text instead of

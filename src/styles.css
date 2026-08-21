@@ -283,17 +283,19 @@
   .admin-stat-card [data-eyebrow], .admin-stat-card .text-muted-foreground { color: inherit; opacity: .8; }
   .stat-icon-chip { background: color-mix(in oklch, currentColor 18%, transparent); border: 3px solid currentColor; }
 
-  /* "Sticker" tilt for small non-interactive badges/pills — same instinct as
-     .admin-stat-card's rotation above, scaled down. No shadow: neobrutalism.dev's
-     own Badge component is deliberately flat (border only) — shadows there are
-     reserved for elevated/interactive things (buttons, cards). Glass mode stays
-     flat (see [data-design="classic"] reset below); never apply to buttons/links,
-     a rotated click target reads as broken, not playful. */
-  .brutal-sticker {
-    display: inline-flex;
-    transform: rotate(-4deg);
+  /* Chart shapes get the same hard black outline as everything else in Neo
+     Brutal — recharts renders these as inline SVG presentation attributes
+     (fill/stroke), but an author CSS rule on the class Recharts assigns each
+     shape still wins over that per the SVG cascade, so this reaches every
+     bar/area/line chart in the app without touching each chart's JSX. */
+  .recharts-bar-rectangle path,
+  .recharts-area-area {
+    stroke: var(--color-border-strong) !important;
+    stroke-width: 2px !important;
   }
-  [data-design="classic"] .brutal-sticker { transform: none; }
+  [data-design="classic"] :is(.recharts-bar-rectangle path, .recharts-area-area) {
+    stroke: none !important;
+  }
 
   .admin-kpi-card {
     border: 3px solid var(--color-border-strong);

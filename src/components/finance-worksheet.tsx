@@ -310,7 +310,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
       if (c.has("active_date")) row.push(r.isKasbonRow ? "" : r.activeDates);
       if (c.has("deductions")) row.push(...dedTypes.map((ty) => (r.isKasbonRow ? "" : (r.ded[ty] ?? 0))));
       if (c.has("total_fee")) row.push(r.total);
-      if (c.has("remarks")) row.push(r.held ? `[DITAHAN: ${r.holdReason}] ${r.remarks}` : r.remarks);
+      if (c.has("remarks")) row.push(r.held ? `[PEMBAYARAN DITAHAN: ${r.holdReason}] ${r.remarks}` : r.remarks);
       return row;
     });
 

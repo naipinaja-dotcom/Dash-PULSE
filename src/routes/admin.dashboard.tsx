@@ -61,6 +61,7 @@ function DashboardPage() {
   const [tunggakanCount, setTunggakanAktif] = useState<number | null>(null);
   const [deliveries, setDeliveries] = useState<number | null>(null);
   const [payrollDraft, setPayrollDraft] = useState<number>(0);
+  const [attendanceMissing, setAttendanceMissing] = useState<number | null>(null);
   const [topRiders, setTopRiders] = useState<TopRider[]>([]);
   const [tunggakan, setTunggakan] = useState<TunggakanItem[]>([]);
 
@@ -84,6 +85,17 @@ function DashboardPage() {
       .select("id", { count: "exact", head: true })
       .eq("status", "draft")
       .then(({ count }) => setPayrollDraft(count ?? 0));
+
+    // Active riders with no attendance_logs row for today.
+    const todayKey = dateKey(new Date());
+    Promise.all([
+      supabase.from("riders").select("id").eq("status", "active"),
+      supabase.from("attendance_logs").select("rider_id").eq("log_date", todayKey),
+    ]).then(([ridersRes, logsRes]) => {
+      const loggedIds = new Set((logsRes.data ?? []).map((r) => r.rider_id));
+      const missing = (ridersRes.data ?? []).filter((r) => !loggedIds.has(r.id)).length;
+      setAttendanceMissing(missing);
+    });
 
     // Top riders by fee (latest payroll period)
     supabase
@@ -260,15 +272,13 @@ function DashboardPage() {
   }, []);
 
   /* ── alerts ────────────────────────────────── */
-  const alerts = [
-    {
-      type: "danger" as const,
-      text: `${payrollDraft || 2} payroll draft belum difinalisasi`,
-    },
-    { type: "warn" as const, text: "5 rider belum upload attendance" },
-    { type: "warn" as const, text: "Disbursement Client A jatuh tempo besok" },
-    { type: "info" as const, text: "Ops Insight report baru tersedia" },
-  ];
+  const alerts: { type: "danger" | "warn" | "info"; text: string }[] = [];
+  if (payrollDraft > 0) {
+    alerts.push({ type: "danger", text: `${payrollDraft} payroll draft belum difinalisasi` });
+  }
+  if (attendanceMissing !== null && attendanceMissing > 0) {
+    alerts.push({ type: "warn", text: `${attendanceMissing} rider belum upload attendance hari ini` });
+  }
 
   const alertStyles = {
     danger: "border-2 border-border-strong bg-destructive text-destructive-foreground",
@@ -443,14 +453,18 @@ function DashboardPage() {
         <div className="rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)]">
           <h3 className="text-sm font-semibold mb-3">{t("dash.needsAttention")}</h3>
           <div className="space-y-1.5">
-            {alerts.map((a, i) => (
-              <div
-                key={i}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs leading-relaxed ${alertStyles[a.type]}`}
-              >
-                {a.text}
-              </div>
-            ))}
+            {alerts.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Semua aman, gak ada yang perlu perhatian.</p>
+            ) : (
+              alerts.map((a, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs leading-relaxed ${alertStyles[a.type]}`}
+                >
+                  {a.text}
+                </div>
+              ))
+            )}
           </div>
         </div>
 

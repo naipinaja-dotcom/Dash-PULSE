@@ -23,6 +23,7 @@ type Client = {
   id: string;
   code: string;
   name: string;
+  project_name: string | null;
   address: string | null;
   contact_person: string | null;
   phone: string | null;
@@ -154,7 +155,7 @@ function ClientsPage() {
         fetchAllRows<Client>((c, from, to) =>
           c
             .from("clients")
-            .select("id, code, name, address, contact_person, phone, active, contract, created_at")
+            .select("id, code, name, project_name, address, contact_person, phone, active, contract, created_at")
             .order("name")
             .range(from, to),
         ),
@@ -388,6 +389,7 @@ function ClientModal({
   const [form, setForm] = useState({
     code: initial?.code ?? "",
     name: initial?.name ?? "",
+    project_name: initial?.project_name ?? "",
     address: initial?.address ?? "",
     contact_person: initial?.contact_person ?? "",
     phone: initial?.phone ?? "",
@@ -401,6 +403,7 @@ function ClientModal({
     setSaving(true);
     const payload = {
       ...form,
+      project_name: form.project_name || null,
       address: form.address || null,
       contact_person: form.contact_person || null,
       phone: form.phone || null,
@@ -445,7 +448,7 @@ function ClientModal({
         {tab === "info" ? (
           <>
             <div className="space-y-3 text-sm">
-              {(["code", "name", "address", "contact_person", "phone"] as const).map((f) => (
+              {(["code", "name", "project_name", "address", "contact_person", "phone"] as const).map((f) => (
                 <div key={f}>
                   <label className="text-xs text-muted-foreground font-medium capitalize">
                     {f.replace(/_/g, " ")}
@@ -453,8 +456,14 @@ function ClientModal({
                   <input
                     value={(form as any)[f]}
                     onChange={(e) => setForm({ ...form, [f]: e.target.value })}
+                    placeholder={f === "project_name" ? "Kosongkan buat pakai nama client di atas" : undefined}
                     className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
                   />
+                  {f === "project_name" && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Nama pendek buat judul pengajuan Spend Control — biar gak kepanjangan kena limit karakter kalau nama client-nya panjang.
+                    </p>
+                  )}
                 </div>
               ))}
               <div>

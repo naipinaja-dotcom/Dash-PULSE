@@ -3,6 +3,18 @@
 // Dirender JUJUR sesuai yang tersimpan di scheme, jadi angkanya = angka yang
 // beneran dipakai engine ngitung fee. Tidak ada input manual di sini.
 import type { PricingScheme, PricingEnvelope, StepTier, RangeRow, ModularDeliveryConfig } from "./pricing-types";
+import { calcScheme, type DeliveryRow } from "./pricing-calc";
+
+// Baris pengiriman ilustratif buat contoh Revenue Share — dipilih angka yang
+// "masuk akal" (10km, 3kg), bukan data real. Cuma buat kasih gambaran Rupiah
+// di summary; angka aktual tetap dihitung ulang pas Hitung Fee beneran.
+const EXAMPLE_DELIVERY_ROW: DeliveryRow = {
+  delivery_date: "2026-01-01",
+  distance_km: 10,
+  weight_kg: 3,
+  status: "completed",
+  delivery_type: "DELIVERY",
+};
 
 export interface RateRow {
   variable: string;
@@ -110,7 +122,7 @@ function modifierSections(env: PricingEnvelope): RateSection[] {
   return out;
 }
 
-export function describeScheme(scheme: PricingScheme): RateCard {
+export function describeScheme(scheme: PricingScheme, linkedClientScheme?: PricingScheme): RateCard {
   const env = scheme.params;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cfg = (env?.config ?? {}) as any;
@@ -212,16 +224,26 @@ export function describeScheme(scheme: PricingScheme): RateCard {
       break;
     }
     case "revenue_share": {
-      sections.push({
-        rows: [
-          {
-            variable: "Fee Rider",
-            rate: `${num(cfg.percent_to_rider)}%`,
-            unit: "dari revenue Client",
-            remarks: "Revenue diambil dari skema Client aktif saat Hitung Fee, bukan tabel tarif di sini",
-          },
-        ],
-      });
+      const rows: RateRow[] = [
+        {
+          variable: "Fee Rider",
+          rate: `${num(cfg.percent_to_rider)}%`,
+          unit: "dari revenue Client",
+          remarks: "Revenue diambil dari skema Client aktif saat Hitung Fee, bukan tabel tarif di sini",
+        },
+      ];
+      if (linkedClientScheme) {
+        const exampleRevenue = calcScheme(linkedClientScheme.params, [EXAMPLE_DELIVERY_ROW]).perRow[0]?.fee ?? 0;
+        const pct = Number(cfg.percent_to_rider) || 0;
+        const exampleFee = Math.round(exampleRevenue * (pct / 100));
+        rows.push({
+          variable: "Contoh (10 km, 3 kg)",
+          rate: rp(exampleFee),
+          unit: `dari revenue ${rp(exampleRevenue)}`,
+          remarks: `Ilustrasi pakai skema Client "${linkedClientScheme.name}" saat ini — bukan angka final`,
+        });
+      }
+      sections.push({ rows });
       break;
     }
     case "combined": {

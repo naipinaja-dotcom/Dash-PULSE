@@ -240,6 +240,7 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          project_name: string | null
           provider_id: number | null
           updated_at: string
         }
@@ -253,6 +254,7 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
+          project_name?: string | null
           provider_id?: number | null
           updated_at?: string
         }
@@ -266,6 +268,7 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+          project_name?: string | null
           provider_id?: number | null
           updated_at?: string
         }

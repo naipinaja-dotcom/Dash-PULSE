@@ -132,7 +132,11 @@ type NettingCandidate = {
   headroom: number;
 };
 
-const SPEND_CONTROL_TITLE_LIMIT = 60;
+// API Spend Control gak nyebut angka pasti buat panjang title (cuma "keep it
+// short and human") — 100 kasih buffer di atas worst-case realistis (nama
+// client terpanjang di DB + periode lintas-tahun ≈ 80 char) tanpa mesti
+// ubah format "Payroll Gaji Mitra - ...".
+const SPEND_CONTROL_TITLE_LIMIT = 100;
 // Deep link ke laporan run ini di Reports (bukan halaman /admin/payroll
 // statis) — biar attachment yang nempel di Spend Control langsung nunjuk
 // ke data rider run yang bersangkutan, bukan halaman payroll umum.
@@ -1130,7 +1134,7 @@ function PayrollPage() {
 
       let businessUnitByProviderId = new Map<number, "SCHEDULED" | "XDOCK" | null>();
       const [{ data: clientRows, error }, sess] = await Promise.all([
-        (supabase as any).from("clients").select("id, name, contract, provider_id").in("id", clientIds),
+        (supabase as any).from("clients").select("id, name, project_name, contract, provider_id").in("id", clientIds),
         supabase.auth.getSession(),
       ]);
       if (error) throw error;
@@ -1166,11 +1170,12 @@ function PayrollPage() {
         // butuh prefix "PT_" (PT_DEI | PT_DPI, lihat §11 guide).
         const rawContract = client?.contract ?? null;
         const contract = rawContract === "DEI" ? "PT_DEI" : rawContract === "DPI" ? "PT_DPI" : null;
-        // "Payroll - " lebih hemat karakter daripada "Payroll Gaji Mitra - "
-        // (batas SPEND_CONTROL_TITLE_LIMIT gampang kelampaui client nama panjang,
-        // mis. "PT. Salam Sehat Indonesia" — jangan potong nama client-nya).
-        const title = `Payroll - ${clientName} (${period})`;
-        const description = `Payroll disbursement rider ${clientName}, periode ${period} — diajukan otomatis dari Dash PULSE.`;
+        // Nama pendek client (clients.project_name) dipakai di title/description
+        // biar gak gampang kena limit karakter Spend Control — nama legal
+        // lengkap (clientName) tetap dipakai di kolom "Client" preview.
+        const titleName = client?.project_name?.trim() || clientName;
+        const title = `Payroll Gaji Mitra - ${titleName} (${period})`;
+        const description = `Payroll disbursement rider ${titleName}, periode ${period} — diajukan otomatis dari Dash PULSE.`;
         return {
           clientId,
           clientName,

@@ -1190,7 +1190,7 @@ function PayrollPage() {
         // lengkap (clientName) tetap dipakai di kolom "Client" preview.
         const titleName = client?.project_name?.trim() || clientName;
         const title = `Payroll Gaji Mitra - ${titleName} (${period})`;
-        const description = `Payroll disbursement rider ${titleName}, periode ${period} — diajukan otomatis dari Dash PULSE.`;
+        const description = `Payroll disbursement rider ${titleName}, periode ${period} — submitted by Dash PULSE.`;
         return {
           clientId,
           clientName,

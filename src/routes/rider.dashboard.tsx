@@ -153,7 +153,7 @@ function DashboardPage() {
 
   return (
     <RiderLayout title={t("nav.beranda")}>
-      <div className="rider-enter relative overflow-hidden rounded-[1.75rem] border-2 border-border-strong bg-gradient-to-br from-[#5b21b6] via-primary to-[#312e81] text-primary-foreground p-6 mb-4 shadow-[8px_8px_0_0_var(--color-border-strong)]">
+      <div className="rider-enter relative overflow-hidden rounded-[1.75rem] border-2 border-border-strong bg-gradient-to-br from-[color-mix(in_oklch,var(--color-primary)_70%,white)] via-primary to-[color-mix(in_oklch,var(--color-primary)_55%,black)] text-primary-foreground p-6 mb-4 shadow-[8px_8px_0_0_var(--color-border-strong)]">
         <div className="absolute -right-10 -top-14 h-44 w-44 rounded-full bg-white/20 blur-2xl" />
         <div className="rider-orb absolute -left-14 -bottom-16 h-40 w-40 rounded-full bg-fuchsia-300/25 blur-2xl" />
         <div className="rider-pulse-line absolute left-0 right-0 bottom-14 h-px opacity-70" />

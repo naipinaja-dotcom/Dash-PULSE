@@ -322,7 +322,7 @@ function PayslipDetailModal({
 
         <div className="p-5 space-y-5 text-sm">
           {/* summary */}
-          <div className="relative overflow-hidden rounded-2xl border-2 border-border-strong bg-gradient-to-br from-primary via-violet-600 to-[#4c1d95] p-5 text-primary-foreground shadow-[6px_6px_0_0_var(--color-border-strong)]">
+          <div className="relative overflow-hidden rounded-2xl border-2 border-border-strong bg-gradient-to-br from-primary via-[color-mix(in_oklch,var(--color-primary)_70%,white)] to-[color-mix(in_oklch,var(--color-primary)_55%,black)] p-5 text-primary-foreground shadow-[6px_6px_0_0_var(--color-border-strong)]">
             <div className="absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
             <div className="relative">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">

@@ -109,18 +109,18 @@ function ReportsPage() {
 
   return (
     <AdminLayout title={t("reports.title")} subtitle={t("reports.subtitle")}>
-      <div className="mb-4 border-2 border-[#111827] bg-card p-3 shadow-[3px_3px_0_#111827]">
-        <div className="flex w-full max-w-md overflow-hidden border-2 border-[#111827] bg-[#FFFDF8] shadow-[2px_2px_0_#111827]">
+      <div className="mb-4 border-2 border-border-strong bg-card p-3 shadow-[3px_3px_0_0_var(--color-border-strong)]">
+        <div className="flex w-full max-w-md overflow-hidden border-2 border-border-strong bg-card shadow-[2px_2px_0_0_var(--color-border-strong)]">
           <button
             onClick={() => selectRunStatus("finalized")}
-            className={`flex-1 border-l-2 border-[#111827] px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
+            className={`flex-1 border-l-2 border-border-strong px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "finalized" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
           >
             Finalized
             <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "finalized").length}</span>
           </button>
           <button
             onClick={() => selectRunStatus("published")}
-            className={`flex-1 border-l-2 border-[#111827] px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
+            className={`flex-1 border-l-2 border-border-strong px-3 py-2 text-sm font-bold first:border-l-0 transition-colors ${runStatus === "published" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
           >
             Published
             <span className="ml-1.5 text-[11px] opacity-75">{runs.filter((run) => run.status === "published").length}</span>
@@ -134,7 +134,7 @@ function ReportsPage() {
       </div>
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <PayrollRunPicker runs={visibleRuns} value={runId} onChange={setRunId} />
-        <div className="inline-flex w-fit flex-wrap overflow-hidden border-2 border-[#111827] bg-[#FFFDF8] shadow-[2px_2px_0_#111827]">
+        <div className="inline-flex w-fit flex-wrap overflow-hidden border-2 border-border-strong bg-card shadow-[2px_2px_0_0_var(--color-border-strong)]">
           {(
             [
               ["rider", "Per Rider (Finance)"],
@@ -145,7 +145,7 @@ function ReportsPage() {
             <button
               key={k}
               onClick={() => setMode(k)}
-              className={`border-l-2 border-[#111827] px-3 py-1.5 text-sm font-bold first:border-l-0 transition-colors ${mode === k ? "bg-primary text-primary-foreground" : "bg-[#FFF5D6] text-foreground hover:bg-[#FFE8A3]"}`}
+              className={`border-l-2 border-border-strong px-3 py-1.5 text-sm font-bold first:border-l-0 transition-colors ${mode === k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
             >
               {l}
             </button>
@@ -205,16 +205,16 @@ function PayrollRunPicker({
 
   return (
     <div ref={pickerRef} className="relative min-w-[280px] flex-1 max-w-xl">
-      <label className="inline-flex border-2 border-[#111827] bg-[#FFD45A] px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#111827] shadow-[2px_2px_0_#111827]">Payroll Run</label>
+      <label className="inline-flex border-2 border-border-strong bg-warning px-2 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-warning-foreground shadow-[2px_2px_0_0_var(--color-border-strong)]">Payroll Run</label>
       <button
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="mt-2 flex w-full items-center justify-between gap-3 rounded-none border-2 border-[#111827] bg-[#FFFDF8] px-4 py-2.5 text-left shadow-[3px_3px_0_#111827] transition-all hover:-translate-x-px hover:-translate-y-px hover:bg-[#FFF5D6] hover:shadow-[4px_4px_0_#111827] focus:outline-none focus:ring-2 focus:ring-primary"
+        className="mt-2 flex w-full items-center justify-between gap-3 rounded-none border-2 border-border-strong bg-card px-4 py-2.5 text-left shadow-[3px_3px_0_0_var(--color-border-strong)] transition-all hover:-translate-x-px hover:-translate-y-px hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
       >
         <span className="min-w-0">
-          <span className="block truncate text-sm font-black text-[#111827]">
+          <span className="block truncate text-sm font-black text-foreground">
             {selected ? payrollClientName(selected.name) : "Pilih Payroll Run"}
           </span>
           {selected && (
@@ -224,16 +224,16 @@ function PayrollRunPicker({
           )}
         </span>
         {selected && (
-          <span className={`shrink-0 border-2 border-[#111827] px-2 py-1 text-[10px] font-black uppercase tracking-wide ${selected.status === "published" ? "bg-[#FFD45A] text-[#513600]" : "bg-[#FFB4A8] text-[#6C2117]"}`}>
+          <span className={`shrink-0 border-2 border-border-strong px-2 py-1 text-[10px] font-black uppercase tracking-wide ${selected.status === "published" ? "bg-success text-success-foreground" : "bg-warning text-warning-foreground"}`}>
             {selected.status === "published" ? "Published" : "Finalized"}
           </span>
         )}
-        <ChevronDown className={`h-5 w-5 shrink-0 text-[#111827] transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-5 w-5 shrink-0 text-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-3 w-full overflow-hidden rounded-none border-2 border-[#111827] bg-[#FFFDF8] shadow-[4px_4px_0_#111827]">
-          <div className="border-b-2 border-[#111827] bg-[#F2E9FF] p-2.5">
+        <div className="absolute z-30 mt-3 w-full overflow-hidden rounded-none border-2 border-border-strong bg-card shadow-[4px_4px_0_0_var(--color-border-strong)]">
+          <div className="border-b-2 border-border-strong bg-primary-soft p-2.5">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -242,11 +242,11 @@ function PayrollRunPicker({
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => event.key === "Escape" && setOpen(false)}
                 placeholder="Cari client atau periode..."
-                className="w-full rounded-none border-2 border-[#111827] bg-[#FFFDF8] py-2.5 pl-9 pr-3 text-sm font-semibold text-[#111827] outline-none placeholder:text-[#5B6473] focus:bg-white focus:ring-2 focus:ring-[#7C4DFF]"
+                className="w-full rounded-none border-2 border-border-strong bg-card py-2.5 pl-9 pr-3 text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
               />
             </label>
           </div>
-          <div role="listbox" className="max-h-72 overflow-y-auto bg-[#FFFDF8] p-2">
+          <div role="listbox" className="max-h-72 overflow-y-auto bg-card p-2">
             {filteredRuns.length === 0 ? (
               <p className="px-3 py-5 text-center text-xs text-muted-foreground">Payroll tidak ditemukan.</p>
             ) : (
@@ -261,18 +261,18 @@ function PayrollRunPicker({
                     setOpen(false);
                     setQuery("");
                   }}
-                  className={`flex w-full items-center gap-3 rounded-none border-2 px-3 py-2.5 text-left transition-all ${run.id === value ? "mb-1.5 border-[#111827] bg-[#E4D4FF] shadow-[2px_2px_0_#111827]" : "border-transparent hover:border-[#111827] hover:bg-[#FFF0B5]"}`}
+                  className={`flex w-full items-center gap-3 rounded-none border-2 px-3 py-2.5 text-left transition-all ${run.id === value ? "mb-1.5 border-border-strong bg-primary-soft shadow-[2px_2px_0_0_var(--color-border-strong)]" : "border-transparent hover:border-border-strong hover:bg-muted"}`}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-black text-[#111827]">{payrollClientName(run.name)}</span>
+                    <span className="block truncate text-sm font-black text-foreground">{payrollClientName(run.name)}</span>
                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
                       {formatTanggal(run.period_start)} – {formatTanggal(run.period_end)}
                     </span>
                   </span>
-                  <span className={`shrink-0 border-2 border-[#111827] px-2 py-1 text-[10px] font-black uppercase tracking-wide ${run.status === "published" ? "bg-[#FFD45A] text-[#513600]" : "bg-[#FFB4A8] text-[#6C2117]"}`}>
+                  <span className={`shrink-0 border-2 border-border-strong px-2 py-1 text-[10px] font-black uppercase tracking-wide ${run.status === "published" ? "bg-success text-success-foreground" : "bg-warning text-warning-foreground"}`}>
                     {run.status === "published" ? "Published" : "Finalized"}
                   </span>
-                  {run.id === value && <Check className="h-5 w-5 shrink-0 text-[#5A23D8] stroke-[3]" />}
+                  {run.id === value && <Check className="h-5 w-5 shrink-0 text-primary stroke-[3]" />}
                 </button>
               ))
             )}

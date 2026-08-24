@@ -133,7 +133,11 @@ type NettingCandidate = {
 };
 
 const SPEND_CONTROL_TITLE_LIMIT = 60;
-const SPEND_CONTROL_ATTACHMENT_URL = "https://dash-payroll-engine.vercel.app/admin/payroll";
+// Deep link ke laporan run ini di Reports (bukan halaman /admin/payroll
+// statis) — biar attachment yang nempel di Spend Control langsung nunjuk
+// ke data rider run yang bersangkutan, bukan halaman payroll umum.
+const spendControlAttachmentUrl = (runId: string) =>
+  `https://dash-payroll-engine.vercel.app/admin/reports?runId=${runId}&mode=rider`;
 
 type SpendControlRow = {
   clientId: string;
@@ -1162,8 +1166,11 @@ function PayrollPage() {
         // butuh prefix "PT_" (PT_DEI | PT_DPI, lihat §11 guide).
         const rawContract = client?.contract ?? null;
         const contract = rawContract === "DEI" ? "PT_DEI" : rawContract === "DPI" ? "PT_DPI" : null;
-        const title = `Payroll Gaji Mitra - ${clientName} (${period})`;
-        const description = `Payroll disbursement rider untuk client ${clientName}, periode ${period}. Diajukan otomatis dari Dash PULSE (run ${activeRun.name}).`;
+        // "Payroll - " lebih hemat karakter daripada "Payroll Gaji Mitra - "
+        // (batas SPEND_CONTROL_TITLE_LIMIT gampang kelampaui client nama panjang,
+        // mis. "PT. Salam Sehat Indonesia" — jangan potong nama client-nya).
+        const title = `Payroll - ${clientName} (${period})`;
+        const description = `Payroll disbursement rider ${clientName}, periode ${period} — diajukan otomatis dari Dash PULSE.`;
         return {
           clientId,
           clientName,
@@ -1200,6 +1207,7 @@ function PayrollPage() {
         data: {
           adminToken: token,
           department: spendControlDept,
+          attachmentUrl: spendControlAttachmentUrl(activeRun.id),
           rows: spendControlPushableRows.map((r) => ({
             clientId: r.clientId,
             title: r.title,
@@ -2386,9 +2394,11 @@ function PayrollPage() {
                     Total: {formatRupiah(spendControlValidTotal)}
                   </span>
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Attachment: <a href={SPEND_CONTROL_ATTACHMENT_URL} target="_blank" rel="noreferrer" className="underline">{SPEND_CONTROL_ATTACHMENT_URL}</a>
-                </p>
+                {activeRun && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Attachment: <a href={spendControlAttachmentUrl(activeRun.id)} target="_blank" rel="noreferrer" className="underline">{spendControlAttachmentUrl(activeRun.id)}</a>
+                  </p>
+                )}
               </>
             )}
 

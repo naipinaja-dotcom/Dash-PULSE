@@ -44,6 +44,7 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
     z.object({
       adminToken: z.string().min(1),
       department: z.string().min(1),
+      attachmentUrl: z.string().url(),
       rows: z.array(RowSchema).min(1),
     }),
   )
@@ -53,7 +54,7 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
     if (!requesterEmail) throw new Error("Akun admin tidak punya email — Spend Control butuh requesterEmail");
     const requester = (admin.user_metadata as { full_name?: string } | null)?.full_name ?? requesterEmail;
     const base = getServerConfig().basecampSpendControlUrl;
-    const attachmentUrl = "https://dash-payroll-engine.vercel.app/admin/payroll";
+    const attachmentUrl = data.attachmentUrl;
 
     const results: RowResult[] = [];
     for (const row of data.rows) {

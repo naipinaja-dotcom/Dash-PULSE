@@ -1133,11 +1133,26 @@ function PayrollPage() {
       }
 
       let businessUnitByProviderId = new Map<number, "SCHEDULED" | "XDOCK" | null>();
-      const [{ data: clientRows, error }, sess] = await Promise.all([
+      const [{ data: clientRows, error }, { data: pushRows }, sess] = await Promise.all([
         (supabase as any).from("clients").select("id, name, project_name, contract, provider_id").in("id", clientIds),
+        (supabase as any)
+          .from("spend_control_pushes")
+          .select("client_id, request_code, workflow_configured, workflow_missing_reason")
+          .eq("payroll_run_id", activeRun.id),
         supabase.auth.getSession(),
       ]);
       if (error) throw error;
+      // Seed status dari push sebelumnya buat run ini — biar reopen dialog
+      // (atau reload halaman) tetap nunjukin client yang udah sukses, dan
+      // spendControlPushableRows otomatis exclude mereka dari re-push.
+      setSpendControlResults(
+        Object.fromEntries(
+          (pushRows ?? []).map((p: any) => [
+            p.client_id,
+            { ok: true, requestCode: p.request_code ?? undefined, workflowConfigured: p.workflow_configured, workflowMissingReason: p.workflow_missing_reason ?? undefined },
+          ]),
+        ),
+      );
 
       try {
         const token = sess.data.session?.access_token;
@@ -1211,6 +1226,7 @@ function PayrollPage() {
       const { results } = await pushSpendControlRequests({
         data: {
           adminToken: token,
+          payrollRunId: activeRun.id,
           department: spendControlDept,
           attachmentUrl: spendControlAttachmentUrl(activeRun.id),
           rows: spendControlPushableRows.map((r) => ({
@@ -1234,11 +1250,20 @@ function PayrollPage() {
       const failCount = results.length - okCount;
       if (failCount === 0 && unconfigured === 0) {
         toast.success(`${okCount} payment request terkirim ke Spend Control`);
+        setSpendControlOpen(false);
+      } else if (failCount === 0) {
+        // Semua row berhasil dibuat (sebagian tanpa workflow) — tetap tutup,
+        // warning workflow-nya udah kebaca lewat toast, badge per-client
+        // tersimpan di histori (spend_control_pushes) buat ditindaklanjuti nanti.
+        toast.warning(`${okCount} terkirim, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)`);
+        setSpendControlOpen(false);
       } else {
+        // Ada yang gagal — biarkan dialog terbuka biar keliatan row mana yang
+        // error, dan re-push cuma nyasar row yang belum sukses.
         toast.warning(
           `${okCount} terkirim` +
             (unconfigured ? `, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)` : "") +
-            (failCount ? `, ${failCount} gagal` : ""),
+            `, ${failCount} gagal`,
         );
       }
     } catch (e) {

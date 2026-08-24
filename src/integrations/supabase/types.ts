@@ -1464,6 +1464,63 @@ export type Database = {
           },
         ]
       }
+      spend_control_pushes: {
+        Row: {
+          amount: number
+          client_id: string
+          department: string
+          id: string
+          payroll_run_id: string
+          pushed_at: string
+          pushed_by: string | null
+          request_code: string | null
+          request_id: string
+          workflow_configured: boolean
+          workflow_missing_reason: string | null
+        }
+        Insert: {
+          amount: number
+          client_id: string
+          department: string
+          id?: string
+          payroll_run_id: string
+          pushed_at?: string
+          pushed_by?: string | null
+          request_code?: string | null
+          request_id: string
+          workflow_configured?: boolean
+          workflow_missing_reason?: string | null
+        }
+        Update: {
+          amount?: number
+          client_id?: string
+          department?: string
+          id?: string
+          payroll_run_id?: string
+          pushed_at?: string
+          pushed_by?: string | null
+          request_code?: string | null
+          request_id?: string
+          workflow_configured?: boolean
+          workflow_missing_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spend_control_pushes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "spend_control_pushes_payroll_run_id_fkey"
+            columns: ["payroll_run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       spatial_ref_sys: {
         Row: {
           auth_name: string | null

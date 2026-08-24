@@ -67,5 +67,11 @@ export function getServerConfig() {
     // manual. Sama polanya dgn payrollWorkflowSecret, header
     // `x-live-fee-sync-secret`.
     liveFeeSyncSecret: process.env.LIVE_FEE_SYNC_SECRET?.trim(),
+
+    // Spend Control push (lihat src/lib/api/spend-control.functions.ts &
+    // admin.payroll.tsx) — Basecamp's /api/spend-requests punya nol auth
+    // (lihat spend-request-api-integration.md §3), jadi gak ada token di sini,
+    // cuma base URL biar bisa diarahkan ke staging tanpa ubah kode.
+    basecampSpendControlUrl: (process.env.BASECAMP_SPEND_CONTROL_URL || "https://basecamp.dashelectric.co").trim(),
   };
 }

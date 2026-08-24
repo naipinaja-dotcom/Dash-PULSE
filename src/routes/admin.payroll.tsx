@@ -37,7 +37,8 @@ import {
 } from "@/lib/bulk-payment-export";
 import { parseRupiah, formatRupiah, BULAN } from "@/lib/format";
 import { loadApiProviders } from "@/lib/api/providers.functions";
-import { resolveBusinessUnit } from "@/lib/spend-control-mapping";
+import { resolveBusinessUnit, SPEND_CONTROL_DEPARTMENTS } from "@/lib/spend-control-mapping";
+import { pushSpendControlRequests } from "@/lib/api/spend-control.functions";
 import { useT } from "@/lib/i18n";
 import {
   DropdownMenu,
@@ -131,19 +132,6 @@ type NettingCandidate = {
   headroom: number;
 };
 
-// 10 opsi Department persis dropdown Spend Control (basecamp.dashelectric.co).
-const SPEND_CONTROL_DEPARTMENTS = [
-  "Customer Success",
-  "Engineering Product & Design",
-  "Finance",
-  "Fleet",
-  "Human Resources",
-  "Legal",
-  "Logistics",
-  "Marketing",
-  "Operations",
-  "Sales",
-];
 const SPEND_CONTROL_TITLE_LIMIT = 60;
 const SPEND_CONTROL_ATTACHMENT_URL = "https://dash-payroll-engine.vercel.app/admin/payroll";
 
@@ -151,10 +139,19 @@ type SpendControlRow = {
   clientId: string;
   clientName: string;
   title: string;
+  description: string;
   amount: number;
-  businessUnit: "SCHEDULED_INSTANT" | "X_DOCK" | null;
-  contract: string | null;
+  businessUnit: "SCHEDULED" | "XDOCK" | null;
+  contract: "PT_DEI" | "PT_DPI" | null;
   valid: boolean;
+};
+
+type SpendControlPushResult = {
+  ok: boolean;
+  requestCode?: string;
+  workflowConfigured?: boolean;
+  workflowMissingReason?: string;
+  error?: string;
 };
 
 // Kasbon dengan penerima pihak ke-3 (kasbon_recipients, lihat add-tab.tsx)
@@ -230,10 +227,13 @@ function PayrollPage() {
   const [newDedTypeId, setNewDedTypeId] = useState<string | null>(null);
   const [spendControlOpen, setSpendControlOpen] = useState(false);
   const [spendControlLoading, setSpendControlLoading] = useState(false);
-  const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0]);
+  const [spendControlPushing, setSpendControlPushing] = useState(false);
+  const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0].code);
   const [spendControlRows, setSpendControlRows] = useState<SpendControlRow[]>([]);
+  const [spendControlResults, setSpendControlResults] = useState<Record<string, SpendControlPushResult>>({});
   const spendControlValidRows = spendControlRows.filter((r) => r.valid);
   const spendControlValidTotal = spendControlValidRows.reduce((s, r) => s + r.amount, 0);
+  const spendControlPushableRows = spendControlValidRows.filter((r) => !spendControlResults[r.clientId]?.ok);
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -1098,13 +1098,14 @@ function PayrollPage() {
     }
   };
 
-  // Fase 1 (prd-spend-control-push.md): preview-only, TIDAK memanggil API Spend
-  // Control beneran (Fase 2, terblokir nunggu API key/service account mereka).
+  // Bangun preview per client (title/amount/businessUnit/contract) sebelum
+  // submitSpendControlPush() beneran POST ke Basecamp Spend Control.
   const openSpendControlPreview = async () => {
     if (!activeRun || details.length === 0)
       return toast.error("Belum ada detail payroll untuk run ini");
     setSpendControlOpen(true);
     setSpendControlLoading(true);
+    setSpendControlResults({});
     try {
       // Samakan populasi request dengan Bulk Payment reguler: detail hold
       // dibayar melalui mekanisme susulan, dan net pay nol/negatif bukan
@@ -1123,7 +1124,7 @@ function PayrollPage() {
         return;
       }
 
-      let businessUnitByProviderId = new Map<number, "SCHEDULED_INSTANT" | "X_DOCK" | null>();
+      let businessUnitByProviderId = new Map<number, "SCHEDULED" | "XDOCK" | null>();
       const [{ data: clientRows, error }, sess] = await Promise.all([
         (supabase as any).from("clients").select("id, name, contract, provider_id").in("id", clientIds),
         supabase.auth.getSession(),
@@ -1156,12 +1157,18 @@ function PayrollPage() {
         const businessUnit = client?.provider_id != null
           ? businessUnitByProviderId.get(client.provider_id) ?? null
           : null;
-        const contract = client?.contract ?? null;
+        // clients.contract di DB cuma "DEI" | "DPI" (lihat migration
+        // 20260815155830_clients_contract_field.sql) — API Spend Control
+        // butuh prefix "PT_" (PT_DEI | PT_DPI, lihat §11 guide).
+        const rawContract = client?.contract ?? null;
+        const contract = rawContract === "DEI" ? "PT_DEI" : rawContract === "DPI" ? "PT_DPI" : null;
         const title = `Payroll Gaji Mitra - ${clientName} (${period})`;
+        const description = `Payroll disbursement rider untuk client ${clientName}, periode ${period}. Diajukan otomatis dari Dash PULSE (run ${activeRun.name}).`;
         return {
           clientId,
           clientName,
           title,
+          description,
           amount: byClient.get(clientId) ?? 0,
           businessUnit,
           contract,
@@ -1175,6 +1182,56 @@ function PayrollPage() {
       setSpendControlOpen(false);
     } finally {
       setSpendControlLoading(false);
+    }
+  };
+
+  // Fase 2: kirim beneran ke Basecamp Spend Control (lihat
+  // spend-request-api-integration.md). Cuma push row yang belum sukses —
+  // klik ulang setelah gagal sebagian gak akan bikin duplikat buat yang
+  // sudah berhasil.
+  const submitSpendControlPush = async () => {
+    if (!activeRun || spendControlPushableRows.length === 0) return;
+    setSpendControlPushing(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Sesi tidak ditemukan, coba login ulang");
+      const { results } = await pushSpendControlRequests({
+        data: {
+          adminToken: token,
+          department: spendControlDept,
+          rows: spendControlPushableRows.map((r) => ({
+            clientId: r.clientId,
+            title: r.title,
+            description: r.description,
+            amount: r.amount,
+            businessUnit: r.businessUnit,
+            contract: r.contract,
+            externalReference: { system: "dash-pulse-payroll", payrollRunId: activeRun.id, clientId: r.clientId },
+          })),
+        },
+      });
+      setSpendControlResults((prev) => {
+        const next = { ...prev };
+        for (const r of results) next[r.clientId] = r;
+        return next;
+      });
+      const okCount = results.filter((r) => r.ok).length;
+      const unconfigured = results.filter((r) => r.ok && r.workflowConfigured === false).length;
+      const failCount = results.length - okCount;
+      if (failCount === 0 && unconfigured === 0) {
+        toast.success(`${okCount} payment request terkirim ke Spend Control`);
+      } else {
+        toast.warning(
+          `${okCount} terkirim` +
+            (unconfigured ? `, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)` : "") +
+            (failCount ? `, ${failCount} gagal` : ""),
+        );
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSpendControlPushing(false);
     }
   };
 
@@ -1625,7 +1682,7 @@ function PayrollPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    {/* Push ke Spend Control — Fase 1: preview-only (lihat prd-spend-control-push.md) */}
+                    {/* Push ke Spend Control — preview lalu submit ke Basecamp (lihat spend-request-api-integration.md) */}
                     <button
                       onClick={openSpendControlPreview}
                       disabled={activeRun.status === "draft" || details.length === 0 || spendControlLoading}
@@ -2217,9 +2274,9 @@ function PayrollPage() {
           <div className="h-1 bg-gradient-to-r from-primary via-warning to-primary" />
           <div className="p-6">
             <DialogHeader>
-              <DialogTitle className="text-xl">Push ke Spend Control — Preview</DialogTitle>
+              <DialogTitle className="text-xl">Push ke Spend Control</DialogTitle>
               <DialogDescription className="leading-relaxed">
-                Preview Payment Request per client untuk run {activeRun?.name}. Belum mengirim apa pun — integrasi API Spend Control masih menunggu konfirmasi tim mereka (lihat spend-control-integration-request.md).
+                Payment Request per client untuk run {activeRun?.name} akan dikirim ke Basecamp Spend Control atas nama {user?.email ?? "akun ini"}.
               </DialogDescription>
             </DialogHeader>
 
@@ -2228,10 +2285,11 @@ function PayrollPage() {
               <select
                 value={spendControlDept}
                 onChange={(e) => setSpendControlDept(e.target.value)}
-                className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                disabled={spendControlPushing}
+                className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
               >
                 {SPEND_CONTROL_DEPARTMENTS.map((d) => (
-                  <option key={d} value={d}>{d}</option>
+                  <option key={d.code} value={d.code}>{d.label}</option>
                 ))}
               </select>
             </div>
@@ -2251,10 +2309,13 @@ function PayrollPage() {
                         <th className="text-right px-3 py-2 font-medium">Amount</th>
                         <th className="text-left px-3 py-2 font-medium">Business Unit</th>
                         <th className="text-left px-3 py-2 font-medium">Contract</th>
+                        <th className="text-left px-3 py-2 font-medium">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {spendControlRows.map((r) => (
+                      {spendControlRows.map((r) => {
+                        const result = spendControlResults[r.clientId];
+                        return (
                         <tr key={r.clientId} className="border-t border-border">
                           <td className="px-3 py-2 whitespace-nowrap">{r.clientName}</td>
                           <td className="px-3 py-2">
@@ -2282,11 +2343,30 @@ function PayrollPage() {
                               </span>
                             )}
                           </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {!result && "—"}
+                            {result?.ok && result.workflowConfigured === false && (
+                              <span className="rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-warning text-[11px]" title={result.workflowMissingReason}>
+                                Terkirim, tanpa workflow
+                              </span>
+                            )}
+                            {result?.ok && result.workflowConfigured !== false && (
+                              <span className="rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-success text-[11px]">
+                                {result.requestCode ?? "Terkirim"}
+                              </span>
+                            )}
+                            {result && !result.ok && (
+                              <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]" title={result.error}>
+                                Gagal
+                              </span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {spendControlRows.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                          <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                             Tidak ada client dengan detail payroll di run ini.
                           </td>
                         </tr>
@@ -2316,21 +2396,21 @@ function PayrollPage() {
               <button
                 type="button"
                 onClick={() => setSpendControlOpen(false)}
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+                disabled={spendControlPushing}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
               >
                 Tutup
               </button>
               <button
                 type="button"
-                disabled={spendControlLoading || spendControlValidRows.length === 0}
-                onClick={() =>
-                  toast.info(
-                    `Integrasi API Spend Control masih menunggu konfirmasi tim mereka (departemen "${spendControlDept}", ${spendControlValidRows.length} client) — lihat spend-control-integration-request.md`,
-                  )
-                }
+                disabled={spendControlLoading || spendControlPushing || spendControlPushableRows.length === 0}
+                onClick={submitSpendControlPush}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <ArrowUpRight className="h-4 w-4" /> Push ke Spend Control
+                {spendControlPushing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                {spendControlPushableRows.length === 0 && spendControlValidRows.length > 0
+                  ? "Semua sudah terkirim"
+                  : `Push ${spendControlPushableRows.length} ke Spend Control`}
               </button>
             </DialogFooter>
           </div>

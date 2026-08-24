@@ -76,6 +76,22 @@ function PricingListPage() {
   const riderSchemesForClient = filtered.filter((s) => s.scheme_for === "rider");
   const revenueSchemesForClient = filtered.filter((s) => s.scheme_for === "client");
 
+  // Buat skema Revenue Share: cari skema Client (Per Pengiriman) yang match
+  // client_id + category delivery + periode-nya overlap — sama persis logic
+  // findClientScheme di RevenueShareCalc / admin.calculate.tsx, biar contoh
+  // Rupiah di summary konsisten sama yang beneran dipakai pas Hitung Fee.
+  const findLinkedClientScheme = (riderScheme: PricingScheme): PricingScheme | undefined => {
+    const to_ = riderScheme.effective_to || riderScheme.effective_from;
+    const candidates = revenueSchemesForClient.filter(
+      (s) =>
+        s.client_id === riderScheme.client_id &&
+        s.category === "delivery" &&
+        s.effective_from <= to_ &&
+        (!s.effective_to || s.effective_to >= riderScheme.effective_from),
+    );
+    return candidates.sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0];
+  };
+
   // Group baris tabel per client_id ("all" = skema "Berlaku Semua Client").
   // Group dengan >1 skema (biasanya pasangan Rider+Client utk client yang
   // sama) ditampilkan sebagai 1 baris ringkas, expand on click. Group dengan
@@ -249,7 +265,7 @@ function PricingListPage() {
                 </p>
               ) : (
                 riderSchemesForClient.map((s) => {
-                  const rc = describeScheme(s);
+                  const rc = describeScheme(s, findLinkedClientScheme(s));
                   return (
                     <div key={s.id} className="border-t border-border first:border-t-0">
                       <div className="px-3 py-2 flex items-center gap-2 bg-muted/40">

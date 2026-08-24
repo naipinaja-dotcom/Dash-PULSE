@@ -461,7 +461,7 @@ const T = {
   // ── Recap tab ──────────────────────────────────────────────────────────
   "recap.period": { id: "Periode", en: "Period" },
   "recap.totalDeduction": { id: "Total Potongan", en: "Total Deductions" },
-  "recap.ridersAffected": { id: "Rider Terkena", en: "Riders Affected" },
+  "recap.ridersAffected": { id: "Rider Terpotong", en: "Riders Affected" },
   "recap.totalRentalDays": { id: "Total Hari Sewa", en: "Total Rental Days" },
   "recap.avgPerRider": { id: "Rata-rata / Rider", en: "Average / Rider" },
   "recap.employeeId": { id: "Kode Mitra", en: "Employee ID" },
@@ -865,7 +865,7 @@ const T = {
   "dedSummary.perTypeHeading": { id: "Per Jenis Potongan", en: "By Deduction Type" },
   "dedSummary.colDeductionType": { id: "Jenis Potongan", en: "Deduction Type" },
   "dedSummary.colType": { id: "Tipe", en: "Type" },
-  "dedSummary.colRiderAffected": { id: "Rider Terkena", en: "Riders Affected" },
+  "dedSummary.colRiderAffected": { id: "Rider Terpotong", en: "Riders Affected" },
   "dedSummary.typeMixed": { id: "Campuran", en: "Mixed" },
   "dedSummary.typeInstallment": { id: "Cicilan", en: "Installment" },
   "dedSummary.typeAutoRecurring": { id: "Auto-recurring", en: "Auto-recurring" },

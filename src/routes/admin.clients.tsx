@@ -245,6 +245,9 @@ function ClientsPage() {
                 Client
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
+                Project Name
+              </th>
+              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
                 Business Unit
               </th>
               <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider p-3">
@@ -261,13 +264,13 @@ function ClientsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="p-8 text-center">
+                <td colSpan={6} className="p-8 text-center">
                   <Loader2 className="w-4 h-4 animate-spin inline text-primary" />
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-muted-foreground text-[11px]">
+                <td colSpan={6} className="p-8 text-center text-muted-foreground text-[11px]">
                   Belum ada client
                 </td>
               </tr>
@@ -294,6 +297,13 @@ function ClientsPage() {
                           </div>
                         </div>
                       </div>
+                    </td>
+                    <td className="p-3">
+                      {c.project_name ? (
+                        <span className="text-foreground">{c.project_name}</span>
+                      ) : (
+                        <span className="text-[11px] text-warning">Belum diisi</span>
+                      )}
                     </td>
                     <td className="p-3">
                       {(() => {

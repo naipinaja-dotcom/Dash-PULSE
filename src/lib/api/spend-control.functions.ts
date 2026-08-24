@@ -43,6 +43,7 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       adminToken: z.string().min(1),
+      payrollRunId: z.string().min(1),
       department: z.string().min(1),
       attachmentUrl: z.string().url(),
       rows: z.array(RowSchema).min(1),
@@ -55,6 +56,7 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
     const requester = (admin.user_metadata as { full_name?: string } | null)?.full_name ?? requesterEmail;
     const base = getServerConfig().basecampSpendControlUrl;
     const attachmentUrl = data.attachmentUrl;
+    const supabaseAdmin = getSupabaseAdmin();
 
     const results: RowResult[] = [];
     for (const row of data.rows) {
@@ -89,6 +91,25 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             body: JSON.stringify({ name: "Dash PULSE — Payroll Run", linkUrl: attachmentUrl, user: requester, userEmail: requesterEmail }),
           }).catch(() => {});
         }
+        // Catat histori push — dipakai admin.payroll.tsx buat nunjukin status
+        // "udah pernah dipush" walau dialog ditutup-buka lagi / reload, dan
+        // biar re-push cuma nyasar row yang belum sukses (lihat spendControlResults
+        // seeding di openSpendControlPreview). Gagal di sini gak menggagalkan
+        // request-nya sendiri (sudah terbuat di Basecamp).
+        await supabaseAdmin.from("spend_control_pushes").upsert(
+          {
+            payroll_run_id: data.payrollRunId,
+            client_id: row.clientId,
+            request_id: body.id,
+            request_code: body.requestCode ?? null,
+            amount: Math.round(row.amount),
+            department: data.department,
+            workflow_configured: body.workflowConfigured !== false,
+            workflow_missing_reason: body.workflowMissingReason ?? null,
+            pushed_by: admin.id,
+          },
+          { onConflict: "payroll_run_id,client_id" },
+        );
         results.push({
           clientId: row.clientId,
           ok: true,

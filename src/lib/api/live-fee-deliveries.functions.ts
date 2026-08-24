@@ -267,23 +267,29 @@ export async function fetchLiveDeliveries(
   const rows = matched.map(toDeliveryRow);
   await enrichDistrictsFromCoordinates(rows);
 
-  // Klasifikasi DELIVERY/RETURN — replikasi classifyDeliveryType: hub = nama
-  // pengirim (outlet) yang paling sering muncul; baris dari hub = DELIVERY,
-  // menuju hub = RETURN. Skema Wicked Pies pasang tarif beda (antar vs kembali).
+  // Klasifikasi DELIVERY/RETURN — replikasi classifyDeliveryType (lib/
+  // delivery-classification.ts): hub = nama pengirim (outlet) yang paling
+  // sering muncul; baris dari hub = DELIVERY, menuju hub = RETURN. Skema
+  // Wicked Pies pasang tarif beda (antar vs kembali).
+  // Match case-insensitive (+ trim) — CSV/API sering nulis nama hub beda
+  // kapitalisasi antar kolom Sender/Receiver (mis. "It's Buah" vs
+  // "IT'S BUAH"), exact match (===) yang lama bikin baris Return ini gak
+  // pernah ke-klasifikasi dan diem-diem nyangkut DELIVERY (nilai default).
+  const normHub = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
   const freq = new Map<string, number>();
-  for (const r of rows) if (r.sender_name) freq.set(r.sender_name, (freq.get(r.sender_name) ?? 0) + 1);
-  let hub: string | null = null;
+  for (const r of rows) if (r.sender_name) freq.set(normHub(r.sender_name), (freq.get(normHub(r.sender_name)) ?? 0) + 1);
+  let hubKey: string | null = null;
   let hubCount = 0;
-  freq.forEach((c, name) => {
+  freq.forEach((c, key) => {
     if (c > hubCount) {
-      hub = name;
+      hubKey = key;
       hubCount = c;
     }
   });
-  if (hub) {
+  if (hubKey) {
     for (const r of rows) {
-      if (r.sender_name === hub) r.delivery_type = "DELIVERY";
-      else if (r.receiver_name === hub) r.delivery_type = "RETURN";
+      if (normHub(r.sender_name) === hubKey) r.delivery_type = "DELIVERY";
+      else if (normHub(r.receiver_name) === hubKey) r.delivery_type = "RETURN";
       // selain itu biarkan default "DELIVERY"
     }
   }

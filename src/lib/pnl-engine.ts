@@ -100,6 +100,9 @@ function calcForScheme(
   scheme: PricingScheme | undefined,
   crows: DeliveryRow[],
   cattendance: AttendanceLogWithClientName[],
+  // Cuma dibaca kalau scheme.params.type === "revenue_share" (lihat
+  // pricing-calc.ts:556) — abaikan buat kategori/tipe lain.
+  clientRevenueByRow?: number[],
 ): { grandTotal: number; perRow: { date: string; fee: number }[] } | null {
   if (!scheme) return null;
   if (scheme.category === "attendance") {
@@ -110,7 +113,7 @@ function calcForScheme(
     const r = calcHybridScheme(scheme.params, crows, cattendance);
     return { grandTotal: r.grandTotal, perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })) };
   }
-  const r = calcScheme(scheme.params, crows);
+  const r = calcScheme(scheme.params, crows, clientRevenueByRow);
   return { grandTotal: r.grandTotal, perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })) };
 }
 
@@ -152,8 +155,20 @@ export function computePnl(
     const cattendance = attByClient.get(cid) ?? [];
     const riderS = pickPricingScheme(schemes, cid, "rider", asOfDate);
     const clientS = pickPricingScheme(schemes, cid, "client", asOfDate);
-    const costResult = calcForScheme(riderS, crows, cattendance);
     const revResult = calcForScheme(clientS, crows, cattendance);
+    // Skema rider "revenue_share" itung fee sebagai % dari revenue client
+    // PER BARIS — butuh clientRevenueByRow dari hasil skema Client di atas,
+    // index-aligned ke crows.filter(isCompleted) (lihat pricing-calc.ts:525).
+    // Alignment ini cuma valid kalau skema Client-nya juga kategori
+    // "delivery" (perRow dari calcScheme, bukan calcAttendanceScheme/
+    // calcHybridScheme yang perRow-nya per tanggal, bukan per delivery row) —
+    // sama seperti syarat di admin.calculate.tsx. Tanpa fix ini, cost selalu
+    // 0 buat client dengan skema revenue_share (mis. Komu Komu Bakehouse).
+    const clientRevenueByRow =
+      riderS?.params.type === "revenue_share" && clientS?.category === "delivery"
+        ? revResult?.perRow.map((r) => r.fee)
+        : undefined;
+    const costResult = calcForScheme(riderS, crows, cattendance, clientRevenueByRow);
     const cost = (costResult?.grandTotal ?? 0) + (molisCostByClient.get(cid) ?? 0);
     const revenue = revResult ? revResult.grandTotal : null;
     const margin = revenue === null ? null : revenue - cost;

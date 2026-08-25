@@ -379,7 +379,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
   return (
     <>
       {/* Rate card / PKS */}
-      <div className="rounded-xl border border-border bg-card mb-4 overflow-hidden">
+      <div className="admin-glass-panel rounded-xl border border-border bg-card mb-4 overflow-hidden">
         <button onClick={() => setShowRates((v) => !v)} className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-muted/40">
           <FileSpreadsheet className="w-4 h-4 text-primary" />
           <span className="text-sm font-semibold">{tr("financeWs.rateCardHeader")} ({rateCards.length} {tr("financeWs.schemesUnit")})</span>
@@ -391,7 +391,7 @@ export function FinanceWorksheet({ runId, run }: { runId: string; run?: Run }) {
               <p className="text-xs text-muted-foreground">{tr("financeWs.noRiderSchemes")}</p>
             ) : rateCards.map((c, i) => (
               <div key={i} className="rounded-lg border border-border overflow-hidden">
-                <div className="px-3 py-2 bg-muted flex items-center gap-2">
+                <div className="admin-glass-strip px-3 py-2 bg-muted flex items-center gap-2">
                   <span className="text-[13px] font-semibold truncate">{c.schemeName}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground border-2 border-border-strong ml-auto flex-shrink-0">{c.calcLabel}</span>
                 </div>

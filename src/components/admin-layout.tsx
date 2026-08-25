@@ -292,9 +292,11 @@ export function AdminLayout({
                       (active ? "admin-nav-active" : "text-foreground/70")
                     }
                   >
-                    <Icon
-                      className={`flex-shrink-0 ${collapsed && !mobile ? "w-[18px] h-[18px]" : "w-4 h-4"}`}
-                    />
+                    <span className="admin-nav-icon flex items-center justify-center flex-shrink-0">
+                      <Icon
+                        className={collapsed && !mobile ? "w-[18px] h-[18px]" : "w-4 h-4"}
+                      />
+                    </span>
                     {(!collapsed || mobile) && <span>{t(it.labelKey as any)}</span>}
                   </Link>
                 );

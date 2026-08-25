@@ -925,6 +925,42 @@
     color: var(--color-primary-soft-foreground) !important;
   }
   [data-design="classic"] .admin-nav-active svg { color: var(--color-primary-soft-foreground) !important; }
+  /* Active-item accent bar — box-shadow (not border) so it doesn't shift
+     layout when active state toggles. Needs !important + same layer as the
+     "box-shadow: none !important" above it (line ~923) to actually win —
+     see the important-vs-important/layer note a few lines up. */
+  [data-design="classic"] .admin-nav-active {
+    box-shadow: inset 3px 0 0 var(--color-primary) !important;
+  }
+  /* Icon chip — subtle rounded backdrop behind nav icons, tinted on
+     hover/active instead of sitting flat against the label text. */
+  .admin-nav-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    transition: background-color .15s ease;
+  }
+  [data-design="classic"] .admin-nav-item:hover .admin-nav-icon {
+    background: color-mix(in oklch, var(--color-primary) 14%, transparent);
+  }
+  [data-design="classic"] .admin-nav-active .admin-nav-icon {
+    background: color-mix(in oklch, var(--color-primary-soft-foreground) 16%, transparent);
+  }
+  /* Livelier hover — a soft glow on top of the existing translateX nudge
+     (see .admin-nav-item:hover further down), so hovering doesn't just
+     flip a flat background color. */
+  [data-design="classic"] .admin-nav-item:hover {
+    background: color-mix(in oklch, var(--color-primary) 10%, transparent);
+    box-shadow: 0 2px 8px color-mix(in oklch, var(--color-primary) 12%, transparent);
+  }
+  /* Section separator — thin rule above every group after the first, so
+     OPERATIONS/PRICING/PAYROLL/SYSTEM read as distinct clusters instead of
+     just floating labels separated by whitespace. */
+  [data-design="classic"] .admin-nav > div + div {
+    border-top: 1px solid color-mix(in oklch, var(--color-border) 60%, transparent);
+    padding-top: .6rem;
+    margin-top: .15rem;
+  }
   /* The border-2+bg-primary swap above only recolors the element that
      carries both classes. Children with their own hardcoded text-primary-
      foreground/text-muted-foreground/text-primary (brutal's solid-fill
@@ -1108,6 +1144,55 @@
 }
 [data-design="classic"] .deductions-panel::before { display: none; }
 [data-design="classic"] .deductions-panel-heading::after { display: none; }
+/* Riwayat Hitung Fee (admin.payroll.tsx) never got a Glass treatment like
+   .pricing-rail/.deductions-panel above — it kept its Neo Brutal solid
+   bg-muted/60 + /40 strips even in classic mode, blocking the starfield
+   ambient behind it. Text stays readable: card tone is still opaque enough
+   at 55%, and blur keeps whatever shows through soft, not distracting. */
+[data-design="classic"] .admin-fee-audit-panel {
+  background: color-mix(in oklch, var(--color-card) 55%, transparent) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+[data-design="classic"] .admin-fee-audit-panel > div,
+[data-design="classic"] .admin-fee-audit-panel thead {
+  background: transparent !important;
+}
+/* Blanket fix for the app's default "big panel" card style — rounded-xl
+   border-[3px] border-border-strong bg-card shadow-[Npx_Npx_0_0_...] — used
+   as the main list/table container on 40+ pages (Clients, Riders, Pricing,
+   Deductions, Users, dashboard KPI cards, the shared <Card> in ui/card.tsx,
+   etc.). Only .pricing-rail/.deductions-panel/.exec-period-filter/
+   .admin-fee-audit-panel above ever got a Glass treatment individually;
+   everything else using this shared convention stayed fully opaque,
+   blocking the starfield ambient regardless of which page you're on.
+   Scoped to border-[3px] specifically — buttons/inputs/dropdowns/modals in
+   this app all use border-2, never border-[3px], so this can't accidentally
+   blur/translucent-ify a small interactive control. */
+[data-design="classic"] [class*="border-[3px]"][class*="bg-card"] {
+  background: color-mix(in oklch, var(--color-card) 55%, transparent) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+/* Reusable opt-in class for the OTHER "thin border" card convention
+   (rounded-* border border-border bg-card, e.g. finance-worksheet.tsx's
+   Rate/PKS panel) — this combo is ALSO used on dozens of small inputs/
+   buttons/dropdowns app-wide, so it can't be targeted by a blanket
+   attribute selector like border-[3px] above without risking those. Add
+   this class by hand to a panel wrapper (like .admin-fee-audit-panel) to
+   opt it into the same Glass treatment; nested full-opacity bg-muted
+   strips inside still need their own override alongside it. */
+[data-design="classic"] .admin-glass-panel {
+  background: color-mix(in oklch, var(--color-card) 55%, transparent) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+/* A full-opacity bg-muted header strip nested inside .admin-glass-panel
+   (or any other now-translucent panel) — tint instead of transparent so it
+   still reads as a distinct header row, just not a solid opaque block. */
+[data-design="classic"] .admin-glass-strip {
+  background: color-mix(in oklch, var(--color-muted) 55%, transparent) !important;
+}
 [data-design="classic"] .reminder-schedule-modal {
   border-width: 1px;
   border-color: var(--color-border);

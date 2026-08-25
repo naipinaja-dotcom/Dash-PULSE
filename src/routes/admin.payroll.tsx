@@ -1798,7 +1798,7 @@ function PayrollPage() {
               {/* Riwayat Hitung Fee periode ini — review sebelum Generate/Finalize.
                   Sumber: fee_calculation_audit_log (dicatat tiap commit di Hitung Fee). */}
               {feeAuditLog.length > 0 && (
-                <div className="rounded-xl border-2 border-border-strong shadow-[5px_5px_0_0_var(--color-border-strong)] overflow-x-auto mb-4">
+                <div className="admin-fee-audit-panel rounded-xl border-2 border-border-strong shadow-[5px_5px_0_0_var(--color-border-strong)] overflow-x-auto mb-4">
                   <div className="px-3 py-2 bg-muted/60 text-[12px] font-semibold text-foreground">
                     Riwayat Hitung Fee periode ini ({feeAuditLog.length}) — cek dulu sebelum
                     Generate/Finalize

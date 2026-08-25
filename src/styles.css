@@ -765,7 +765,7 @@
   }
   .admin-content :is(th, [data-eyebrow]) { font-weight: 700; }
   .admin-content th.text-muted-foreground,
-  .admin-content td.text-muted-foreground { color: var(--color-foreground); }
+  .admin-content td.text-muted-foreground { color: var(--color-foreground) !important; }
   .admin-content :is(input, select, textarea)::placeholder { color: color-mix(in oklch, var(--color-foreground) 58%, var(--color-card)); opacity: 1; }
   .admin-content [class*="text-foreground/"] { color: var(--color-foreground) !important; }
 

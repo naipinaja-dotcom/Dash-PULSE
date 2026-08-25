@@ -110,3 +110,39 @@ describe("computePnl — client attendance murni (Alfagift regression)", () => {
     expect(perClient.find((c) => c.clientId === "(tanpa client)")).toBeDefined();
   });
 });
+
+// ==================================================================
+// computePnl — rider "revenue_share" (Komu Komu Bakehouse regression):
+// calcForScheme dulu manggil calcScheme(riderS.params, crows) TANPA
+// clientRevenueByRow, jadi cost selalu 0 (calcScheme sengaja fallback ke
+// nol semua + warning kalau param itu kosong — lihat pricing-calc.ts:558).
+// Fix-nya: itung revenue (skema client) dulu, terus lempar perRow-nya ke
+// skema rider sebagai clientRevenueByRow.
+// ==================================================================
+describe("computePnl — rider revenue_share (Komu Komu Bakehouse regression)", () => {
+  const clients = [{ id: "komu", name: "Komu Komu Bakehouse" }];
+
+  const clientScheme = scheme({
+    id: "komu-client", client_id: "komu", scheme_for: "client", category: "delivery",
+    params: { version: 1, type: "flat_unit", add_kg: null, multi_drop: null, billing_addons: null,
+      config: { rate_by: "flat", flat_rate: 15000 } } as PricingScheme["params"],
+  });
+  const riderScheme = scheme({
+    id: "komu-rider", client_id: "komu", scheme_for: "rider", category: "delivery",
+    params: { version: 1, type: "revenue_share", add_kg: null, multi_drop: null, billing_addons: null,
+      config: { percent_to_rider: 80 } } as PricingScheme["params"],
+  });
+
+  const deliveryRows = [
+    { client_id: "komu", rider_id: "R1", delivery_date: "2026-08-21", status: "COMPLETED" },
+    { client_id: "komu", rider_id: "R1", delivery_date: "2026-08-22", status: "COMPLETED" },
+  ];
+
+  it("cost is 80% of revenue, not 0", () => {
+    const { perClient } = computePnl(deliveryRows, [clientScheme, riderScheme], clients);
+    const c = perClient.find((c) => c.clientId === "komu");
+    expect(c?.revenue).toBe(30000); // 2 x flat_rate 15000
+    expect(c?.cost).toBe(24000); // 80% of revenue, was 0 before the fix
+    expect(c?.margin).toBe(6000);
+  });
+});

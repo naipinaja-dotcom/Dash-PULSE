@@ -375,6 +375,12 @@ const T = {
   "dedactive.deletePaidDesc": { id: "Sudah terpotong", en: "Already deducted" },
   "dedactive.deletePaidDescSuffix": { id: "× di payroll sebelumnya — potongan yang SUDAH tercatat tidak berubah, cicilan ini cuma berhenti & hilang dari daftar.", en: "× in previous payroll — deductions already recorded remain unchanged, this installment simply stops and disappears from the list." },
   "dedactive.deleteUnpaidDesc": { id: "Belum pernah kepotong, jadi aman dihapus.", en: "Never been deducted yet, so it's safe to delete." },
+  "dedactive.deleteBlockedTitle": { id: "Belum bisa dihapus", en: "Can't be deleted yet" },
+  "dedactive.deleteBlockedRentalDesc": { id: "Masih ada tunggakan Rp", en: "Still has an outstanding balance of Rp" },
+  "dedactive.deleteBlockedRentalDescSuffix": { id: "Selesaikan/koreksi dulu tunggakannya di tab Tunggakan sebelum cicilan ini dihapus — kalau dipaksa hapus, potongan yang sudah tercatat jadi yatim dan tunggakannya hilang dari perhitungan tanpa jejak.", en: "Settle/correct the balance first in the Arrears tab before deleting this installment — force-deleting orphans the already-recorded deduction and the balance silently disappears from arrears tracking." },
+  "dedactive.deleteBlockedAck": { id: "Mengerti", en: "Got it" },
+  "dedactive.bulkBlockedSuffix": { id: "cicilan sewa masih ada tunggakan, batal dihapus semua", en: "rental installments still have an outstanding balance, cancelling the whole delete" },
+  "dedactive.bulkBlockedHint": { id: "Hapus satu-satu buat lihat detail tunggakannya, atau selesaikan dulu di tab Tunggakan.", en: "Delete them one at a time to see the balance detail, or settle it first in the Arrears tab." },
   "dedactive.deleteSingleTitlePrefix": { id: "Hapus cicilan", en: "Delete installment" },
   "dedactive.deleteSingleSuccess": { id: "Cicilan dihapus", en: "Installment deleted" },
 

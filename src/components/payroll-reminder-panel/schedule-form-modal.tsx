@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 import { sanitizeTimeInput } from "@/components/pricing-form/shared";
@@ -101,7 +102,10 @@ export function ScheduleFormModal({
     onSave(rows);
   };
 
-  return (
+  // Portal ke document.body — lihat catatan di admin.invoices.tsx soal
+  // kenapa modal fixed inset-0 yang dirender inline di dalam layout halaman
+  // bisa ketutup header sticky walau z-index-nya tinggi.
+  return createPortal(
     <div className="reminder-modal-backdrop fixed inset-0 grid place-items-center z-50 p-4" onClick={onClose}>
       <div
         className="reminder-schedule-modal w-full max-w-lg max-h-[85vh] overflow-y-auto"
@@ -325,6 +329,7 @@ export function ScheduleFormModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

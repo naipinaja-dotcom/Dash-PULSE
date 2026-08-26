@@ -82,7 +82,7 @@ export interface CalcResult {
   perRow: RowFee[]; // 1 entri per baris COMPLETED (buat commit ke DB)
   perRider: RiderLine[];
   subtotal: number;
-  billing?: { floored: boolean; admin_fee: number; management_fee: number; ppn: number; final: number };
+  billing?: { floored: boolean; admin_fee: number; management_fee: number; insurance_fee: number; ppn: number; final: number };
   grandTotal: number;
   completedRows: number;
   skippedRows: number;
@@ -113,10 +113,16 @@ function applyBillingAddons(
   // fitur ini (backward compatible).
   const management = amt * ((Number(billingAddons.management_fee_percent) || 0) / 100);
   const admin = Number(billingAddons.admin_fee_flat) || 0;
-  const beforeTax = amt + management + admin;
+  // Asuransi: flat atau persen dari amt (sama basis dengan management fee),
+  // tergantung insurance_fee_mode — beda client beda kesepakatan.
+  const insurance =
+    billingAddons.insurance_fee_mode === "percent"
+      ? amt * ((Number(billingAddons.insurance_fee_amount) || 0) / 100)
+      : Number(billingAddons.insurance_fee_amount) || 0;
+  const beforeTax = amt + management + admin + insurance;
   const ppn = beforeTax * ((Number(billingAddons.ppn_percent) || 0) / 100);
   const grandTotal = beforeTax + ppn;
-  return { billing: { floored, admin_fee: admin, management_fee: management, ppn, final: grandTotal }, grandTotal };
+  return { billing: { floored, admin_fee: admin, management_fee: management, insurance_fee: insurance, ppn, final: grandTotal }, grandTotal };
 }
 
 // ---------------- helpers ----------------

@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Download, FileDown, Printer } from "lucide-react";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { useT } from "@/lib/i18n";
@@ -34,7 +35,10 @@ export function EarningsRecapPrint({
     setSaving(false);
   }
 
-  return (
+  // Portal ke document.body — lihat catatan di admin.invoices.tsx soal
+  // kenapa modal fixed inset-0 yang dirender inline di dalam layout halaman
+  // bisa ketutup header sticky walau z-index-nya tinggi.
+  return createPortal(
     <div className="fixed inset-0 z-[70] bg-black/60 overflow-auto flex justify-center p-4 sm:p-8 print:p-0 print:bg-white" onClick={onClose}>
       <style>{`@media print { body * { visibility: hidden !important; } #earnings-recap-print-root, #earnings-recap-print-root * { visibility: visible !important; } #earnings-recap-print-root { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; } .no-print { display: none !important; } @page { margin: 12mm; size: A4; } }`}</style>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[210mm] h-fit">
@@ -61,7 +65,8 @@ export function EarningsRecapPrint({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

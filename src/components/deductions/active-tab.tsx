@@ -2,7 +2,8 @@ import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
-import { parseRupiah } from "@/lib/format";
+import { parseRupiah, formatRupiah } from "@/lib/format";
+import { latestRentalUnpaid } from "@/lib/arrears";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
@@ -185,6 +186,23 @@ export function ActiveTab() {
   const bulk = useBulkSelect(filteredRows.map((r) => r.id));
 
   const handleBulkDelete = async () => {
+    // Sama alasannya dengan remove() single-delete di bawah — mode sewa
+    // (daily/monthly) gak bisa dicek lewat installments_paid, jadi cek
+    // tunggakan beneran dan blok SELURUH batch kalau ada satu aja yang masih
+    // nunggak (daripada diam-diam skip sebagian, lebih jelas buat admin).
+    const selectedRows = filteredRows.filter((r) => bulk.selected.has(r.id));
+    const rentalIds = selectedRows.filter((r) => r.mode !== "fixed").map((r) => r.id);
+    if (rentalIds.length > 0) {
+      const unpaidMap = await latestRentalUnpaid(rentalIds);
+      const blocked = selectedRows.filter((r) => (unpaidMap.get(r.id)?.unpaid ?? 0) > 0);
+      if (blocked.length > 0) {
+        const names = blocked.map((r) => r.rider?.full_name).filter(Boolean).join(", ");
+        toast.error(
+          `${blocked.length} ${t("dedactive.bulkBlockedSuffix")} (${names}). ${t("dedactive.bulkBlockedHint")}`,
+        );
+        return;
+      }
+    }
     if (
       !(await confirmDialog({
         title: `${t("dedactive.deleteConfirmTitlePrefix")} ${bulk.count} ${t("dedactive.bulkDeleteCountSuffix")}`,
@@ -203,6 +221,29 @@ export function ActiveTab() {
   };
 
   const remove = async (r: Inst & { rider?: Rider; type?: DType }) => {
+    // mode 'fixed': installments_paid beneran nunjukin progres bayar, aman
+    // dipakai buat cek. mode 'daily'/'monthly' (sewa): installments_paid
+    // SELALU 0 (gak ada konsep "lunas" di mode ini, lihat saveEdit di atas) —
+    // jadi gak bisa dipakai buat cek aman-tidaknya dihapus. Cek tunggakan
+    // BENERAN dari payroll_deductions (sama persis logic Tab Tunggakan), dan
+    // BLOK hapus kalau masih ada sisa — payroll_deductions.installment_id
+    // cuma ON DELETE SET NULL, jadi hapus di sini gak nyentuh baris
+    // deduction lama, tapi bikin dia yatim & tunggakannya hilang diam-diam
+    // dari semua perhitungan tunggakan ke depannya.
+    if (r.mode !== "fixed") {
+      const unpaidMap = await latestRentalUnpaid([r.id]);
+      const unpaid = unpaidMap.get(r.id)?.unpaid ?? 0;
+      if (unpaid > 0) {
+        await confirmDialog({
+          title: t("dedactive.deleteBlockedTitle"),
+          description: `${t("dedactive.ownedByPrefix")} ${r.rider?.full_name}.\n\n${t("dedactive.deleteBlockedRentalDesc")} ${formatRupiah(unpaid)}. ${t("dedactive.deleteBlockedRentalDescSuffix")}`,
+          confirmText: t("dedactive.deleteBlockedAck"),
+          cancelText: t("dedactive.deleteBlockedAck"),
+          danger: false,
+        });
+        return;
+      }
+    }
     const paid = (r.installments_paid ?? 0) > 0;
     const desc = paid
       ? `${t("dedactive.ownedByPrefix")} ${r.rider?.full_name}.\n\n${t("dedactive.deletePaidDesc")} ${r.installments_paid}${t("dedactive.deletePaidDescSuffix")}`

@@ -82,7 +82,14 @@ interface FormState {
   revenueShareOn: boolean;
   revenueSharePercent: string;
   billingOn: boolean;
-  billing: { min_charge: string; admin_fee_flat: string; management_fee_percent: string; ppn_percent: string };
+  billing: {
+    min_charge: string;
+    admin_fee_flat: string;
+    management_fee_percent: string;
+    insurance_fee_mode: "flat" | "percent";
+    insurance_fee_amount: string;
+    ppn_percent: string;
+  };
 }
 
 function emptyForm(): FormState {
@@ -96,7 +103,7 @@ function emptyForm(): FormState {
     revenueShareOn: false,
     revenueSharePercent: "80",
     billingOn: false,
-    billing: { min_charge: "", admin_fee_flat: "", management_fee_percent: "", ppn_percent: "11" },
+    billing: { min_charge: "", admin_fee_flat: "", management_fee_percent: "", insurance_fee_mode: "flat", insurance_fee_amount: "", ppn_percent: "11" },
   };
 }
 
@@ -153,6 +160,11 @@ function buildEnvelope(
             min_charge: parseRupiah(f.billing.min_charge),
             admin_fee_flat: parseRupiah(f.billing.admin_fee_flat),
             management_fee_percent: Number(f.billing.management_fee_percent) || 0,
+            insurance_fee_mode: f.billing.insurance_fee_mode,
+            insurance_fee_amount:
+              f.billing.insurance_fee_mode === "percent"
+                ? Number(f.billing.insurance_fee_amount) || 0
+                : parseRupiah(f.billing.insurance_fee_amount),
             ppn_percent: Number(f.billing.ppn_percent) || 0,
           }
         : null,
@@ -226,6 +238,8 @@ function loadForm(scheme: PricingScheme | undefined): {
       min_charge: String(env.billing_addons.min_charge ?? ""),
       admin_fee_flat: String(env.billing_addons.admin_fee_flat ?? ""),
       management_fee_percent: String(env.billing_addons.management_fee_percent ?? ""),
+      insurance_fee_mode: env.billing_addons.insurance_fee_mode === "percent" ? "percent" : "flat",
+      insurance_fee_amount: String(env.billing_addons.insurance_fee_amount ?? ""),
       ppn_percent: String(env.billing_addons.ppn_percent ?? ""),
     };
   }
@@ -572,6 +586,41 @@ function PricingFormInner({
                     value={f.billing.admin_fee_flat}
                     onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
                   />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>{t("pform.insuranceFee")}</FieldLabel>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={f.billing.insurance_fee_mode}
+                      onChange={(e) =>
+                        patch({
+                          billing: {
+                            ...f.billing,
+                            insurance_fee_mode: e.target.value as "flat" | "percent",
+                            insurance_fee_amount: "",
+                          },
+                        })
+                      }
+                      className="w-24 flex-shrink-0 rounded-md border-2 border-border-strong bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="flat">{t("pform.insuranceModeFlat")}</option>
+                      <option value="percent">{t("pform.insuranceModePercent")}</option>
+                    </select>
+                    {f.billing.insurance_fee_mode === "percent" ? (
+                      <TextInput
+                        value={f.billing.insurance_fee_amount}
+                        inputMode="decimal"
+                        onChange={(e) =>
+                          patch({ billing: { ...f.billing, insurance_fee_amount: sanitizeDecimalInput(e.target.value) } })
+                        }
+                      />
+                    ) : (
+                      <RupiahInput
+                        value={f.billing.insurance_fee_amount}
+                        onChange={(v) => patch({ billing: { ...f.billing, insurance_fee_amount: v } })}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <FieldLabel>{t("pform.ppn")}</FieldLabel>

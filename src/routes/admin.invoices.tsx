@@ -227,8 +227,9 @@ function InvoicePrint({ invoice, client, onClose }: { invoice: Invoice; client: 
   const operational = Number(invoice.base_amount) || 0;
   const management = Number(b?.management_fee) || 0;
   const admin = Number(b?.admin_fee) || 0;
+  const insurance = Number(b?.insurance_fee) || 0;
   const total = Number(invoice.total_amount) || 0;
-  const beforeTax = operational + management + admin;
+  const beforeTax = operational + management + admin + insurance;
   const ppn = Math.max(0, total - beforeTax);
   const ppnPct = beforeTax > 0 ? Math.round((ppn / beforeTax) * 100) : 0;
   const period = `${fmtDate(invoice.period_start)} - ${fmtDate(invoice.period_end)}`;
@@ -240,6 +241,7 @@ function InvoicePrint({ invoice, client, onClose }: { invoice: Invoice; client: 
   ];
   if (management > 0) lines.push({ desc: "Management Fee", qty: "—", amount: management });
   if (admin > 0) lines.push({ desc: "Admin Fee", qty: "—", amount: admin });
+  if (insurance > 0) lines.push({ desc: "Asuransi", qty: "—", amount: insurance });
 
   // Portal ke document.body — dirender inline di dalam AdminLayout, modal ini
   // kena jebakan stacking context: .admin-content (z-index:0) selalu kalah

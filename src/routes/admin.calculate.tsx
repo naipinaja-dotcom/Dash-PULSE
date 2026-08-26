@@ -909,6 +909,7 @@ function CalculatePage() {
               <Line label="Subtotal" value={formatRupiah(result.subtotal)} />
               {result.billing.floored && <Line label="→ dinaikkan ke Min Charge" value="" muted />}
               <Line label="+ Admin Fee" value={formatRupiah(result.billing.admin_fee)} />
+              <Line label="+ Asuransi" value={formatRupiah(result.billing.insurance_fee)} />
               <Line label="+ PPN" value={formatRupiah(result.billing.ppn)} />
               <div className="border-t border-border mt-2 pt-2">
                 <Line label="Total Tagihan" value={formatRupiah(result.billing.final)} bold />
@@ -956,6 +957,7 @@ function CalculatePage() {
               <Line label="Subtotal" value={formatRupiah(combinedResult.subtotal)} />
               {combinedResult.billing.floored && <Line label="→ dinaikkan ke Min Charge" value="" muted />}
               <Line label="+ Admin Fee" value={formatRupiah(combinedResult.billing.admin_fee)} />
+              <Line label="+ Asuransi" value={formatRupiah(combinedResult.billing.insurance_fee)} />
               <Line label="+ PPN" value={formatRupiah(combinedResult.billing.ppn)} />
               <div className="border-t border-border mt-2 pt-2">
                 <Line label="Total Tagihan" value={formatRupiah(combinedResult.billing.final)} bold />
@@ -1129,6 +1131,7 @@ function CalculatePage() {
               <Line label="Subtotal" value={formatRupiah(attResult.subtotal)} />
               {attResult.billing.floored && <Line label="→ dinaikkan ke Min Charge" value="" muted />}
               <Line label="+ Admin Fee" value={formatRupiah(attResult.billing.admin_fee)} />
+              <Line label="+ Asuransi" value={formatRupiah(attResult.billing.insurance_fee)} />
               <Line label="+ PPN" value={formatRupiah(attResult.billing.ppn)} />
               <div className="border-t border-border mt-2 pt-2">
                 <Line label="Total Tagihan" value={formatRupiah(attResult.billing.final)} bold />

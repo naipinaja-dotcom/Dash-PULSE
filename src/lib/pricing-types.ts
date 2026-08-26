@@ -246,6 +246,12 @@ export interface BillingAddons {
   // client, ada yang kena ada yang nggak — 0/kosong = gak kena, gak muncul di
   // invoice. Umumnya dipakai client skema attendance/daily.
   management_fee_percent: number;
+  // Asuransi — beberapa client minta flat, sebagian lain minta persen dari
+  // subtotal (kayak Management Fee), jadi butuh mode toggle (beda dari
+  // admin_fee_flat/management_fee_percent yang masing-masing SELALU satu
+  // bentuk). Masuk beforeTax sama kayak add-on lain di atas — ikut kena PPN.
+  insurance_fee_mode: "flat" | "percent";
+  insurance_fee_amount: number;
   ppn_percent: number;
 }
 

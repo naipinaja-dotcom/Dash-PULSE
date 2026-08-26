@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { Download, Printer, FileDown, ChevronDown } from "lucide-react";
 import { useT } from "@/lib/i18n";
@@ -39,7 +40,10 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
     setSaving(false);
   }
 
-  return (
+  // Portal ke document.body — dirender inline di dalam layout halaman,
+  // stacking context ancestor (mis. .admin-content) bisa bikin z-index di
+  // sini gak pernah menang lawan header sticky. Lihat admin.invoices.tsx.
+  return createPortal(
     <div className="fixed inset-0 z-[60] bg-black/50 overflow-auto flex justify-center p-4 sm:p-8 print:p-0 print:bg-white" onClick={onClose}>
       <style>{`@media print {
         body * { visibility: hidden !important; }
@@ -205,7 +209,8 @@ export function PayslipPrint({ slip, riderName, employeeId, clients, incentives,
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

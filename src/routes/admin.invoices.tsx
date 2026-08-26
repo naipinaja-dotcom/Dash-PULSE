@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
@@ -240,7 +241,13 @@ function InvoicePrint({ invoice, client, onClose }: { invoice: Invoice; client: 
   if (management > 0) lines.push({ desc: "Management Fee", qty: "—", amount: management });
   if (admin > 0) lines.push({ desc: "Admin Fee", qty: "—", amount: admin });
 
-  return (
+  // Portal ke document.body — dirender inline di dalam AdminLayout, modal ini
+  // kena jebakan stacking context: .admin-content (z-index:0) selalu kalah
+  // dari .admin-header (sticky, z-index:10) di parent .admin-main yang sama,
+  // gak peduli z-50 di sini setinggi apa (z-index nested cuma dibandingkan
+  // di dalam local stacking context induknya). Portal keluar dari .admin-content
+  // sepenuhnya biar z-50 dibandingkan di level root, bukan lokal.
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/50 overflow-auto flex justify-center p-4 sm:p-8 print:p-0 print:bg-white">
       <style>{`@media print {
         body * { visibility: hidden !important; }
@@ -374,6 +381,7 @@ function InvoicePrint({ invoice, client, onClose }: { invoice: Invoice; client: 
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

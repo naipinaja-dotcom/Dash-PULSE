@@ -276,7 +276,26 @@ async function autoComputeFee(
     ).perRow.filter((r) => r.id);
     table = "attendance_logs";
   } else {
-    rows = calcScheme(scheme.params, deliveryRows).perRow.filter((r) => r.id);
+    // Skema "revenue_share": fee rider = persen dari revenue client per AWB,
+    // sama persis logic-nya dengan commit manual di admin.calculate.tsx —
+    // clientRevenueByRow WAJIB diisi dari hasil calcScheme skema Client yang
+    // aktif, kalau enggak calcScheme fallback ke fee 0 semua (lihat warning
+    // "Revenue client belum dihitung" di pricing-calc.ts). Sebelumnya cron
+    // ini gak pernah ngisi ini sama sekali, jadi client revenue_share (mis.
+    // Komu Komu Bakehouse) payroll-nya selalu 0 tiap kali di-generate lewat
+    // Payroll Workflow otomatis.
+    let clientRevenueByRow: number[] | undefined;
+    if (scheme.params.type === "revenue_share") {
+      const clientScheme = pickPricingScheme(schemes, clientId, "client", periodEnd);
+      if (!clientScheme || clientScheme.category !== "delivery") {
+        return {
+          computed: false,
+          reason: "Skema Revenue Share butuh skema Client (Per Pengiriman) aktif untuk client & periode ini",
+        };
+      }
+      clientRevenueByRow = calcScheme(clientScheme.params, deliveryRows).perRow.map((r) => r.fee);
+    }
+    rows = calcScheme(scheme.params, deliveryRows, clientRevenueByRow).perRow.filter((r) => r.id);
     table = "delivery_records";
   }
 

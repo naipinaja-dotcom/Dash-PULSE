@@ -42,12 +42,15 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
 
   const load = async () => {
     setLoading(true);
+    // SENGAJA gak filter .eq("active", true) — cicilan sewa yang dinonaktifkan
+    // (lihat deactivate() di active-tab.tsx) masih bisa punya sisa tunggakan
+    // yang belum lunas, dan itu harus TETAP kebaca di sini. Baris yang udah
+    // beres (amount 0) otomatis kefilter di bawah, gak perlu filter active.
     const { data: installments, error } = await (supabase as any)
       .from("rider_installments")
       .select(
         "id, mode, installment_count, installments_paid, per_period_amount, riders(id, employee_id, full_name), deduction_types(id, code, name), clients(id, name)",
-      )
-      .eq("active", true);
+      );
     if (error) {
       toast.error(error.message);
       setLoading(false);

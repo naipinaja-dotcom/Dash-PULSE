@@ -8,7 +8,7 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
-import { Loader2, Trash2, Pencil } from "lucide-react";
+import { Loader2, Trash2, Pencil, Ban } from "lucide-react";
 import { ClientCombobox } from "@/components/client-combobox";
 import { DatePicker } from "@/components/date-picker";
 import { useT } from "@/lib/i18n";
@@ -19,6 +19,7 @@ export function ActiveTab() {
   const [rows, setRows] = useState<(Inst & { rider?: Rider; type?: DType; client?: Client })[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
   const [types, setTypes] = useState<DType[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [recipients, setRecipients] = useState<{ id: string; name: string; bank_name: string; account_number: string }[]>([]);
@@ -264,6 +265,30 @@ export function ActiveTab() {
     load();
   };
 
+  // Nonaktifkan cicilan sewa (mode daily/monthly) — biar berhenti kepotong di
+  // payroll berikutnya TANPA mesti lunas dulu (beda dari hapus, yang diblok
+  // kalau masih nunggak). Row-nya cuma stop dari agregasi Cicilan Aktif; sisa
+  // tunggakan yang udah ada tetap kebaca di tab Tunggakan — query di situ
+  // sengaja gak filter active=true lagi (lihat arrears-tab.tsx), jadi gak
+  // ilang diam-diam kayak kalau dihapus paksa.
+  const deactivate = async (r: Inst & { rider?: Rider; type?: DType }) => {
+    if (
+      !(await confirmDialog({
+        title: `${t("dedactive.deactivateTitlePrefix")} ${r.type?.name}?`,
+        description: `${t("dedactive.ownedByPrefix")} ${r.rider?.full_name}.\n\n${t("dedactive.deactivateDesc")}`,
+        confirmText: t("dedactive.deactivateConfirm"),
+        danger: false,
+      }))
+    )
+      return;
+    setDeactivatingId(r.id);
+    const { error } = await supabase.from("rider_installments").update({ active: false }).eq("id", r.id);
+    setDeactivatingId(null);
+    if (error) return toast.error(error.message);
+    toast.success(t("dedactive.deactivateSuccess"));
+    load();
+  };
+
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } =
     usePagination(filteredRows, 10);
 
@@ -418,6 +443,20 @@ export function ActiveTab() {
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
+                      {(r.mode === "daily" || r.mode === "monthly") && (
+                        <button
+                          onClick={() => deactivate(r)}
+                          disabled={deactivatingId === r.id}
+                          className="p-1.5 hover:bg-warning/10 text-muted-foreground hover:text-warning rounded-md disabled:opacity-50 transition-colors"
+                          title={t("dedactive.deactivateTooltip")}
+                        >
+                          {deactivatingId === r.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Ban className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={() => remove(r)}
                         disabled={deletingId === r.id}

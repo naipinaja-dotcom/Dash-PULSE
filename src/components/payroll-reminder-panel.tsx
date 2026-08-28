@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { triggerPayrollReminderManual } from "@/lib/api/payroll-reminder.functions";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Loader2, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle, Search } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle, Search, ChevronDown, ChevronRight } from "lucide-react";
 import { ScheduleFormModal } from "./payroll-reminder-panel/schedule-form-modal";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
@@ -60,6 +60,7 @@ export function PayrollReminderPanel() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [search, setSearch] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
 
   const load = () => {
     supabase
@@ -260,9 +261,14 @@ export function PayrollReminderPanel() {
 
       {logs.length > 0 && (
         <div>
-          <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 hover:text-foreground transition-colors"
+          >
+            {showHistory ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             {t("reminderPanel.deliveryHistoryHeading")}
-          </h4>
+          </button>
+          {showHistory && (
           <div className="rounded-xl border border-border overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
@@ -328,6 +334,7 @@ export function PayrollReminderPanel() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 

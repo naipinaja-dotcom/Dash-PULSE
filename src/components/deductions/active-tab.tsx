@@ -3,13 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { parseRupiah, formatRupiah } from "@/lib/format";
+import { ClientMultiCombobox } from "@/components/client-combobox";
 import { latestRentalUnpaid } from "@/lib/arrears";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { BulkActionBar } from "@/components/bulk-action-bar";
 import { useBulkSelect } from "@/hooks/use-bulk-select";
 import { toast } from "sonner";
-import { Loader2, Trash2, Pencil, Ban } from "lucide-react";
-import { ClientCombobox } from "@/components/client-combobox";
+import { Loader2, Trash2, Pencil, Ban, RotateCcw } from "lucide-react";
 import { DatePicker } from "@/components/date-picker";
 import { useT } from "@/lib/i18n";
 import type { Client, DType, Inst, Rider } from "./types";
@@ -32,7 +32,7 @@ export function ActiveTab() {
     daily_rate: 0,
     cycle_start_day: 25,
     charge_target: "rider" as "rider" | "client_revenue",
-    client_id: "",
+    client_ids: [] as string[],
     next_deduction_date: "",
     notes: "",
     kasbon_recipient_id: "",
@@ -41,16 +41,22 @@ export function ActiveTab() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
+  // Default cuma yang aktif (perilaku lama) — toggle ini biar cicilan yang
+  // udah dinonaktifin (lihat deactivate() di bawah) masih bisa di-browse,
+  // bukannya cuma ilang tanpa jejak begitu lunas & lepas dari tab Tunggakan.
+  const [showInactive, setShowInactive] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    let q = (supabase as any)
       .from("rider_installments")
       .select(
         "*, riders(id, employee_id, full_name), deduction_types(id, code, name, description, installmentable, active), clients(id, name)",
       )
-      .eq("active", true)
       .order("created_at", { ascending: false });
+    if (!showInactive) q = q.eq("active", true);
+    const { data, error } = await q;
     if (error) toast.error(error.message);
     else
       setRows(
@@ -60,6 +66,9 @@ export function ActiveTab() {
   };
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInactive]);
+  useEffect(() => {
     // Filter sama persis dengan AddTab.save(): jenis apapun yang non-auto-recurring
     // bisa dipakai di sini (installmentable cuma ngatur boleh-tidaknya dicicil,
     // bukan syarat buat muncul di Cicilan Aktif — one-shot pun disimpan di tabel ini).
@@ -88,7 +97,7 @@ export function ActiveTab() {
       daily_rate: r.daily_rate ?? 0,
       cycle_start_day: r.cycle_start_day ?? 25,
       charge_target: r.charge_target ?? "rider",
-      client_id: r.client_id ?? "",
+      client_ids: r.client_ids && r.client_ids.length > 0 ? r.client_ids : r.client_id ? [r.client_id] : [],
       next_deduction_date: r.next_deduction_date ?? "",
       notes: r.notes ?? "",
       kasbon_recipient_id: (r as any).kasbon_recipient_id ?? "",
@@ -115,7 +124,8 @@ export function ActiveTab() {
     const update: any = {
       deduction_type_id: ef.deduction_type_id,
       mode: ef.mode,
-      client_id: ef.client_id || null,
+      client_id: ef.client_ids[0] ?? null,
+      client_ids: ef.client_ids.length > 0 ? ef.client_ids : null,
       next_deduction_date: ef.next_deduction_date || null,
       notes: ef.notes || null,
       kasbon_recipient_id: r.type?.code === "KASBON" ? (ef as any).kasbon_recipient_id || null : null,
@@ -289,6 +299,15 @@ export function ActiveTab() {
     load();
   };
 
+  const reactivate = async (r: Inst & { rider?: Rider; type?: DType }) => {
+    setReactivatingId(r.id);
+    const { error } = await supabase.from("rider_installments").update({ active: true }).eq("id", r.id);
+    setReactivatingId(null);
+    if (error) return toast.error(error.message);
+    toast.success(t("dedactive.reactivateSuccess"));
+    load();
+  };
+
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } =
     usePagination(filteredRows, 10);
 
@@ -313,6 +332,14 @@ export function ActiveTab() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer ml-auto">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+          />
+          {t("dedactive.showInactiveLabel")}
+        </label>
       </div>
       {!loading && rows.length > 0 && (
         <div className="flex justify-end mb-2">
@@ -399,9 +426,15 @@ export function ActiveTab() {
                     </td>
                     <td className="p-3 text-muted-foreground">
                       {r.type?.name}
+                      {!r.active && (
+                        <span className="ml-1.5 rounded border border-warning/40 bg-warning/10 px-1 py-0.5 text-[10px] font-medium text-warning">
+                          {t("dedactive.inactiveBadge")}
+                        </span>
+                      )}
                       {r.client && (
                         <span className="block text-[10px] font-medium text-primary">
                           {t("dedactive.priorityLabel")} {r.client.name}
+                          {r.client_ids && r.client_ids.length > 1 && ` +${r.client_ids.length - 1} ${t("dedactive.moreClientsSuffix")}`}
                         </span>
                       )}
                     </td>
@@ -444,18 +477,33 @@ export function ActiveTab() {
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       {(r.mode === "daily" || r.mode === "monthly") && (
-                        <button
-                          onClick={() => deactivate(r)}
-                          disabled={deactivatingId === r.id}
-                          className="p-1.5 hover:bg-warning/10 text-muted-foreground hover:text-warning rounded-md disabled:opacity-50 transition-colors"
-                          title={t("dedactive.deactivateTooltip")}
-                        >
-                          {deactivatingId === r.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Ban className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                        r.active ? (
+                          <button
+                            onClick={() => deactivate(r)}
+                            disabled={deactivatingId === r.id}
+                            className="p-1.5 hover:bg-warning/10 text-muted-foreground hover:text-warning rounded-md disabled:opacity-50 transition-colors"
+                            title={t("dedactive.deactivateTooltip")}
+                          >
+                            {deactivatingId === r.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Ban className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => reactivate(r)}
+                            disabled={reactivatingId === r.id}
+                            className="p-1.5 hover:bg-success/10 text-muted-foreground hover:text-success rounded-md disabled:opacity-50 transition-colors"
+                            title={t("dedactive.reactivateTooltip")}
+                          >
+                            {reactivatingId === r.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )
                       )}
                       <button
                         onClick={() => remove(r)}
@@ -509,13 +557,18 @@ export function ActiveTab() {
                             <label className="text-xs font-medium text-muted-foreground">
                               {t("dedactive.clientPriorityLabel")}
                             </label>
-                            <ClientCombobox
-                              value={ef.client_id}
-                              onChange={(v) => setEf({ ...ef, client_id: v })}
+                            <ClientMultiCombobox
+                              value={ef.client_ids}
+                              onChange={(ids) => setEf({ ...ef, client_ids: ids })}
                               placeholder={t("dedactive.useRiderHomeClient")}
                               className="mt-1 w-full text-sm py-1.5"
                               options={clients.map((c) => ({ value: c.id, label: c.name }))}
                             />
+                            {ef.client_ids.length > 0 && (
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                {ef.client_ids.length} {t("dedadd.clientsSelectedHint")}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <label className="text-xs font-medium text-muted-foreground">

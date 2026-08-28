@@ -399,6 +399,60 @@ export async function generatePayrollDetails(
     }
   }
 
+  // Cicilan mode='fixed'/'monthly' eligible di beberapa client (client_ids) —
+  // beda dari 'daily' yang dedup-nya per TANGGAL (dailyChargedDates di atas,
+  // aman displit antar client), fixed/monthly itu lump-sum per periode, jadi
+  // dedup-nya per INSTALLMENT UTUH: kalau udah kecharge di sibling run
+  // (client lain yang eligible, PERIODE PERSIS SAMA), jangan dicharge lagi di
+  // sini. Query-based (bukan state di-mutate) — tetap idempotent kalau
+  // di-"Generate Ulang". siblingGrossByRiderClient dipakai buat milih client
+  // mana yang "cukup" nanggung potongannya (lihat ranking di loop rider).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const multiClientInsts = ((installments ?? []) as any[]).filter(
+    (i: any) => (i.mode === "fixed" || i.mode === "monthly") && Array.isArray(i.client_ids) && i.client_ids.length > 0,
+  );
+  const alreadyChargedElsewhere = new Set<string>(); // key `${riderId}|${installmentId}`
+  const siblingGrossByRiderClient = new Map<string, Map<string, number>>(); // riderId -> clientId -> gross_earning
+  if (multiClientInsts.length > 0) {
+    const multiClientInstIds = multiClientInsts.map((i) => i.id);
+    const allEligibleClientIds = [...new Set(multiClientInsts.flatMap((i: any) => i.client_ids as string[]))];
+    const { data: siblingRuns } = await (client as any).from("payroll_runs")
+      .select("id, client_id")
+      .eq("period_start", run.period_start)
+      .eq("period_end", run.period_end)
+      .in("client_id", allEligibleClientIds)
+      .neq("id", run.id);
+    const siblingRunIds = (siblingRuns ?? []).map((r: any) => r.id);
+    const clientOfSiblingRun = new Map<string, string>(
+      (siblingRuns ?? []).map((r: any) => [r.id as string, r.client_id as string]),
+    );
+    if (siblingRunIds.length > 0) {
+      const { data: siblingDetails } = await (client as any).from("payroll_details")
+        .select("id, run_id, rider_id, gross_earning")
+        .in("run_id", siblingRunIds);
+      const detailById = new Map((siblingDetails ?? []).map((d: any) => [d.id, d]));
+      for (const d of (siblingDetails ?? []) as any[]) {
+        const cid = clientOfSiblingRun.get(d.run_id);
+        if (!cid) continue;
+        const m = siblingGrossByRiderClient.get(d.rider_id) ?? new Map<string, number>();
+        m.set(cid, Number(d.gross_earning || 0));
+        siblingGrossByRiderClient.set(d.rider_id, m);
+      }
+      const siblingDetailIds = [...detailById.keys()];
+      if (siblingDetailIds.length > 0) {
+        const { data: siblingDeds } = await (client as any).from("payroll_deductions")
+          .select("detail_id, installment_id")
+          .in("detail_id", siblingDetailIds)
+          .in("installment_id", multiClientInstIds);
+        for (const ded of (siblingDeds ?? []) as any[]) {
+          const detail = detailById.get(ded.detail_id) as { rider_id: string } | undefined;
+          if (!detail) continue;
+          alreadyChargedElsewhere.add(`${detail.rider_id}|${ded.installment_id}`);
+        }
+      }
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const detailsToInsert: any[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -418,11 +472,66 @@ export async function generatePayrollDetails(
     // fallback lama buat baris yang belum diisi client prioritasnya.
     const matchesClient = (targetClientId: string | null | undefined) =>
       run.client_id === null || run.client_id === (targetClientId ?? rider.client_id);
+    // Cicilan bisa eligible di BEBERAPA client sekaligus (client_ids) — array
+    // kosong/null fallback ke matchesClient single-value di atas (perilaku
+    // lama, backward compatible). BPJS/auto-recurring (enrolledClient) TIDAK
+    // ikut kena ini, masih pakai matchesClient biasa.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const matchesInstallmentClient = (i: any) => {
+      if (run.client_id === null) return true;
+      if (Array.isArray(i.client_ids) && i.client_ids.length > 0) return i.client_ids.includes(run.client_id);
+      return matchesClient(i.client_id);
+    };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rInstall = (installments ?? []).filter((i: any) => i.rider_id === rider.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rInstallForRun = rInstall.filter((i: any) => matchesClient(i.client_id));
+    const rInstallMatched = rInstall.filter((i: any) => matchesInstallmentClient(i));
+
+    // Gross yang bakal dipakai buat ranking "client mana yang cukup" —
+    // dihitung di sini (bukan nunggu variabel `gross` di bawah, yang baru ada
+    // SETELAH continue-check) biar filtering ranking bisa kepakai sebelum
+    // hasDailyCharge/hasMonthlyChargeDue/continue-check, konsisten di semua
+    // downstream (dedItems dst pakai rInstallForRun yang SUDAH difilter).
+    const projectedGross = deliveryFee + attendanceFee;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rInstallForRun = rInstallMatched.filter((i: any) => {
+      if ((i.mode !== "fixed" && i.mode !== "monthly") || !Array.isArray(i.client_ids) || i.client_ids.length === 0)
+        return true; // 'daily' displit per-tanggal (dailyChargedDates), fixed/monthly single-client gak butuh ranking
+      const key = `${rider.id}|${i.id}`;
+      if (alreadyChargedElsewhere.has(key)) return false; // udah kecharge di sibling run periode ini
+      const siblingGross = siblingGrossByRiderClient.get(rider.id);
+      const candidates: { clientId: string; gross: number; isCurrent: boolean }[] = [
+        { clientId: run.client_id as string, gross: projectedGross, isCurrent: true },
+      ];
+      if (siblingGross) {
+        for (const cid of i.client_ids as string[]) {
+          if (cid === run.client_id) continue;
+          const g = siblingGross.get(cid);
+          if (g !== undefined) candidates.push({ clientId: cid, gross: g, isCurrent: false });
+        }
+      }
+      if (candidates.length === 1) return true; // baru run ini yang ada periode ini, charge di sini kayak biasa
+      const amount =
+        i.mode === "monthly"
+          ? Number(i.daily_rate || 0) * monthlyDueDays(i, run.period_end, closedCyclesByInst)
+          : Number(i.per_period_amount || 0);
+      // Urutan client_ids = prioritas admin. Menang: (1) client yang "cukup"
+      // (gross >= amount) sesuai urutan prioritas, (2) kalau gak ada yang
+      // cukup, client yang gross-nya > 0 sesuai urutan prioritas, (3) fallback
+      // urutan prioritas pertama apa adanya (sama kayak perilaku lama).
+      const rank = (c: { clientId: string; gross: number }): [number, number] => {
+        const order = (i.client_ids as string[]).indexOf(c.clientId);
+        const tier = c.gross >= amount ? 0 : c.gross > 0 ? 1 : 2;
+        return [tier, order];
+      };
+      candidates.sort((a, b) => {
+        const [ta, oa] = rank(a);
+        const [tb, ob] = rank(b);
+        return ta !== tb ? ta - tb : oa - ob;
+      });
+      return candidates[0].isCurrent;
+    });
 
     // Rider yang gak ada kerja sama sekali periode ini TETAP dibikinin baris
     // payroll kalau dia punya cicilan mode='daily' aktif (sewa jalan terus

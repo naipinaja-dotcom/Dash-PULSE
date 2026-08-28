@@ -93,3 +93,93 @@ export function ClientCombobox({
     </Popover>
   );
 }
+
+// Dropdown yang sama (Popover + cmdk Command, ketutup default, ada search),
+// bedanya multi-pilih: klik toggle centang tanpa nutup dropdown, biar bisa
+// pilih beberapa sekaligus. List di dalam dibatasi ~5 baris keliatan (scroll
+// buat sisanya) — beda dari ClientCombobox yang nampilin s.d. 10 hasil sekaligus.
+export function ClientMultiCombobox({
+  options,
+  value,
+  onChange,
+  disabled = false,
+  placeholder = "Pilih client",
+  className = "min-w-[180px]",
+  searchPlaceholder = "Cari client...",
+  emptyText = "Client tidak ditemukan",
+}: {
+  options: { value: string; label: string }[];
+  value: string[];
+  onChange: (value: string[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  className?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  }, [options, search]);
+
+  // Urutan `value` = urutan prioritas (dipilih duluan menang duluan, lihat
+  // payroll-generate.ts) — toggle nge-append di akhir, bukan sort ulang.
+  const toggle = (v: string) =>
+    onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+
+  const label =
+    value.length === 0
+      ? placeholder
+      : value.length === 1
+        ? (options.find((o) => o.value === value[0])?.label ?? placeholder)
+        : `${value.length} client dipilih`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className={cn(
+            "client-combobox-trigger flex items-center justify-between gap-2 rounded-md border-2 border-border-strong bg-card px-3 py-2 text-[12px] font-semibold outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+            className,
+          )}
+        >
+          <span className="truncate">{label}</span>
+          <ChevronsUpDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="client-combobox-content w-[260px] p-0" align="start">
+        <Command className="client-combobox-command" shouldFilter={false}>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={search}
+            onValueChange={setSearch}
+            className="text-[12px]"
+          />
+          <CommandList className="max-h-[180px]">
+            <CommandEmpty className="py-4 text-[12px] text-muted-foreground">
+              {emptyText}
+            </CommandEmpty>
+            <CommandGroup>
+              {filtered.map((o) => (
+                <CommandItem
+                  key={o.value}
+                  value={o.value}
+                  onSelect={() => toggle(o.value)}
+                  className="client-combobox-item text-[12px]"
+                >
+                  <Check className={cn("w-3.5 h-3.5", value.includes(o.value) ? "opacity-100" : "opacity-0")} />
+                  {o.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}

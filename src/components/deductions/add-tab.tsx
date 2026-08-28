@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRupiah } from "@/lib/format";
+import { ClientMultiCombobox } from "@/components/client-combobox";
 import { toast } from "sonner";
-import { ClientCombobox } from "@/components/client-combobox";
 import { DatePicker } from "@/components/date-picker";
 import { useT } from "@/lib/i18n";
 import type { Client, DType, MolisType, Rider } from "./types";
@@ -23,7 +23,7 @@ export function AddTab() {
     cycle_start_day: 25,
     molis_type_id: "",
     charge_target: "rider" as "rider" | "client_revenue",
-    client_id: "",
+    client_ids: [] as string[],
     start_date: new Date().toISOString().slice(0, 10),
     installment: false,
     installment_count: 1,
@@ -100,7 +100,12 @@ export function AddTab() {
       cycle_start_day: f.mode === "monthly" ? f.cycle_start_day : null,
       molis_type_id: isMolisMode ? f.molis_type_id || null : null,
       charge_target: isMolisMode ? f.charge_target : "rider",
-      client_id: f.client_id || null,
+      // client_id tetap keisi (client PERTAMA yang dipilih) buat FK join lama
+      // (badge "Prioritas: X" di active-tab.tsx) — client_ids array yang
+      // sebenarnya nentuin eligibility (lihat matchesInstallmentClient di
+      // payroll-generate.ts). >1 client = urutan pilih = urutan prioritas.
+      client_id: f.client_ids[0] ?? null,
+      client_ids: f.client_ids.length > 0 ? f.client_ids : null,
       start_date: f.start_date,
       next_deduction_date: f.start_date,
       notes: f.notes || null,
@@ -118,7 +123,7 @@ export function AddTab() {
       cycle_start_day: 25,
       molis_type_id: "",
       charge_target: "rider",
-      client_id: "",
+      client_ids: [],
       notes: "",
       kasbon_recipient_id: "",
     });
@@ -209,16 +214,21 @@ export function AddTab() {
         <label className="font-medium">
           {t("dedadd.clientPriority")} <span className="font-normal text-muted-foreground">({t("dedadd.optional")})</span>
         </label>
-        <ClientCombobox
-          value={f.client_id}
-          onChange={(v) => setF({ ...f, client_id: v })}
-          placeholder={t("dedadd.useHomeClientPlaceholder")}
-          className="mt-1 w-full text-sm py-2"
-          options={clients.map((c) => ({ value: c.id, label: c.name }))}
-        />
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-xs text-muted-foreground mt-1 mb-1.5">
           {t("dedadd.clientPriorityHint")}
         </p>
+        <ClientMultiCombobox
+          value={f.client_ids}
+          onChange={(ids) => setF({ ...f, client_ids: ids })}
+          placeholder={t("dedactive.useRiderHomeClient")}
+          className="w-full text-sm py-2"
+          options={clients.map((c) => ({ value: c.id, label: c.name }))}
+        />
+        {f.client_ids.length > 1 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            {f.client_ids.length} {t("dedadd.clientsSelectedHint")}
+          </p>
+        )}
       </div>
       {types.find((type) => type.id === f.deduction_type_id)?.code === "KASBON" && (
         <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 space-y-2">

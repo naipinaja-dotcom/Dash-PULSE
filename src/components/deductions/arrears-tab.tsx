@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toast } from "sonner";
-import { Loader2, Pencil, ExternalLink } from "lucide-react";
+import { Loader2, Pencil, ExternalLink, ArrowRightLeft } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { fixedRemaining, latestRentalUnpaid, type RentalUnpaid } from "@/lib/arrears";
 import { useAuth } from "@/lib/auth";
@@ -39,6 +39,13 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [types, setTypes] = useState<DType[]>([]);
+  const [recipients, setRecipients] = useState<{ id: string; name: string; bank_name: string; account_number: string }[]>([]);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [convertTypeId, setConvertTypeId] = useState("");
+  const [convertRecipientId, setConvertRecipientId] = useState("");
+  const [convertCount, setConvertCount] = useState(3);
+  const [converting, setConverting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -102,6 +109,10 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
 
   useEffect(() => {
     load();
+    (supabase as any).from("deduction_types").select("*").eq("active", true).eq("auto_recurring", false)
+      .then(({ data }: any) => setTypes(data ?? []));
+    (supabase as any).from("kasbon_recipients").select("id, name, bank_name, account_number").eq("active", true).order("name")
+      .then(({ data }: any) => setRecipients(data ?? []));
   }, []);
 
   // Koreksi tunggakan sewa (mode daily/monthly) — master admin only, di-enforce
@@ -126,6 +137,61 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
     if (error) return toast.error(error.message);
     toast.success(t("dedarrears.correctionSaved"));
     setEditingId(null);
+    load();
+  };
+
+  // Konversi tunggakan sewa (mode daily/monthly, open-ended, gampang
+  // melonjak terus tiap periode via getCarriedArrears) jadi cicilan kasbon
+  // (mode fixed, N kali angsuran, ada ujungnya) — biar rider punya rencana
+  // bayar yang jelas, bukan cuma numpuk gak jelas kapan lunas. Master admin
+  // only, sama gate-nya kayak koreksi manual di atas: konversi ini JUGA
+  // nyetel payroll_deductions.paid_amount = amount di baris sumber tunggakan
+  // lama (r.rental.dedId) — kalau enggak, tunggakan lama itu bakal TETAP
+  // kebaca "belum lunas" oleh latestRentalUnpaid() dan dobel-muncul di sini
+  // bareng cicilan kasbon barunya, padahal utangnya udah sama-sama satu.
+  const startConvert = (r: ArrearRow) => {
+    setConvertingId(r.id);
+    setConvertTypeId(types.find((t) => t.code === "KASBON")?.id ?? "");
+    setConvertRecipientId("");
+    setConvertCount(3);
+  };
+
+  const confirmConvert = async (r: ArrearRow) => {
+    if (!r.rental || !r.rider) return;
+    if (!convertTypeId) return toast.error(t("dedarrears.convertNoType"));
+    const selectedType = types.find((tp) => tp.id === convertTypeId);
+    if (selectedType?.code === "KASBON" && !convertRecipientId) return toast.error(t("dedarrears.convertNoRecipient"));
+    const count = Math.max(1, convertCount);
+    const per = +(r.amount / count).toFixed(2);
+    setConverting(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: insErr } = await (supabase as any).from("rider_installments").insert({
+      rider_id: r.rider.id,
+      deduction_type_id: convertTypeId,
+      mode: "fixed",
+      total_amount: r.amount,
+      installment_count: count,
+      per_period_amount: per,
+      charge_target: "rider",
+      client_id: r.client?.id ?? null,
+      start_date: today,
+      next_deduction_date: today,
+      notes: `${t("dedarrears.convertNotePrefix")} ${r.type?.name ?? ""} (${formatRupiah(r.amount)})`,
+      kasbon_recipient_id: selectedType?.code === "KASBON" ? convertRecipientId : null,
+    });
+    if (insErr) {
+      setConverting(false);
+      return toast.error(insErr.message);
+    }
+    const [{ error: deactErr }, { error: settleErr }] = await Promise.all([
+      supabase.from("rider_installments").update({ active: false }).eq("id", r.id),
+      (supabase as any).from("payroll_deductions").update({ paid_amount: r.rental.amount }).eq("id", r.rental.dedId),
+    ]);
+    setConverting(false);
+    if (deactErr) return toast.error(deactErr.message);
+    if (settleErr) return toast.error(settleErr.message);
+    toast.success(t("dedarrears.convertSuccess"));
+    setConvertingId(null);
     load();
   };
 
@@ -217,7 +283,8 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
               </tr>
             ) : (
               paged.map((r) => (
-                <tr key={r.id} className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors">
+                <Fragment key={r.id}>
+                <tr className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors">
                   <td className="p-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-border-strong grid place-items-center text-[11px] font-semibold flex-shrink-0">
@@ -306,6 +373,15 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
+                        {r.rental && user?.isMasterAdmin && (
+                          <button
+                            onClick={() => startConvert(r)}
+                            title={t("dedarrears.convertTooltip")}
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {!r.rental && onGoToActiveTab && (
                           <button
                             onClick={onGoToActiveTab}
@@ -319,6 +395,72 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
                     )}
                   </td>
                 </tr>
+                {convertingId === r.id && (
+                  <tr className="border-b border-border/60 bg-muted/20">
+                    <td colSpan={4} className="p-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 items-end text-sm">
+                        <div>
+                          <label className="text-xs text-muted-foreground font-medium">{t("dedarrears.convertTypeLabel")}</label>
+                          <select
+                            value={convertTypeId}
+                            onChange={(e) => setConvertTypeId(e.target.value)}
+                            className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            <option value="">{t("dedarrears.convertTypePlaceholder")}</option>
+                            {types.map((tp) => (
+                              <option key={tp.id} value={tp.id}>{tp.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {types.find((tp) => tp.id === convertTypeId)?.code === "KASBON" && (
+                          <div>
+                            <label className="text-xs text-muted-foreground font-medium">{t("dedarrears.convertRecipientLabel")}</label>
+                            <select
+                              value={convertRecipientId}
+                              onChange={(e) => setConvertRecipientId(e.target.value)}
+                              className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="">{t("dedarrears.convertRecipientPlaceholder")}</option>
+                              {recipients.map((rc) => (
+                                <option key={rc.id} value={rc.id}>{rc.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-xs text-muted-foreground font-medium">{t("dedarrears.convertCountLabel")}</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={convertCount}
+                            onChange={(e) => setConvertCount(Math.max(1, Number(e.target.value) || 1))}
+                            className="mt-1 w-full rounded-md border-2 border-border-strong bg-background px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+                          />
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            {formatRupiah(+(r.amount / Math.max(1, convertCount)).toFixed(2))} {t("dedarrears.perInstallmentSuffix")}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => confirmConvert(r)}
+                            disabled={converting}
+                            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-[12px] disabled:opacity-50"
+                          >
+                            {converting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("dedarrears.convertConfirm")}
+                          </button>
+                          <button
+                            onClick={() => setConvertingId(null)}
+                            className="text-[12px] text-muted-foreground hover:text-foreground"
+                          >
+                            {t("dedarrears.cancelBtn")}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-2">{t("dedarrears.convertHint")}</p>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))
             )}
           </tbody>

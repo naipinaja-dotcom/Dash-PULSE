@@ -32,6 +32,9 @@ export type Inst = {
   molis_type_id: string | null;
   charge_target: "rider" | "client_revenue";
   client_id: string | null;
+  // Eligible di beberapa client sekaligus — null/kosong = fallback ke
+  // client_id tunggal (perilaku lama). Urutan array = urutan prioritas.
+  client_ids: string[] | null;
   start_date: string;
   next_deduction_date: string | null;
   active: boolean;

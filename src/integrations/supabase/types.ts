@@ -1297,6 +1297,7 @@ export type Database = {
           active: boolean
           charge_target: string
           client_id: string | null
+          client_ids: string[] | null
           created_at: string
           cycle_start_day: number | null
           daily_rate: number | null
@@ -1317,6 +1318,7 @@ export type Database = {
           active?: boolean
           charge_target?: string
           client_id?: string | null
+          client_ids?: string[] | null
           created_at?: string
           cycle_start_day?: number | null
           daily_rate?: number | null
@@ -1337,6 +1339,7 @@ export type Database = {
           active?: boolean
           charge_target?: string
           client_id?: string | null
+          client_ids?: string[] | null
           created_at?: string
           cycle_start_day?: number | null
           daily_rate?: number | null

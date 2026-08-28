@@ -1126,6 +1126,39 @@ function PayrollPage() {
         if (!d.client_id) continue;
         byClient.set(d.client_id, (byClient.get(d.client_id) ?? 0) + Number(d.net_pay || 0));
       }
+
+      // Transfer ke penerima kasbon pihak-3 — dipotong dari gross_earning rider
+      // tapi harus BENERAN ditransfer ke rekening penerima itu (lihat komentar
+      // fetchKasbonRecipientRows di atas). Bulk Payment sudah menghitung ini;
+      // sebelumnya Spend Control lupa nambahin, jadi nominal yang diajukan
+      // selalu lebih kecil dari yang beneran ditransfer kalau ada kasbon.
+      // Pakai `details` PENUH (bukan payableDetails) — kewajiban kasbon jalan
+      // terus walau net pay rider-nya lagi di-hold, sama seperti Bulk Payment.
+      const detailIds = details.map((d) => d.id);
+      if (detailIds.length > 0) {
+        const { data: dedRows, error: dedError } = await (supabase as any)
+          .from("payroll_deductions")
+          .select(
+            "detail_id, amount, kasbon_recipient_id, deduction_types(code), kasbon_recipients(name, bank_name, account_number, account_holder, no_transfer_needed)",
+          )
+          .in("detail_id", detailIds);
+        if (dedError) throw dedError;
+        const clientOfDetail = new Map(details.map((d) => [d.id, d.client_id]));
+        const grossByDetail = new Map(details.map((d) => [d.id, Number(d.gross_earning)]));
+        const dedRowsByClient = new Map<string, typeof dedRows>();
+        for (const row of dedRows ?? []) {
+          const cid = clientOfDetail.get(row.detail_id);
+          if (!cid) continue;
+          (dedRowsByClient.get(cid) ?? dedRowsByClient.set(cid, []).get(cid)!).push(row);
+        }
+        for (const [cid, rows] of dedRowsByClient) {
+          const kasbonTotal = allocateKasbonByRecipient(grossByDetail, rows, new Map())
+            .filter((a) => !a.noTransferNeeded)
+            .reduce((s, a) => s + a.amount, 0);
+          if (kasbonTotal > 0) byClient.set(cid, (byClient.get(cid) ?? 0) + kasbonTotal);
+        }
+      }
+
       const clientIds = [...byClient.keys()];
       if (clientIds.length === 0) {
         setSpendControlRows([]);

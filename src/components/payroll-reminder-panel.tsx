@@ -5,8 +5,10 @@ import { useAuth } from "@/lib/auth";
 import { triggerPayrollReminderManual } from "@/lib/api/payroll-reminder.functions";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Loader2, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Send, CheckCircle2, XCircle, Search } from "lucide-react";
 import { ScheduleFormModal } from "./payroll-reminder-panel/schedule-form-modal";
+import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
+import { usePagination } from "@/lib/use-pagination";
 import { useT } from "@/lib/i18n";
 
 type Client = { id: string; name: string };
@@ -57,6 +59,7 @@ export function PayrollReminderPanel() {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = () => {
     supabase
@@ -137,6 +140,18 @@ export function PayrollReminderPanel() {
     }
   };
 
+  const filteredSchedules = schedules.filter((s) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      s.label.toLowerCase().includes(q) ||
+      (s.clients?.name.toLowerCase().includes(q) ?? false) ||
+      (s.riders?.full_name.toLowerCase().includes(q) ?? false)
+    );
+  });
+  const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } =
+    usePagination(filteredSchedules, 10);
+
   return (
     <div className="rounded-xl border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)] p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -168,13 +183,30 @@ export function PayrollReminderPanel() {
         </div>
       </div>
 
+      {schedules.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("reminderPanel.searchPlaceholder")}
+              className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-1.5 text-[12px] outline-none focus:border-primary transition-colors"
+            />
+          </div>
+          {filteredSchedules.length > 0 && (
+            <PageSizeSelect pageSize={pageSize} setPageSize={setPageSize} />
+          )}
+        </div>
+      )}
+
       <div className="rounded-xl border border-border overflow-hidden">
-        {schedules.length === 0 ? (
+        {filteredSchedules.length === 0 ? (
           <p className="p-4 text-[11px] text-muted-foreground text-center">
-            {t("reminderPanel.noSchedulesYet")}
+            {schedules.length === 0 ? t("reminderPanel.noSchedulesYet") : t("reminderPanel.noSearchMatch")}
           </p>
         ) : (
-          schedules.map((s) => (
+          paged.map((s) => (
             <div
               key={s.id}
               className="flex items-center justify-between gap-2 p-3 text-[12px] border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
@@ -222,6 +254,9 @@ export function PayrollReminderPanel() {
           ))
         )}
       </div>
+      {filteredSchedules.length > 0 && (
+        <PaginationBar page={page} totalPages={totalPages} setPage={setPage} from={from} to={to} total={total} />
+      )}
 
       {logs.length > 0 && (
         <div>
@@ -256,11 +291,22 @@ export function PayrollReminderPanel() {
                     className="border-b border-border last:border-b-0 hover:bg-muted/40 transition-colors"
                   >
                     <td className="p-2.5 text-muted-foreground">{l.reminder_date}</td>
-                    <td className="p-2.5 text-muted-foreground">
-                      {[
-                        ...l.due_clients.map((c) => c.name),
-                        ...l.due_riders.map((r) => r.full_name),
-                      ].join(", ") || "—"}
+                    <td className="p-2.5 text-muted-foreground max-w-xs">
+                      {(() => {
+                        const names = [
+                          ...l.due_clients.map((c) => c.name),
+                          ...l.due_riders.map((r) => r.full_name),
+                        ];
+                        if (names.length === 0) return "—";
+                        const shown = names.slice(0, 3);
+                        const rest = names.length - shown.length;
+                        return (
+                          <span title={names.join(", ")}>
+                            {shown.join(", ")}
+                            {rest > 0 && ` +${rest} ${t("reminderPanel.moreDueSuffix")}`}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="p-2.5">
                       {l.push_status.slack.ok ? (

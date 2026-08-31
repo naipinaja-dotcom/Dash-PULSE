@@ -4,13 +4,17 @@ import type {} from "@tanstack/react-start";
 import { runLiveFeeSync, verifyLiveFeeSyncSecret } from "@/lib/live-fee-sync.server";
 import { getPostHogClient } from "@/utils/posthog-server";
 
-// Endpoint cron 2x/hari buat Live Fee Auto-Sync — per client yang sudah
-// di-link ke provider (clients.provider_id), tarik data live dashelectric,
-// hitung fee, dan commit ke DB + Payroll Run — sama persis dengan "Sync ke
-// Database" manual di admin.calculate.tsx. Dipanggil via HTTP POST + header
+// Endpoint cron buat Live Fee Auto-Sync — per client yang sudah di-link ke
+// provider (clients.provider_id), tarik data live dashelectric, hitung fee,
+// dan commit ke DB + Payroll Run — sama persis dengan "Sync ke Database"
+// manual di admin.calculate.tsx. Dipanggil via HTTP POST + header
 // `x-live-fee-sync-secret` (harus sama persis dengan env LIVE_FEE_SYNC_SECRET).
-// Jadwalkan lewat pg_cron + pg_net di Supabase — lihat
-// supabase/migrations/20260730000001_live_fee_sync_cron.sql.
+// Dua jadwal aktif (lihat supabase/migrations/):
+//   - live-fee-sync-0100/0600 (20260730000001_live_fee_sync_cron.sql):
+//     finalisasi data KEMARIN, {from,to} eksplisit, gak pakai gateByRunTime.
+//   - live-fee-sync-15min (20260831000000_live_fee_sync_15min_cron.sql):
+//     polling tiap 15 menit, gateByRunTime:true — tiap client cuma diproses
+//     30 menit sebelum run_time custom-nya (lihat komentar runLiveFeeSync).
 export const Route = createFileRoute("/api/live-fee-sync")({
   server: {
     handlers: {
@@ -23,17 +27,18 @@ export const Route = createFileRoute("/api/live-fee-sync")({
             headers: { "Content-Type": "application/json" },
           });
         }
-        let body: { from?: string; to?: string } = {};
+        let body: { from?: string; to?: string; gateByRunTime?: boolean } = {};
         try {
           body = await request!.json();
         } catch {
-          // body kosong = default window rolling 2 hari (lihat defaultWindow())
+          // body kosong = default window rolling 8 hari (lihat defaultWindow())
         }
         try {
           const result = await runLiveFeeSync({
             triggeredBy: "cron",
             from: body.from,
             to: body.to,
+            gateByRunTime: body.gateByRunTime,
           });
           const posthog = getPostHogClient();
           posthog.capture({

@@ -1,0 +1,57 @@
+-- Live Fee Auto-Sync HARI INI — dari 2 checkpoint fixed (1000/1600) jadi
+-- polling 15 menit — pg_cron scheduling
+--
+-- STATUS: BELUM di-apply ke production — jalankan block cron.schedule/
+-- unschedule di bawah lewat execute_sql (project ini gak punya migration
+-- runner utk pg_cron, sama kayak 20260817000001). SELALU cek
+-- `select * from cron.job;` langsung ke production buat status riil.
+--
+-- BUG YANG DIPERBAIKI: checkpoint fixed lama (live-fee-sync-1000 jam 10:00,
+-- live-fee-sync-1600 jam 16:00 WIB) gak nyambung sama `run_time` custom per
+-- client di payroll_reminder_schedules (Reminder Calendar) — order yang
+-- COMPLETED di antara sync terakhir dan run_time client gak sempat ke-sync
+-- sebelum payroll-workflow baca & publish. Kejadian nyata: Otts and Jill
+-- run_time 16:30, sync terakhir 16:00 -> gap 30 menit gak ke-cover. Wicked
+-- Pies (13:00) & Komu Komu Bakehouse (14:00) malah gap 3-4 jam dari sync
+-- 10:00. Nambah checkpoint fixed lagi cuma mindahin masalah ke run_time
+-- berikutnya yang beda dari yang di-tuning.
+--
+-- FIX: live-fee-sync-15min jalan tiap 15 menit dengan gateByRunTime:true.
+-- Tiap tick, runLiveFeeSync (src/lib/live-fee-sync.server.ts) sendiri yang
+-- filter: client cuma diproses kalau SEKARANG persis 30 menit sebelum
+-- run_time client itu (matchesRunTime offset +30, toleransi ±7 menit --
+-- sama exact pattern payroll-workflow-15min). Otomatis ngikutin run_time
+-- kapanpun admin ubah di Reminder Calendar, gak perlu tuning cron lagi.
+-- {from,to} DIBIARKAN KOSONG di body -> runLiveFeeSync default ke HARI INI
+-- (jktToday()) waktu gateByRunTime:true, BUKAN defaultWindow() 8 hari.
+--
+-- live-fee-sync-0100 & live-fee-sync-0600 (finalisasi KEMARIN, lihat
+-- 20260730000001_live_fee_sync_cron.sql) TETAP AKTIF apa adanya, gak
+-- disentuh -- kemarin gak butuh gating run_time, cuma butuh final sekali di
+-- pagi hari sebelum run_time paling pagi.
+--
+-- Beban API mgmt: per client sekarang cuma di-fetch ~1x/hari (pas 30 menit
+-- sebelum run_time-nya), BUKAN di tiap tick -- lebih ringan dari 2 checkpoint
+-- fixed lama yang narik SEMUA client tiap kali jalan.
+--
+-- Cara apply (jalankan di Supabase SQL Editor / execute_sql):
+--   select cron.unschedule('live-fee-sync-1000');
+--   select cron.unschedule('live-fee-sync-1600');
+--   -- lalu jalankan block cron.schedule('live-fee-sync-15min', ...) di bawah
+--   -- (uncomment dulu, isi <PRODUCTION_URL>/<LIVE_FEE_SYNC_SECRET> yang asli)
+--
+-- Cara rollback:
+--   select cron.unschedule('live-fee-sync-15min');
+--   -- lalu jadwalkan ulang live-fee-sync-1000/1600 dari
+--   -- 20260730000001_live_fee_sync_cron.sql / 20260817000000_unified_checkpoint_cron.sql
+
+-- create extension if not exists pg_cron;
+-- create extension if not exists pg_net;
+--
+-- select cron.schedule('live-fee-sync-15min', '*/15 * * * *', $$
+--   select net.http_post(
+--     url := '<PRODUCTION_URL>/api/live-fee-sync',
+--     headers := jsonb_build_object('Content-Type', 'application/json', 'x-live-fee-sync-secret', '<LIVE_FEE_SYNC_SECRET>'),
+--     body := jsonb_build_object('gateByRunTime', true)
+--   );
+-- $$);

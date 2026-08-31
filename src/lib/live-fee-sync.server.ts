@@ -49,6 +49,7 @@ import { fetchLiveDeliveries } from "./api/live-fee-deliveries.functions";
 import { fetchLiveAttendance } from "./api/live-fee-attendance.functions";
 import { upsertLiveDeliveries } from "./sync-live-deliveries";
 import { upsertLiveAttendance } from "./sync-live-attendance";
+import { matchesRunTime, nowInWib } from "./payroll-workflow.server";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
@@ -163,9 +164,24 @@ export async function runLiveFeeSync(opts: {
   triggeredBy: "cron" | "manual";
   from?: string;
   to?: string;
+  // Dipakai cron polling 15-menitan (live-fee-sync-15min): daripada tarik
+  // SEMUA client di tiap tick, tiap client cuma diproses pas SEKARANG persis
+  // 30 menit sebelum `run_time` custom-nya (matchesRunTime dgn offset +30,
+  // sama toleransi ±7 menit dgn payroll-workflow) — biar data delivery/
+  // attendance HARI INI selalu fresh pas payroll-workflow baca di run_time-nya,
+  // tanpa perlu checkpoint fixed yang harus di-tuning manual tiap ada client
+  // baru/run_time beda (root cause bug: sync checkpoint lama ketinggalan
+  // 30 menit dari run_time Otts and Jill 16:30 → data cutoff gak lengkap).
+  // Default {from,to} kalau gak dikirim = HARI INI (bukan defaultWindow() 8
+  // hari — itu cuma buat manual/backfill tanpa gating).
+  gateByRunTime?: boolean;
 }): Promise<LiveFeeSyncResult> {
   const admin = getSupabaseAdmin();
-  const { from, to } = opts.from && opts.to ? { from: opts.from, to: opts.to } : defaultWindow();
+  const { from, to } = opts.from && opts.to
+    ? { from: opts.from, to: opts.to }
+    : opts.gateByRunTime
+      ? { from: jktToday(), to: jktToday() }
+      : defaultWindow();
 
   const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
   if (!raw)
@@ -196,7 +212,7 @@ export async function runLiveFeeSync(opts: {
     // gak cukup buat nandain client mana yang mau diproses cron ini.
     adminAny
       .from("payroll_reminder_schedules")
-      .select("client_id")
+      .select("client_id, run_time")
       .eq("active", true)
       .is("rider_id", null)
       .not("client_id", "is", null),
@@ -208,7 +224,22 @@ export async function runLiveFeeSync(opts: {
   const remindedClientIds = new Set(
     (remindersRaw ?? []).map((r: { client_id: string }) => r.client_id),
   );
-  const clients = ((clientsRaw ?? []) as ClientRow[]).filter((c) => remindedClientIds.has(c.id));
+  // Satu client bisa punya >1 baris reminder (mis. periode ganjil/genap
+  // minggu) — masing-masing bisa bawa run_time beda, jadi dikumpulin semua.
+  const runTimesByClient = new Map<string, string[]>();
+  for (const r of (remindersRaw ?? []) as Array<{ client_id: string; run_time: string | null }>) {
+    const arr = runTimesByClient.get(r.client_id) ?? [];
+    arr.push(r.run_time ?? "09:00");
+    runTimesByClient.set(r.client_id, arr);
+  }
+  let clients = ((clientsRaw ?? []) as ClientRow[]).filter((c) => remindedClientIds.has(c.id));
+  if (opts.gateByRunTime) {
+    const wib = nowInWib();
+    const nowMinutesOfDay = wib.getUTCHours() * 60 + wib.getUTCMinutes();
+    clients = clients.filter((c) =>
+      (runTimesByClient.get(c.id) ?? ["09:00"]).some((rt) => matchesRunTime(nowMinutesOfDay + 30, rt)),
+    );
+  }
   const providerById = new Map(providers.map((p) => [p.id, p]));
 
   const results: LiveFeeSyncClientResult[] = [];

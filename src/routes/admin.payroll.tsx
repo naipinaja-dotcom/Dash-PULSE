@@ -239,9 +239,12 @@ function PayrollPage() {
   const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0].code);
   const [spendControlRows, setSpendControlRows] = useState<SpendControlRow[]>([]);
   const [spendControlResults, setSpendControlResults] = useState<Record<string, SpendControlPushResult>>({});
+  const [selectedSpendControlRepushes, setSelectedSpendControlRepushes] = useState<Set<string>>(new Set());
   const spendControlValidRows = spendControlRows.filter((r) => r.valid);
   const spendControlValidTotal = spendControlValidRows.reduce((s, r) => s + r.amount, 0);
   const spendControlPushableRows = spendControlValidRows.filter((r) => !spendControlResults[r.clientId]?.ok);
+  const spendControlRepushableRows = spendControlValidRows.filter((r) => spendControlResults[r.clientId]?.ok);
+  const selectedSpendControlRepushRows = spendControlRepushableRows.filter((r) => selectedSpendControlRepushes.has(r.clientId));
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -1114,6 +1117,7 @@ function PayrollPage() {
     setSpendControlOpen(true);
     setSpendControlLoading(true);
     setSpendControlResults({});
+    setSelectedSpendControlRepushes(new Set());
     try {
       // Samakan populasi request dengan Bulk Payment reguler: detail hold
       // dibayar melalui mekanisme susulan, dan net pay nol/negatif bukan
@@ -1170,8 +1174,9 @@ function PayrollPage() {
         (supabase as any).from("clients").select("id, name, project_name, contract, provider_id").in("id", clientIds),
         (supabase as any)
           .from("spend_control_pushes")
-          .select("client_id, request_code, workflow_configured, workflow_missing_reason")
-          .eq("payroll_run_id", activeRun.id),
+          .select("client_id, request_code, workflow_configured, workflow_missing_reason, attempt")
+          .eq("payroll_run_id", activeRun.id)
+          .order("attempt", { ascending: false }),
         supabase.auth.getSession(),
       ]);
       if (error) throw error;
@@ -1180,10 +1185,12 @@ function PayrollPage() {
       // spendControlPushableRows otomatis exclude mereka dari re-push.
       setSpendControlResults(
         Object.fromEntries(
-          (pushRows ?? []).map((p: any) => [
-            p.client_id,
-            { ok: true, requestCode: p.request_code ?? undefined, workflowConfigured: p.workflow_configured, workflowMissingReason: p.workflow_missing_reason ?? undefined },
-          ]),
+          (pushRows ?? []).reduce((latest: Record<string, SpendControlPushResult>, p: any) => {
+            if (!latest[p.client_id]) {
+              latest[p.client_id] = { ok: true, requestCode: p.request_code ?? undefined, workflowConfigured: p.workflow_configured, workflowMissingReason: p.workflow_missing_reason ?? undefined };
+            }
+            return latest;
+          }, {}),
         ),
       );
 
@@ -1245,12 +1252,19 @@ function PayrollPage() {
     }
   };
 
-  // Fase 2: kirim beneran ke Basecamp Spend Control (lihat
-  // spend-request-api-integration.md). Cuma push row yang belum sukses —
-  // klik ulang setelah gagal sebagian gak akan bikin duplikat buat yang
-  // sudah berhasil.
-  const submitSpendControlPush = async () => {
-    if (!activeRun || spendControlPushableRows.length === 0) return;
+  // Fase 2: kirim beneran ke Basecamp Spend Control. Re-push hanya masuk
+  // lewat baris yang dipilih dan setelah konfirmasi eksplisit di bawah.
+  const submitSpendControlPush = async (rowsToPush: SpendControlRow[], isRepush = false) => {
+    if (!activeRun || rowsToPush.length === 0) return;
+    if (isRepush) {
+      const confirmed = await confirmDialog({
+        title: `Perbarui ${rowsToPush.length} pengajuan Spend Control?`,
+        description: "Ini membuat payment request BARU dengan nominal payroll terbaru. Pengajuan lama tidak otomatis dibatalkan atau di-hold di Spend Control; pastikan pengajuan lama ditindaklanjuti di sana agar tidak terjadi pembayaran ganda.",
+        confirmText: "Ya, buat pengajuan baru",
+        cancelText: "Batal",
+      });
+      if (!confirmed) return;
+    }
     setSpendControlPushing(true);
     try {
       const { data: sess } = await supabase.auth.getSession();
@@ -1262,7 +1276,8 @@ function PayrollPage() {
           payrollRunId: activeRun.id,
           department: spendControlDept,
           attachmentUrl: spendControlAttachmentUrl(activeRun.id),
-          rows: spendControlPushableRows.map((r) => ({
+          confirmedRepushClientIds: isRepush ? rowsToPush.map((r) => r.clientId) : [],
+          rows: rowsToPush.map((r) => ({
             clientId: r.clientId,
             title: r.title,
             description: r.description,
@@ -1273,6 +1288,7 @@ function PayrollPage() {
           })),
         },
       });
+      if (isRepush) setSelectedSpendControlRepushes(new Set());
       setSpendControlResults((prev) => {
         const next = { ...prev };
         for (const r of results) next[r.clientId] = r;
@@ -2426,6 +2442,21 @@ function PayrollPage() {
                                 {result.requestCode ?? "Terkirim"}
                               </span>
                             )}
+                            {result?.ok && r.valid && (
+                              <label className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSpendControlRepushes.has(r.clientId)}
+                                  disabled={spendControlPushing}
+                                  onChange={(e) => setSelectedSpendControlRepushes((selected) => {
+                                    const next = new Set(selected);
+                                    if (e.target.checked) next.add(r.clientId); else next.delete(r.clientId);
+                                    return next;
+                                  })}
+                                />
+                                Perbarui pengajuan
+                              </label>
+                            )}
                             {result && !result.ok && (
                               <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]" title={result.error}>
                                 Gagal
@@ -2477,7 +2508,7 @@ function PayrollPage() {
               <button
                 type="button"
                 disabled={spendControlLoading || spendControlPushing || spendControlPushableRows.length === 0}
-                onClick={submitSpendControlPush}
+                onClick={() => submitSpendControlPush(spendControlPushableRows)}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {spendControlPushing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
@@ -2485,6 +2516,17 @@ function PayrollPage() {
                   ? "Semua sudah terkirim"
                   : `Push ${spendControlPushableRows.length} ke Spend Control`}
               </button>
+              {selectedSpendControlRepushRows.length > 0 && (
+                <button
+                  type="button"
+                  disabled={spendControlLoading || spendControlPushing}
+                  onClick={() => submitSpendControlPush(selectedSpendControlRepushRows, true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border-2 border-warning bg-warning/10 px-4 py-2 text-sm font-semibold text-warning-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ArrowUpRight className="h-4 w-4" />
+                  Perbarui {selectedSpendControlRepushRows.length} pengajuan
+                </button>
+              )}
             </DialogFooter>
           </div>
         </DialogContent>

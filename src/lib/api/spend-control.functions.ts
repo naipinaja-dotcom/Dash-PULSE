@@ -46,6 +46,10 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
       payrollRunId: z.string().min(1),
       department: z.string().min(1),
       attachmentUrl: z.string().url(),
+      // Client yang sudah pernah sukses hanya boleh dikirim lagi setelah UI
+      // meminta konfirmasi eksplisit. Validasi ini tetap dilakukan server-side
+      // supaya request langsung tidak bisa melewati pengaman UI.
+      confirmedRepushClientIds: z.array(z.string().min(1)).default([]),
       rows: z.array(RowSchema).min(1),
     }),
   )
@@ -58,9 +62,34 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
     const attachmentUrl = data.attachmentUrl;
     const supabaseAdmin = getSupabaseAdmin();
 
+    const clientIds = [...new Set(data.rows.map((row) => row.clientId))];
+    const { data: priorPushes, error: priorPushesError } = await supabaseAdmin
+      .from("spend_control_pushes")
+      .select("client_id, request_id, attempt")
+      .eq("payroll_run_id", data.payrollRunId)
+      .in("client_id", clientIds)
+      .order("attempt", { ascending: false });
+    if (priorPushesError) throw new Error(`Gagal cek riwayat Spend Control: ${priorPushesError.message}`);
+
+    // Karena hasilnya diurutkan attempt desc, entri pertama setiap client adalah
+    // pengajuan terakhir yang akan digantikan oleh re-push berikutnya.
+    const latestPushByClient = new Map<string, { request_id: string; attempt: number }>();
+    for (const push of priorPushes ?? []) {
+      if (!latestPushByClient.has(push.client_id)) latestPushByClient.set(push.client_id, push);
+    }
+    const confirmedRepushes = new Set(data.confirmedRepushClientIds);
+    const unconfirmedRepush = clientIds.find(
+      (clientId) => latestPushByClient.has(clientId) && !confirmedRepushes.has(clientId),
+    );
+    if (unconfirmedRepush) {
+      throw new Error("Konfirmasi kirim ulang diperlukan untuk pengajuan Spend Control yang sudah pernah terkirim");
+    }
+
     const results: RowResult[] = [];
     for (const row of data.rows) {
       try {
+        const previous = latestPushByClient.get(row.clientId);
+        const attempt = (previous?.attempt ?? 0) + 1;
         const res = await fetch(`${base}/api/spend-requests`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -74,7 +103,11 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             contract: row.contract,
             requester,
             requesterEmail,
-            externalReference: row.externalReference,
+            externalReference: {
+              ...row.externalReference,
+              spendControlAttempt: attempt,
+              supersedesRequestId: previous?.request_id ?? null,
+            },
           }),
         });
         const body = await res.json().catch(() => null);
@@ -91,12 +124,9 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             body: JSON.stringify({ name: "Dash PULSE — Payroll Run", linkUrl: attachmentUrl, user: requester, userEmail: requesterEmail }),
           }).catch(() => {});
         }
-        // Catat histori push — dipakai admin.payroll.tsx buat nunjukin status
-        // "udah pernah dipush" walau dialog ditutup-buka lagi / reload, dan
-        // biar re-push cuma nyasar row yang belum sukses (lihat spendControlResults
-        // seeding di openSpendControlPreview). Gagal di sini gak menggagalkan
-        // request-nya sendiri (sudah terbuat di Basecamp).
-        await supabaseAdmin.from("spend_control_pushes").upsert(
+        // Simpan setiap attempt, bukan upsert: re-push membuat request baru dan
+        // request lama harus tetap bisa diaudit/di-hold di Spend Control.
+        const { error: pushHistoryError } = await supabaseAdmin.from("spend_control_pushes").insert(
           {
             payroll_run_id: data.payrollRunId,
             client_id: row.clientId,
@@ -107,9 +137,12 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             workflow_configured: body.workflowConfigured !== false,
             workflow_missing_reason: body.workflowMissingReason ?? null,
             pushed_by: admin.id,
+            attempt,
+            is_repush: !!previous,
+            supersedes_request_id: previous?.request_id ?? null,
           },
-          { onConflict: "payroll_run_id,client_id" },
         );
+        if (pushHistoryError) throw new Error(`Payment request sudah dibuat, tetapi histori push gagal disimpan: ${pushHistoryError.message}`);
         results.push({
           clientId: row.clientId,
           ok: true,

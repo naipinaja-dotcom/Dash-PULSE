@@ -1184,14 +1184,12 @@ function PayrollPage() {
       // (atau reload halaman) tetap nunjukin client yang udah sukses, dan
       // spendControlPushableRows otomatis exclude mereka dari re-push.
       setSpendControlResults(
-        Object.fromEntries(
-          (pushRows ?? []).reduce((latest: Record<string, SpendControlPushResult>, p: any) => {
-            if (!latest[p.client_id]) {
-              latest[p.client_id] = { ok: true, requestCode: p.request_code ?? undefined, workflowConfigured: p.workflow_configured, workflowMissingReason: p.workflow_missing_reason ?? undefined };
-            }
-            return latest;
-          }, {}),
-        ),
+        (pushRows ?? []).reduce((latest: Record<string, SpendControlPushResult>, p: any) => {
+          if (!latest[p.client_id]) {
+            latest[p.client_id] = { ok: true, requestCode: p.request_code ?? undefined, workflowConfigured: p.workflow_configured, workflowMissingReason: p.workflow_missing_reason ?? undefined };
+          }
+          return latest;
+        }, {}),
       );
 
       try {

@@ -138,7 +138,20 @@ async function syncOneClient(
     // delivery live; hybrid butuh attendance juga tapi belum dipakai client
     // manapun yang di-link provider hari ini — cukup delivery dulu.
     const live = await fetchLiveDeliveries(dashToken, provider.id, businessUnit, from, to);
-    const res = calcScheme(scheme.params, live.rows);
+    // Revenue sharing tidak punya rate-card rider sendiri: fee rider adalah
+    // persentase dari revenue client per delivery. calcScheme() sengaja
+    // membutuhkan array revenue itu secara eksplisit; tanpa ini ia mengembalikan
+    // fee 0 untuk semua baris. Samakan jalur auto-sync dengan Hitung Fee dan
+    // Payroll Workflow supaya delivery yang baru masuk tidak tersimpan 0.
+    let clientRevenueByRow: number[] | undefined;
+    if (scheme.params.type === "revenue_share") {
+      const clientScheme = pickPricingScheme(schemes, client.id, "client", to);
+      if (!clientScheme || clientScheme.category !== "delivery") {
+        throw new Error("Skema Revenue Share butuh skema Client (Per Pengiriman) aktif untuk periode ini");
+      }
+      clientRevenueByRow = calcScheme(clientScheme.params, live.rows).perRow.map((r) => r.fee);
+    }
+    const res = calcScheme(scheme.params, live.rows, clientRevenueByRow);
     const feeByDashId = new Map<string, number>(
       res.perRow.filter((r) => r.id).map((r) => [String(r.id), Number(r.fee) || 0]),
     );

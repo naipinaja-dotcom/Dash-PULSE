@@ -1470,40 +1470,49 @@ export type Database = {
       spend_control_pushes: {
         Row: {
           amount: number
+          attempt: number
           client_id: string
           department: string
           id: string
+          is_repush: boolean
           payroll_run_id: string
           pushed_at: string
           pushed_by: string | null
           request_code: string | null
           request_id: string
+          supersedes_request_id: string | null
           workflow_configured: boolean
           workflow_missing_reason: string | null
         }
         Insert: {
           amount: number
+          attempt?: number
           client_id: string
           department: string
           id?: string
+          is_repush?: boolean
           payroll_run_id: string
           pushed_at?: string
           pushed_by?: string | null
           request_code?: string | null
           request_id: string
+          supersedes_request_id?: string | null
           workflow_configured?: boolean
           workflow_missing_reason?: string | null
         }
         Update: {
           amount?: number
+          attempt?: number
           client_id?: string
           department?: string
           id?: string
+          is_repush?: boolean
           payroll_run_id?: string
           pushed_at?: string
           pushed_by?: string | null
           request_code?: string | null
           request_id?: string
+          supersedes_request_id?: string | null
           workflow_configured?: boolean
           workflow_missing_reason?: string | null
         }

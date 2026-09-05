@@ -6,9 +6,12 @@ import {
   calcHybridScheme,
   bandLookupFee,
   bandFeeAt,
+  normalizeCity,
+  resolveAreaPricingRule,
+  calcAreaRuleFee,
   type DeliveryRow,
 } from "@/lib/pricing-calc";
-import type { PricingEnvelope, StepTier } from "@/lib/pricing-types";
+import type { PricingEnvelope, StepTier, AreaPricingRule } from "@/lib/pricing-types";
 
 // ------------------------------------------------------------------
 // Helpers
@@ -19,6 +22,7 @@ function env(partial: Partial<PricingEnvelope> & Pick<PricingEnvelope, "type" | 
     add_kg: null,
     multi_drop: null,
     billing_addons: null,
+    area_city_pricing: null,
     ...partial,
   };
 }
@@ -846,5 +850,134 @@ describe("billing_addons diterapkan di semua kategori", () => {
     );
     expect(res.subtotal).toBe(100000);
     expect(res.grandTotal).toBe(115500);
+  });
+});
+
+// ==================================================================
+// Area City Pricing (PRD "prd skema outer.md") — resolver + integrasi calcScheme.
+// Contoh Noovoleum: Jabodetabek flat 22000, Bandung per-km 3500 min 18000,
+// Bali per-km 4000 min 25000, city lain -> tetap tarif default scheme.
+// ==================================================================
+describe("normalizeCity", () => {
+  it("trim + lowercase + collapse whitespace", () => {
+    expect(normalizeCity("  Jakarta   Selatan ")).toBe("jakarta selatan");
+    expect(normalizeCity("BANDUNG")).toBe("bandung");
+    expect(normalizeCity(null)).toBe("");
+    expect(normalizeCity(undefined)).toBe("");
+  });
+});
+
+describe("resolveAreaPricingRule", () => {
+  const rules: AreaPricingRule[] = [
+    { id: "jabodetabek", name: "Jabodetabek", cities: ["Jakarta", "Bogor", "Depok", "Tangerang", "Bekasi"], model: "flat", rate: 22000, minimum_fee: 0 },
+    { id: "bandung", name: "Bandung", cities: ["Bandung"], model: "per_km", rate: 3500, minimum_fee: 18000 },
+  ];
+
+  it("null kalau acp disabled", () => {
+    expect(resolveAreaPricingRule({ enabled: false, rules }, "Jakarta")).toBeNull();
+  });
+
+  it("null kalau city kosong/null", () => {
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "")).toBeNull();
+    expect(resolveAreaPricingRule({ enabled: true, rules }, null)).toBeNull();
+  });
+
+  it("exact match", () => {
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "Bandung")?.name).toBe("Bandung");
+  });
+
+  it("case & whitespace insensitive", () => {
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "  bandung  ")?.name).toBe("Bandung");
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "JAKARTA")?.name).toBe("Jabodetabek");
+  });
+
+  it("null kalau city gak match rule manapun (fallback ke default)", () => {
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "Surabaya")).toBeNull();
+  });
+
+  it("prefix Kota/Kabupaten diabaikan (sama seperti district matching)", () => {
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "Kota Bandung")?.name).toBe("Bandung");
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "kabupaten bandung")?.name).toBe("Bandung");
+  });
+
+  it("ambigu (>1 rule cocok setelah prefix dibuang) -> null, bukan asal pilih", () => {
+    const ambiguousRules: AreaPricingRule[] = [
+      { id: "a", name: "Kota Bandung Rule", cities: ["Kota Bandung"], model: "flat", rate: 1000, minimum_fee: 0 },
+      { id: "b", name: "Kabupaten Bandung Rule", cities: ["Kabupaten Bandung"], model: "flat", rate: 2000, minimum_fee: 0 },
+    ];
+    expect(resolveAreaPricingRule({ enabled: true, rules: ambiguousRules }, "Bandung")).toBeNull();
+  });
+});
+
+describe("calcAreaRuleFee", () => {
+  it("model flat: rate polos, distance diabaikan", () => {
+    const rule: AreaPricingRule = { id: "x", name: "Jabodetabek", cities: ["Jakarta"], model: "flat", rate: 22000, minimum_fee: 0 };
+    expect(calcAreaRuleFee(rule, 0)).toBe(22000);
+    expect(calcAreaRuleFee(rule, 50)).toBe(22000);
+  });
+
+  it("model per_km: rate × km, diklem ke minimum_fee", () => {
+    const rule: AreaPricingRule = { id: "x", name: "Bandung", cities: ["Bandung"], model: "per_km", rate: 3500, minimum_fee: 18000 };
+    expect(calcAreaRuleFee(rule, 1)).toBe(18000); // 3500 < minimum -> diklem
+    expect(calcAreaRuleFee(rule, 10)).toBe(35000); // 3500*10 = 35000 > minimum
+  });
+
+  it("model per_km tanpa minimum (0): fee bisa di bawah 0-floor manapun, ceil per km", () => {
+    const rule: AreaPricingRule = { id: "x", name: "Bali", cities: ["Bali"], model: "per_km", rate: 4000, minimum_fee: 0 };
+    expect(calcAreaRuleFee(rule, 2.1)).toBe(4000 * 3); // ceil(2.1) = 3
+  });
+});
+
+describe("calcScheme — area_city_pricing integrasi (Noovoleum)", () => {
+  const AREA_CITY = {
+    enabled: true,
+    rules: [
+      { id: "jabodetabek", name: "Jabodetabek", cities: ["Jakarta", "Bogor", "Depok", "Tangerang", "Bekasi"], model: "flat" as const, rate: 22000, minimum_fee: 0 },
+      { id: "bandung", name: "Bandung", cities: ["Bandung"], model: "per_km" as const, rate: 3500, minimum_fee: 18000 },
+      { id: "bali", name: "Bali", cities: ["Bali"], model: "per_km" as const, rate: 4000, minimum_fee: 25000 },
+    ],
+  };
+  const flatDefaultEnv = (areaCityPricing: typeof AREA_CITY | null) =>
+    env({
+      type: "flat_unit",
+      config: { rate_by: "flat", flat_rate: 15000 },
+      area_city_pricing: areaCityPricing,
+    });
+
+  it("toggle OFF (null) -> fee identik pricing default scheme, gak ada city/area_rule audit", () => {
+    const res = calcScheme(flatDefaultEnv(null), [row({ rider_id: "R1", city: "Bandung", distance_km: 10 })]);
+    expect(res.perRow[0].fee).toBe(15000); // default flat_rate, bukan rule Bandung
+    expect(res.perRow[0].area_rule).toBeNull();
+  });
+
+  it("City 'Bandung' -> rule per-km Bandung (3500/km, min 18000)", () => {
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "Bandung", distance_km: 10 })]);
+    expect(res.perRow[0].fee).toBe(35000); // 3500*10
+    expect(res.perRow[0].area_rule).toBe("Bandung");
+    expect(res.perRow[0].city).toBe("Bandung");
+  });
+
+  it("City 'BALI' (case-insensitive) -> rule Bali, diklem ke minimum", () => {
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "BALI", distance_km: 1 })]);
+    expect(res.perRow[0].fee).toBe(25000); // 4000*1=4000 < min 25000 -> diklem
+    expect(res.perRow[0].area_rule).toBe("Bali");
+  });
+
+  it("City tanpa rule (mis. Surabaya) -> pakai pricing default, bukan Rp0", () => {
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "Surabaya", distance_km: 10 })]);
+    expect(res.perRow[0].fee).toBe(15000); // default flat_rate
+    expect(res.perRow[0].area_rule).toBe("default");
+  });
+
+  it("City kosong/null -> pakai pricing default, gak error", () => {
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: null, distance_km: 10 })]);
+    expect(res.perRow[0].fee).toBe(15000);
+    expect(res.perRow[0].area_rule).toBe("default");
+  });
+
+  it("Jabodetabek flat -> rate polos, jarak diabaikan", () => {
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "jakarta", distance_km: 999 })]);
+    expect(res.perRow[0].fee).toBe(22000);
+    expect(res.perRow[0].area_rule).toBe("Jabodetabek");
   });
 });

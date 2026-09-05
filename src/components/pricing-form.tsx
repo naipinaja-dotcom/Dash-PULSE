@@ -35,6 +35,8 @@ import {
   CalendarDays,
   Save,
   Layers,
+  ChevronRight,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -67,6 +69,14 @@ import {
 import { InteractiveCalc } from "./pricing-form/interactive-calc";
 import { RevenueShareCalc } from "./pricing-form/revenue-share-calc";
 import { loadDeliveryCompState } from "./pricing-form/attendance-delivery-comp";
+import {
+  AreaCityFields,
+  emptyAreaCityState,
+  buildAreaCityConfig,
+  loadAreaCityState,
+  validateAreaCityState,
+  type AreaCityState,
+} from "./pricing-form/area-city-fields";
 
 const CATEGORY_ICONS = { Truck, CalendarDays, Layers } as const;
 const DIMENSION_ICONS = { distance: Ruler, weight: Package } as const;
@@ -79,6 +89,8 @@ interface FormState {
   addKg: StepTierState;
   multiDropOn: boolean;
   multiDropFee: string;
+  areaCityOn: boolean;
+  areaCity: AreaCityState;
   revenueShareOn: boolean;
   revenueSharePercent: string;
   billingOn: boolean;
@@ -100,6 +112,8 @@ function emptyForm(): FormState {
     addKg: emptyStepTier(),
     multiDropOn: false,
     multiDropFee: "3000",
+    areaCityOn: false,
+    areaCity: emptyAreaCityState(),
     revenueShareOn: false,
     revenueSharePercent: "80",
     billingOn: false,
@@ -125,6 +139,7 @@ function buildEnvelope(
       add_kg: null,
       multi_drop: null,
       billing_addons: null,
+      area_city_pricing: null,
     };
   }
 
@@ -154,6 +169,12 @@ function buildEnvelope(
       category === "delivery" && f.multiDropOn
         ? { fee_per_extra_shipment: parseRupiah(f.multiDropFee) }
         : null,
+    // Area City Pricing — cuma masuk akal buat delivery (bukan revenue_share,
+    // sudah di-gate di return awal fungsi ini). null kalau toggle mati, biar
+    // resolveAreaPricingRule di pricing-calc.ts fallback ke default (identik
+    // perilaku sebelum fitur ini, lihat prioritas #1 di PRD).
+    area_city_pricing:
+      category === "delivery" && f.areaCityOn ? buildAreaCityConfig(f.areaCity, true) : null,
     billing_addons:
       schemeFor === "client" && f.billingOn
         ? {
@@ -232,6 +253,10 @@ function loadForm(scheme: PricingScheme | undefined): {
     form.multiDropOn = true;
     form.multiDropFee = String(env.multi_drop.fee_per_extra_shipment ?? "");
   }
+  if (env.area_city_pricing?.enabled) {
+    form.areaCityOn = true;
+    form.areaCity = loadAreaCityState(env.area_city_pricing);
+  }
   if (env.billing_addons) {
     form.billingOn = true;
     form.billing = {
@@ -303,6 +328,14 @@ function PricingFormInner({
   const [category, setCategory] = useState<PricingCategory>(loaded.category);
   const [subtype, setSubtype] = useState<PricingSubtype>(loaded.subtype);
   const [f, setF] = useState<FormState>(loaded.form);
+  // Modifier Tambahan (Add-KG/Multi-drop/Area City Pricing) — collapsed by
+  // default, tapi auto-terbuka kalau skema yang lagi dibuka udah pakai salah
+  // satu (biar gak nyembunyiin setting yang sedang aktif). Dihitung sekali dari
+  // data awal (bukan reaktif ke f.*) — sekali user buka manual atau nutup lagi,
+  // itu keputusan mereka, gak dipaksa balik oleh perubahan checkbox internal.
+  const [modifiersOpen, setModifiersOpen] = useState(
+    loaded.form.addKgOn || loaded.form.multiDropOn || loaded.form.areaCityOn,
+  );
 
   useEffect(() => {
     listClients().then(setClients);
@@ -320,6 +353,10 @@ function PricingFormInner({
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     if (!effFrom) return toast.error(t("pform.effFromRequired"));
+    if (category === "delivery" && f.areaCityOn) {
+      const err = validateAreaCityState(f.areaCity);
+      if (err) return toast.error(err);
+    }
     // Nama opsional — kalau dikosongin, dibikinin otomatis dari client + sisi + tipe.
     const activeCategory = PRICING_CATEGORIES.find((c) => c.key === category)!;
     const autoName = [
@@ -662,30 +699,80 @@ function PricingFormInner({
             <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
           )}
 
-          {category === "delivery" && !f.revenueShareOn && !(subtype as DeliveryDimensions | null)?.weight && (
-            <ToggleBlock
-              label={t("pform.addKgLabel")}
-              hint={t("pform.addKgHint")}
-              on={f.addKgOn}
-              onToggle={(on) => patch({ addKgOn: on })}
-            >
-              <StepTierEditor unit="kg" value={f.addKg} onChange={(v) => patch({ addKg: v })} />
-            </ToggleBlock>
-          )}
+          {category === "delivery" && !f.revenueShareOn && (() => {
+            const activeCount = [f.addKgOn, f.multiDropOn, f.areaCityOn].filter(Boolean).length;
+            const hasActive = activeCount > 0;
+            return (
+              <div
+                className={
+                  "rounded-md transition-colors " +
+                  (hasActive ? "border-2 border-primary bg-primary-soft" : "border-2 border-primary-soft bg-primary-soft/40")
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => setModifiersOpen((o) => !o)}
+                  className={
+                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:bg-primary-soft/70 rounded-md transition-colors " +
+                    (hasActive ? "text-primary-soft-foreground" : "text-foreground")
+                  }
+                >
+                  <span className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                    </span>
+                    <ChevronRight
+                      className={"w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " + (modifiersOpen ? "rotate-90" : "")}
+                    />
+                    <span className="flex flex-col">
+                      <span className="text-sm font-semibold leading-tight">{t("pform.modifiersToggle")}</span>
+                      <span className="text-[11px] font-normal text-muted-foreground">{t("pform.modifiersSubtitle")}</span>
+                    </span>
+                  </span>
+                  {hasActive && (
+                    <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground flex-shrink-0">
+                      {activeCount} {t("pform.modifiersActiveSuffix")}
+                    </span>
+                  )}
+                </button>
+                {modifiersOpen && (
+                  <div className="px-3.5 pb-3.5 space-y-3">
+                    {!(subtype as DeliveryDimensions | null)?.weight && (
+                      <ToggleBlock
+                        label={t("pform.addKgLabel")}
+                        hint={t("pform.addKgHint")}
+                        on={f.addKgOn}
+                        onToggle={(on) => patch({ addKgOn: on })}
+                      >
+                        <StepTierEditor unit="kg" value={f.addKg} onChange={(v) => patch({ addKg: v })} />
+                      </ToggleBlock>
+                    )}
 
-          {category === "delivery" && !f.revenueShareOn && (
-            <ToggleBlock
-              label={t("pform.multiDropLabel")}
-              hint={t("pform.multiDropHint")}
-              on={f.multiDropOn}
-              onToggle={(on) => patch({ multiDropOn: on })}
-            >
-              <div className="flex flex-col gap-1.5 max-w-xs">
-                <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
-                <RupiahInput value={f.multiDropFee} onChange={(v) => patch({ multiDropFee: v })} />
+                    <ToggleBlock
+                      label={t("pform.multiDropLabel")}
+                      hint={t("pform.multiDropHint")}
+                      on={f.multiDropOn}
+                      onToggle={(on) => patch({ multiDropOn: on })}
+                    >
+                      <div className="flex flex-col gap-1.5 max-w-xs">
+                        <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
+                        <RupiahInput value={f.multiDropFee} onChange={(v) => patch({ multiDropFee: v })} />
+                      </div>
+                    </ToggleBlock>
+
+                    <ToggleBlock
+                      label={t("pform.areaCityPricingLabel")}
+                      hint={t("pform.areaCityPricingHint")}
+                      on={f.areaCityOn}
+                      onToggle={(on) => patch({ areaCityOn: on })}
+                    >
+                      <AreaCityFields value={f.areaCity} onChange={(v) => patch({ areaCity: v })} />
+                    </ToggleBlock>
+                  </div>
+                )}
               </div>
-            </ToggleBlock>
-          )}
+            );
+          })()}
 
           {!(category === "delivery" && f.revenueShareOn) && (
             <InteractiveCalc
@@ -697,6 +784,8 @@ function PricingFormInner({
               addKgOn={f.addKgOn}
               multiDropOn={f.multiDropOn}
               multiDropFee={f.multiDropFee}
+              areaCityOn={f.areaCityOn}
+              areaCity={f.areaCity}
               billingOn={f.billingOn}
             />
           )}

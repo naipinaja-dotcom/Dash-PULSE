@@ -25,6 +25,7 @@ const baseEnv = (type: PricingEnvelope["type"], config: Record<string, unknown>)
   add_kg: null,
   multi_drop: null,
   billing_addons: null,
+  area_city_pricing: null,
 });
 
 describe("describeScheme", () => {

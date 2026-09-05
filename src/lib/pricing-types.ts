@@ -239,6 +239,25 @@ export interface MultiDrop {
   fee_per_extra_shipment: number; // otomatis mulai kiriman ke-2 per rider per hari
 }
 
+// Area City Pricing — tarif delivery beda per City MGMT (meta.city mentah,
+// BUKAN district hasil enrichment alamat/ORS — lihat DeliveryRow.city di
+// pricing-calc.ts). Reuse primitif band existing (bandLookupFee): "flat" =
+// 1 band flat, "per_km" = 1 band tier (step=1, add_per_step=rate) + klem
+// minimum manual di calcAreaRuleFee — bukan formula baru, cuma orkestrasi.
+export interface AreaPricingRule {
+  id: string;
+  name: string;
+  cities: string[];
+  model: "flat" | "per_km";
+  rate: number; // flat: rate per order; per_km: rate per km
+  minimum_fee: number; // dipakai cuma kalau model === "per_km"; 0 = tanpa minimum
+}
+
+export interface AreaCityPricing {
+  enabled: boolean;
+  rules: AreaPricingRule[];
+}
+
 export interface BillingAddons {
   min_charge: number;
   admin_fee_flat: number;
@@ -270,6 +289,9 @@ export interface PricingEnvelope {
   add_kg: AddKg | null;
   multi_drop: MultiDrop | null;
   billing_addons: BillingAddons | null; // hanya untuk scheme_for = 'client'
+  // Hanya relevan untuk category "delivery" (bukan revenue_share/attendance).
+  // null/enabled=false → pricing default scheme (perilaku identik sebelum fitur ini).
+  area_city_pricing: AreaCityPricing | null;
 }
 
 export interface PricingScheme {

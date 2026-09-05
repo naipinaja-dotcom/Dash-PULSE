@@ -169,7 +169,7 @@ function CalculatePage() {
         let dq = supabase
           .from("delivery_records")
           .select(
-            "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+            "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
           )
           .gte("delivery_date", from)
           .lte("delivery_date", to);
@@ -264,7 +264,7 @@ function CalculatePage() {
           let dq = supabase
             .from("delivery_records")
             .select(
-              "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+              "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
             )
             .gte("delivery_date", from)
             .lte("delivery_date", to);
@@ -305,7 +305,7 @@ function CalculatePage() {
         let q = supabase
           .from("delivery_records")
           .select(
-            "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+            "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
           )
           .gte("delivery_date", from)
           .lte("delivery_date", to);
@@ -485,17 +485,19 @@ function CalculatePage() {
     commitLock.current = true;
     setCommitting(true);
     try {
-      // Begitu ada payroll run buat client+periode ini yang UDAH di-publish,
-      // angkanya dianggap final (udah dikirim/kepake buat slip gaji rider) —
-      // Hitung Fee ulang gak boleh diam-diam nimpa data sumbernya. Selama belum
-      // published (masih draft/finalized), commit ulang tetap boleh.
-      let publishedQ = (supabase as any).from("payroll_runs").select("id, name")
-        .eq("period_start", from).eq("period_end", to).eq("status", "published");
+      // Begitu ada payroll run buat client+periode ini yang UDAH finalized atau
+      // published, angkanya dianggap final (finalized = siap direview/dikirim
+      // slip; published = udah kepake) — Hitung Fee ulang gak boleh diam-diam
+      // nimpa data sumbernya. Cuma draft yang masih boleh di-commit ulang bebas
+      // (konsisten sama guard "draft only" di admin.payroll.tsx & payroll-workflow.server.ts).
+      let publishedQ = (supabase as any).from("payroll_runs").select("id, name, status")
+        .eq("period_start", from).eq("period_end", to).in("status", ["finalized", "published"]);
       publishedQ = clientId ? publishedQ.eq("client_id", clientId) : publishedQ.is("client_id", null);
       const { data: publishedRun } = await publishedQ.maybeSingle();
       if (publishedRun) {
+        const isPublished = publishedRun.status === "published";
         toast.error(
-          `Periode ini udah di-publish sebagai payroll "${publishedRun.name}" — gak bisa commit ulang, angkanya udah final. Batalin publish run itu dulu di Payroll Run kalau emang perlu dikoreksi.`,
+          `Periode ini udah di-${isPublished ? "publish" : "finalize"} sebagai payroll "${publishedRun.name}" — gak bisa commit ulang, angkanya udah final. Batalin ${isPublished ? "publish" : "finalize"} run itu dulu di Payroll Run kalau emang perlu dikoreksi.`,
         );
         return;
       }

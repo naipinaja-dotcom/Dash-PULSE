@@ -3,6 +3,7 @@ import { buildDeliveryConfig, emptyDeliveryState } from "@/components/pricing-fo
 import { sanitizeDecimalInput, sanitizeTimeInput } from "@/components/pricing-form/shared";
 import { computeInteractive, defaultCalcInputs, type InteractiveCalcProps } from "@/components/pricing-form/interactive-calc";
 import { emptyAttendanceState } from "@/components/pricing-form/attendance-fields";
+import { emptyAreaCityState } from "@/components/pricing-form/area-city-fields";
 
 describe("sanitizeDecimalInput", () => {
   it("replaces comma with dot (ID keyboards type decimals with comma)", () => {
@@ -91,6 +92,8 @@ describe("computeInteractive (pricing scheme preview calculator)", () => {
       addKgOn: false,
       multiDropOn: false,
       multiDropFee: "0",
+      areaCityOn: false,
+      areaCity: emptyAreaCityState(),
       billingOn: false,
     };
 

@@ -5,7 +5,7 @@
 //  - rekap PER RIDER (buat preview)
 // Bisa dites terpisah dengan data contoh.
 // =========================================================
-import type { PricingEnvelope, StepTier, RangeRow, RangeDimensionConfig, ModularDeliveryConfig } from "./pricing-types";
+import type { PricingEnvelope, StepTier, RangeRow, RangeDimensionConfig, ModularDeliveryConfig, AreaCityPricing, AreaPricingRule } from "./pricing-types";
 
 // Bentuk baris data pengiriman (mengikuti tabel delivery_records)
 export interface DeliveryRow {
@@ -15,6 +15,10 @@ export interface DeliveryRow {
   delivery_date: string; // YYYY-MM-DD
   awb?: string | null;
   district?: string | null;
+  // Raw City dari MGMT (meta.city) — dasar pemilihan Area City Pricing.
+  // BEDA dari `district` (hasil enrichment alamat/ORS/PostGIS, lihat
+  // live-fee-deliveries.functions.ts) meski keduanya bisa kebetulan sama nilai.
+  city?: string | null;
   distance_km?: number | null;
   weight_kg?: number | null;
   destination_address?: string | null;
@@ -31,6 +35,11 @@ export interface RowFee {
   add_kg: number;
   multi_drop: number;
   fee: number; // base + add_kg + multi_drop
+  // Auditability Area City Pricing — cuma keisi kalau env.area_city_pricing
+  // aktif. `area_rule` = nama rule yang kepilih, atau "default" kalau City
+  // gak match rule manapun (fallback).
+  city?: string | null;
+  area_rule?: string | null;
 }
 
 export interface RiderLine {
@@ -386,6 +395,42 @@ export function bandLookupFee(rows: RangeRow[], value: number): { fee: number; b
   return { fee: bandFeeAt(fallback, fallbackHi), band: fallback };
 }
 
+// ---------------- Area City Pricing (resolver murni, lihat pricing-types.ts) ----------------
+export function normalizeCity(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** City kosong/gak match rule manapun (atau toggle OFF) → null = pakai pricing default scheme. */
+export function resolveAreaPricingRule(
+  acp: AreaCityPricing | null | undefined,
+  city: string | null | undefined,
+): AreaPricingRule | null {
+  if (!acp?.enabled) return null;
+  const nc = normalizeCity(city);
+  if (!nc) return null;
+  for (const rule of acp.rules) {
+    if (rule.cities.some((c) => normalizeCity(c) === nc)) return rule;
+  }
+  // Fallback prefix-insensitive — sama seperti findByKey/normArea buat district
+  // matching di atas: meta.city MGMT kadang ditulis "Kota X"/"Kabupaten X" di
+  // salah satu sisi (rule ATAU data asli), exact match di atas gak nangkep itu.
+  // >1 rule ke-match setelah prefix dibuang = ambigu, dianggap gak match sama
+  // sekali (bukan asal pilih salah satu rule).
+  const stripped = normArea(city);
+  if (!stripped) return null;
+  const candidates = acp.rules.filter((rule) => rule.cities.some((c) => normArea(c) === stripped));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/** Reuse bandLookupFee (band tunggal) — "flat" = base_fee polos, "per_km" =
+ * tier per-km diklem ke minimum_fee. Bukan formula baru, cuma orkestrasi. */
+export function calcAreaRuleFee(rule: AreaPricingRule, distanceKm: number): number {
+  if (rule.model === "flat") return Number(rule.rate) || 0;
+  const row: RangeRow = { type: "tier", from: 0, to: null, base_fee: 0, step: 1, add_per_step: Number(rule.rate) || 0 };
+  const { fee } = bandLookupFee([row], distanceKm);
+  return Math.max(fee, Number(rule.minimum_fee) || 0);
+}
+
 export function calcRangeComponent(
   rows: DeliveryRow[],
   dimCfg: RangeDimensionConfig,
@@ -576,6 +621,20 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     );
   }
 
+  // ---- Area City Pricing — override base fee PER BARIS berdasar City MGMT ----
+  // Additive di atas baseByRow yang SUDAH dihitung normal di atas: kalau OFF
+  // atau City gak match rule manapun, baseByRow gak disentuh (identik pricing
+  // default). Cuma delivery non-revenue_share yang relevan (revenue_share fee-nya
+  // % dari revenue client, bukan dari jarak/tarif area).
+  const areaRuleByRow: (string | null)[] = new Array(completed.length).fill(null);
+  if (env.area_city_pricing?.enabled && env.type !== "revenue_share") {
+    completed.forEach((r, i) => {
+      const rule = resolveAreaPricingRule(env.area_city_pricing, r.city);
+      areaRuleByRow[i] = rule ? rule.name : "default";
+      if (rule) baseByRow[i] = calcAreaRuleFee(rule, Number(r.distance_km) || 0);
+    });
+  }
+
   const idxOf = new Map<DeliveryRow, number>();
   completed.forEach((r, i) => idxOf.set(r, i));
 
@@ -605,6 +664,8 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     add_kg: addByRow[i],
     multi_drop: mdByRow[i],
     fee: baseByRow[i] + addByRow[i] + mdByRow[i],
+    city: r.city ?? null,
+    area_rule: areaRuleByRow[i],
   }));
 
   // ---- deteksi anomali sederhana — jangan gagalin komputasi, cuma diflag ----

@@ -92,6 +92,7 @@ export async function upsertLiveDeliveries(
     delivery_date: r.delivery_date,
     awb: r.awb,
     district: r.district,
+    city: r.city,
     distance_km: r.distance_km,
     weight_kg: r.weight_kg,
     destination_address: r.destination_address,

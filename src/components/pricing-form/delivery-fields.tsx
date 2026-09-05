@@ -24,7 +24,7 @@ import type {
 import { parseRupiah } from "@/lib/format";
 import { bandFeeAt } from "@/lib/pricing-calc";
 import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel, sanitizeDecimalInput } from "./shared";
-import { Plus, Ruler, Package } from "lucide-react";
+import { Plus, Ruler, Package, ChevronRight, SlidersHorizontal } from "lucide-react";
 
 // -------------------- State shapes (semua string, di-parse saat simpan) --------------------
 export interface RangeRowState {
@@ -710,14 +710,20 @@ export function DeliveryFields({
       )}
 
       {/* Pengaturan lain — unit basis & cara penentuan rate untuk baris Flat */}
-      <div className="rounded-md border border-border bg-card">
+      <div className="rounded-md border-2 border-primary-soft bg-primary-soft/40">
         <button
           type="button"
           onClick={() => setRateOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-foreground hover:bg-primary-soft/70 rounded-md transition-colors"
         >
-          {t("pfDelivery.otherSettingsToggle")}
-          <span className="text-[11px]">{rateOpen ? t("pfDelivery.close") : t("pfDelivery.open")}</span>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+          </span>
+          <ChevronRight className={"w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " + (rateOpen ? "rotate-90" : "")} />
+          <span className="flex flex-col flex-1">
+            <span className="text-sm font-semibold leading-tight">{t("pfDelivery.otherSettingsToggle")}</span>
+            <span className="text-[11px] font-normal text-muted-foreground">{t("pfDelivery.otherSettingsSubtitle")}</span>
+          </span>
         </button>
         {rateOpen && (
           <div className="px-3.5 pb-3.5 space-y-3">

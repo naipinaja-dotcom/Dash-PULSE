@@ -152,6 +152,11 @@ function toDeliveryRow(x: UpstreamRow): LiveDeliveryRow {
     // Enrichment koordinat (area_at_point, kalau teks alamat gak ke-detect)
     // kejadian belakangan di fetchLiveDeliveries() — lihat enrichDistrictsFromCoordinates.
     district: detectAreaFromAddress(dest.address) ?? (meta.city ?? null),
+    // Raw City MGMT, TERPISAH dari `district` (di atas boleh berisi hasil
+    // deteksi teks alamat/PostGIS, bukan cuma meta.city) — dasar Area City
+    // Pricing (lihat pricing-calc.ts resolveAreaPricingRule). Jangan disamakan
+    // walau kebetulan sering bernilai sama.
+    city: meta.city ?? null,
     distance_km: q.distance != null ? Number(q.distance) / 1000 : null, // API meter → km
     weight_kg: packages.length ? weightSum : (q.weight ?? null),
     destination_address: dest.address ?? null,

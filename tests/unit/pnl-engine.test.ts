@@ -74,12 +74,12 @@ describe("computePnl — client attendance murni (Alfagift regression)", () => {
 
   const clientScheme = scheme({
     id: "alfagift-client", client_id: "alfagift", scheme_for: "client", category: "attendance",
-    params: { version: 1, type: "attendance", add_kg: null, multi_drop: null, billing_addons: null,
+    params: { version: 1, type: "attendance", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
       config: { full_fee: 200000, standard_minutes: 480, incentives: [] } } as PricingScheme["params"],
   });
   const riderScheme = scheme({
     id: "alfagift-rider", client_id: "alfagift", scheme_for: "rider", category: "attendance",
-    params: { version: 1, type: "attendance", add_kg: null, multi_drop: null, billing_addons: null,
+    params: { version: 1, type: "attendance", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
       config: { full_fee: 100000, standard_minutes: 480, incentives: [{ amount: 40000, condition: "ontime_only" }] } } as PricingScheme["params"],
   });
 
@@ -124,12 +124,12 @@ describe("computePnl — rider revenue_share (Komu Komu Bakehouse regression)", 
 
   const clientScheme = scheme({
     id: "komu-client", client_id: "komu", scheme_for: "client", category: "delivery",
-    params: { version: 1, type: "flat_unit", add_kg: null, multi_drop: null, billing_addons: null,
+    params: { version: 1, type: "flat_unit", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
       config: { rate_by: "flat", flat_rate: 15000 } } as PricingScheme["params"],
   });
   const riderScheme = scheme({
     id: "komu-rider", client_id: "komu", scheme_for: "rider", category: "delivery",
-    params: { version: 1, type: "revenue_share", add_kg: null, multi_drop: null, billing_addons: null,
+    params: { version: 1, type: "revenue_share", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
       config: { percent_to_rider: 80 } } as PricingScheme["params"],
   });
 

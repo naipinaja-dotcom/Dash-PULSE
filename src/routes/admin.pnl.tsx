@@ -75,11 +75,20 @@ function PnlPage() {
     }
   };
 
-  const totRevenue = (rows ?? []).reduce((s, r) => s + (r.revenue ?? 0), 0);
-  const totCost = (rows ?? []).reduce((s, r) => s + r.cost, 0);
+  // "(tanpa client)" = delivery/attendance yang gak ke-link ke client manapun
+  // (data lama dari sebelum trigger auto-link client dari rider, lihat migration
+  // fill_delivery_client_from_rider) — revenue-nya SELALU null (gak ada skema
+  // yang bisa nyasar ke clientId palsu ini), jadi gak pernah nyumbang angka.
+  // Disembunyikan dari tabel biar gak nyepam; footnote di bawah tetap ngasih
+  // tau kalau ada, biar gak diam-diam kehilang dari radar admin.
+  const orphan = (rows ?? []).find((r) => r.clientId === "(tanpa client)") ?? null;
+  const visibleRows = (rows ?? []).filter((r) => r.clientId !== "(tanpa client)");
+
+  const totRevenue = visibleRows.reduce((s, r) => s + (r.revenue ?? 0), 0);
+  const totCost = visibleRows.reduce((s, r) => s + r.cost, 0);
   const totMargin = totRevenue - totCost;
   const totPct = totRevenue > 0 ? (totMargin / totRevenue) * 100 : 0;
-  const maxMargin = Math.max(1, ...(rows ?? []).map((r) => Math.abs(r.margin ?? 0)));
+  const maxMargin = Math.max(1, ...visibleRows.map((r) => Math.abs(r.margin ?? 0)));
 
   return (
     <AdminLayout title={t("margin.title")} subtitle={`${t("margin.subtitlePre")} ${from} → ${to} (${t("analytics.setPeriod")})`}>
@@ -130,9 +139,9 @@ function PnlPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 ? (
+                  {visibleRows.length === 0 ? (
                     <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
-                  ) : rows.map((r) => {
+                  ) : visibleRows.map((r) => {
                     const loss = r.marginPct !== null && r.marginPct < 0;
                     const thin = r.marginPct !== null && r.marginPct >= 0 && r.marginPct < 15;
                     const noRev = r.revenue === null;
@@ -162,7 +171,7 @@ function PnlPage() {
                     );
                   })}
                 </tbody>
-                {rows.length > 0 && (
+                {visibleRows.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-border bg-muted font-medium">
                       <td className="p-3">TOTAL</td>
@@ -181,6 +190,15 @@ function PnlPage() {
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-warning" />
             <span>Baris kuning = margin tipis (0–15%). Baris merah = 🔴 RUGI (cost lebih besar dari revenue). "Belum ada skema client" = revenue-nya belum bisa dihitung karena client itu belum punya skema pricing sisi client. Angka Revenue/Cost dihitung live dari skema + data pengiriman (belum termasuk PPN).</span>
           </div>
+          {orphan && (
+            <div className="flex items-start gap-2 mt-1.5 text-xs text-muted-foreground">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {orphan.deliveryCount.toLocaleString("id-ID")} pengiriman ({orphan.driverCount.toLocaleString("id-ID")} rider) di rentang ini gak ke-link ke client manapun (data lama) —
+                disembunyikan dari tabel di atas, gak dihitung ke Revenue/Cost/Margin.
+              </span>
+            </div>
+          )}
           </>
           )}
 
@@ -198,9 +216,9 @@ function PnlPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 ? (
+                  {visibleRows.length === 0 ? (
                     <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
-                  ) : rows.map((r) => (
+                  ) : visibleRows.map((r) => (
                     <tr key={r.clientId} className="border-t border-border">
                       <td className="p-3 font-medium">{r.client}</td>
                       <td className="p-3 text-right">{r.revenue === null ? <span className="text-muted-foreground">— belum ada skema client</span> : formatRupiah(r.revenue)}</td>
@@ -210,14 +228,14 @@ function PnlPage() {
                     </tr>
                   ))}
                 </tbody>
-                {rows.length > 0 && (
+                {visibleRows.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-border bg-muted font-medium">
                       <td className="p-3">TOTAL</td>
                       <td className="p-3 text-right">{formatRupiah(totRevenue)}</td>
-                      <td className="p-3 text-right">{rows.reduce((s, r) => s + r.deliveryCount, 0).toLocaleString("id-ID")}</td>
+                      <td className="p-3 text-right">{visibleRows.reduce((s, r) => s + r.deliveryCount, 0).toLocaleString("id-ID")}</td>
                       <td className="p-3 text-right">{formatRupiah(totCost)}</td>
-                      <td className="p-3 text-right">{rows.reduce((s, r) => s + r.driverCount, 0).toLocaleString("id-ID")}</td>
+                      <td className="p-3 text-right">{visibleRows.reduce((s, r) => s + r.driverCount, 0).toLocaleString("id-ID")}</td>
                     </tr>
                   </tfoot>
                 )}

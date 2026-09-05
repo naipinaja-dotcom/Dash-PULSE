@@ -110,9 +110,9 @@
   --chart-grad-to: oklch(0.44 0.20 290);
   --brutal-accent: #f6c445;
   /* Gradients are reserved for depth, never for data text. */
-  /* Neo Brutal ground stays neutral: cream into cool paper-blue.  Violet is
-     reserved for active controls and workflow cues, never a page-wide haze. */
-  --page-gradient: linear-gradient(135deg, oklch(0.987 0.022 88) 0%, oklch(0.978 0.014 92) 48%, oklch(0.964 0.022 245) 100%);
+  /* The workspace canvas stays quiet so dense operational information owns
+     the visual hierarchy. Neo-brutal character lives on the components. */
+  --page-gradient: var(--background);
   --surface-gradient: linear-gradient(150deg, oklch(0.998 0.006 88), oklch(0.976 0.014 245));
 }
 
@@ -163,10 +163,7 @@
   /* Distep ulang buat surface gelap (bukan dibalik otomatis) — lihat :root. */
   --chart-grad-from: oklch(0.72 0.20 290);
   --chart-grad-to: oklch(0.52 0.18 290);
-  --page-gradient:
-    radial-gradient(ellipse 76% 46% at 92% -12%, color-mix(in oklch, var(--color-primary) 18%, transparent), transparent 70%),
-    radial-gradient(ellipse 52% 34% at -6% 106%, color-mix(in oklch, var(--color-success) 8%, transparent), transparent 74%),
-    var(--color-background);
+  --page-gradient: var(--background);
   --surface-gradient: linear-gradient(145deg, color-mix(in oklch, var(--color-card) 92%, white), var(--color-card));
 }
 
@@ -230,30 +227,14 @@
     background: var(--page-gradient);
   }
 
-  /* Neo Brutal keeps the finance workspace illustration from the approved
-     localhost design for LIGHT mode.  It is an absolute layer, so it never
-     creates unused page height or competes with the operational data above
-     it. Dark mode swaps to the deep-dark frame backdrop below — the
-     near-black frame image would just look like a rendering bug sitting on
-     light mode's cream ground. */
+  /* Operational screens are dense by nature. Keep the neo-brutal character
+     in the ink borders, hard shadows and color hierarchy—not a decorative
+     wallpaper competing with tables, payroll and reconciliation data. */
   .admin-shell::before {
-    content: "";
-    position: absolute;
-    z-index: 0;
-    inset: 3.5rem 0 0;
-    pointer-events: none;
-    opacity: .6;
-    background: url('/neobrutalism-frame-light.png') center center / cover no-repeat fixed;
-    mix-blend-mode: multiply;
+    display: none;
   }
-  /* Deep-dark frame of bold flat shapes, darkened only in its background
-     fill (not the shapes — they stay at full saturation) so it reads as a
-     wallpaper behind the UI instead of competing with it. Fixed so the
-     frame's own empty middle stays roughly where content sits when scrolled. */
   .dark .admin-shell::before {
-    opacity: .85;
-    background: url('/neobrutalism-frame-bg.jpg') center center / cover no-repeat fixed;
-    mix-blend-mode: normal;
+    display: none;
   }
 
   .admin-shell h1,
@@ -281,16 +262,15 @@
     box-shadow: 6px 6px 0 0 var(--color-border-strong);
     transition: transform .18s cubic-bezier(.22, 1, .36, 1), box-shadow .18s ease;
   }
-  /* Tone = meaning (which stat this is); tilt direction just alternates by position. */
-  .admin-stat-card:nth-child(odd) { transform: rotate(-1.1deg); }
-  .admin-stat-card:nth-child(even) { transform: rotate(0.9deg); }
+  /* A consistent baseline makes financial comparisons easier. The brutal
+     treatment remains in the outline and shadow; cards do not tilt. */
   .admin-stat-card[data-tone="neutral"] { background: var(--surface-gradient); color: var(--color-foreground); }
   .admin-stat-card[data-tone="primary"] { background: var(--color-primary); color: var(--color-primary-foreground); }
   .admin-stat-card[data-tone="success"] { background: var(--color-success); color: var(--color-success-foreground); }
   .admin-stat-card[data-tone="destructive"] { background: var(--color-destructive); color: var(--color-destructive-foreground); }
   .admin-stat-card:hover {
-    transform: rotate(0deg) translate(-2px, -2px);
-    box-shadow: 9px 9px 0 0 var(--color-border-strong);
+    transform: translate(-1px, -1px);
+    box-shadow: 7px 7px 0 0 var(--color-border-strong);
   }
   .admin-stat-card [data-eyebrow], .admin-stat-card .text-muted-foreground { color: inherit; opacity: .8; }
   .stat-icon-chip { background: color-mix(in oklch, currentColor 18%, transparent); border: 3px solid currentColor; }
@@ -315,9 +295,7 @@
     box-shadow: 6px 6px 0 0 var(--color-border-strong);
     transition: transform .18s cubic-bezier(.22, 1, .36, 1), box-shadow .18s ease;
   }
-  .admin-kpi-card:nth-child(odd) { transform: rotate(-0.8deg); }
-  .admin-kpi-card:nth-child(even) { transform: rotate(0.7deg); }
-  .admin-kpi-card:hover { transform: rotate(0deg) translate(-2px, -2px); box-shadow: 9px 9px 0 0 var(--color-border-strong); }
+  .admin-kpi-card:hover { transform: translate(-1px, -1px); box-shadow: 7px 7px 0 0 var(--color-border-strong); }
   .admin-kpi-card[data-variant="default"] { background: var(--surface-gradient); color: var(--color-foreground); }
   .admin-kpi-card[data-variant="primary"] { background: var(--color-primary); color: var(--color-primary-foreground); }
   .admin-kpi-card[data-variant="muted"] { background: var(--color-secondary); color: var(--color-foreground); }
@@ -374,8 +352,8 @@
   }
 
   .admin-chart-card:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 8px 8px 0 0 var(--color-border-strong);
+    transform: translate(-1px, -1px);
+    box-shadow: 7px 7px 0 0 var(--color-border-strong);
   }
 
   .admin-chart-card .recharts-cartesian-grid-horizontal line,
@@ -764,6 +742,11 @@
     color: var(--color-muted-foreground);
   }
   .admin-content :is(th, [data-eyebrow]) { font-weight: 700; }
+  .admin-content th {
+    font-size: .6875rem;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
   .admin-content th.text-muted-foreground,
   .admin-content td.text-muted-foreground { color: var(--color-foreground) !important; }
   .admin-content :is(input, select, textarea)::placeholder { color: color-mix(in oklch, var(--color-foreground) 58%, var(--color-card)); opacity: 1; }

@@ -284,12 +284,15 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     mock.tables.riders = [
       { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
     ];
+    // Periode HARUS nyampe tgl>=28 (lihat monthsClosedOutBy) biar run ini
+    // beneran "nutup" bulan Juli — run yang cuma numpang lewat tengah bulan
+    // sekarang di-skip total buat monthly_once, gak nyampe ke query dedup ini.
     mock.tables.delivery_records = [
       {
         rider_id: "r1",
         driver_code: null,
         fee: 100000,
-        delivery_date: "2026-07-22",
+        delivery_date: "2026-07-29",
         client_id: "client-1",
         status: "COMPLETED",
       },
@@ -306,12 +309,55 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
         trigger_frequency: "monthly_once", applies_to_all: true,
       },
     ];
-    // Udah pernah kepotong BPJS bulan ini (Juli 2026) di run LAIN (client-9, periode beda)
-    mock.tables.payroll_runs = [{ id: "old-run", period_end: "2026-07-10" }];
+    // Udah pernah kepotong BPJS bulan ini (Juli 2026) di run LAIN (client-9,
+    // siklus bulanan penuh — period-nya juga nyampe tgl>=28, jadi beneran
+    // "nutup" Juli yang sama).
+    mock.tables.payroll_runs = [{ id: "old-run", period_start: "2026-07-01", period_end: "2026-07-31" }];
     mock.tables.payroll_details = [{ id: "old-detail", run_id: "old-run", rider_id: "r1" }];
     mock.tables.payroll_deductions = [{ detail_id: "old-detail", deduction_type_id: "bpjs" }];
 
-    return generatePayrollDetails(run(), mock.client as any).then(() => {
+    return generatePayrollDetails(run({ period_start: "2026-07-24", period_end: "2026-07-30" }), mock.client as any).then(() => {
+      const deds = mock.inserted.payroll_deductions ?? [];
+      expect(deds.find((d) => d.deduction_type_id === "bpjs")).toBeUndefined();
+    });
+  });
+
+  it("auto_recurring trigger_frequency='monthly_once' (BPJS): run mingguan yang numpang lewat pergantian bulan gak kepotong lagi (regresi Alfagift)", () => {
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
+    ];
+    mock.tables.delivery_records = [
+      {
+        rider_id: "r1",
+        driver_code: null,
+        fee: 100000,
+        delivery_date: "2026-09-02",
+        client_id: "client-1",
+        status: "COMPLETED",
+      },
+    ];
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [];
+    mock.tables.deduction_types = [
+      {
+        id: "bpjs",
+        name: "BPJS JKK",
+        recurring_amount: 16800,
+        active: true,
+        auto_recurring: true,
+        trigger_frequency: "monthly_once", applies_to_all: true,
+      },
+    ];
+    // Run minggu sebelumnya (24-30 Agu) udah nutup Agustus & udah kepotong BPJS.
+    mock.tables.payroll_runs = [{ id: "old-run", period_start: "2026-08-24", period_end: "2026-08-30" }];
+    mock.tables.payroll_details = [{ id: "old-detail", run_id: "old-run", rider_id: "r1" }];
+    mock.tables.payroll_deductions = [{ detail_id: "old-detail", deduction_type_id: "bpjs" }];
+
+    // Run ini (31 Agu - 6 Sep) numpang lewat pergantian bulan — di bawah logic
+    // LAMA bakal keitung "September" (bulan baru, belum pernah kepotong) dan
+    // kena BPJS lagi. Di bawah logic BARU, run ini nutup Agustus (ngelewatin
+    // tgl 31), yang udah kepotong duluan sama old-run -> harus di-skip.
+    return generatePayrollDetails(run({ period_start: "2026-08-31", period_end: "2026-09-06" }), mock.client as any).then(() => {
       const deds = mock.inserted.payroll_deductions ?? [];
       expect(deds.find((d) => d.deduction_type_id === "bpjs")).toBeUndefined();
     });
@@ -321,12 +367,16 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     mock.tables.riders = [
       { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
     ];
+    // Periode HARUS nyampe tgl>=28 (lihat monthsClosedOutBy) biar run ini
+    // beneran "nutup" bulan Juli — run yang cuma numpang lewat tengah bulan
+    // sekarang sengaja di-skip total buat monthly_once (regresi BPJS Alfagift
+    // kepotong 2x pas periode mingguan nabrak pergantian bulan).
     mock.tables.delivery_records = [
       {
         rider_id: "r1",
         driver_code: null,
         fee: 100000,
-        delivery_date: "2026-07-22",
+        delivery_date: "2026-07-29",
         client_id: "client-1",
         status: "COMPLETED",
       },
@@ -347,7 +397,7 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     mock.tables.payroll_details = [];
     mock.tables.payroll_deductions = [];
 
-    return generatePayrollDetails(run(), mock.client as any).then(() => {
+    return generatePayrollDetails(run({ period_start: "2026-07-24", period_end: "2026-07-30" }), mock.client as any).then(() => {
       const ded = mock.inserted.payroll_deductions.find((d: any) => d.deduction_type_id === "bpjs");
       expect(ded?.amount).toBe(16800);
     });

@@ -165,6 +165,31 @@ function monthlyDueDays(
   return totalDays;
 }
 
+// Bulan kalender yang "ditutup" sama periode run ini — dipakai buat dedup
+// auto-recurring "monthly_once" (BPJS). Threshold tgl>=28 (bukan nunggu hari
+// TERAKHIR pasti, 28/29/30/31 beda-beda per bulan) sengaja dibikin toleran:
+// run mingguan yang numpang lewat pergantian bulan (mis. 31 Agu-6 Sep) tetap
+// keitung "nutup Agustus" (ngelewatin tgl 31, yang >=28), BUKAN "nutup
+// September" (belum nyentuh tgl 28-30 Sep sama sekali) — beda dari cek lama
+// yang asal liat bulan period_end doang, jadi run kayak gini keitung bulan
+// baru padahal bulan sebelumnya udah ketagih duluan sama run sebelumnya
+// (regresi: BPJS Alfagift kepotong 2x beda 7 hari pas periode mingguan
+// nabrak pergantian bulan). Karena thresholdnya cuma 4 hari (28-31) dan run
+// gak overlap, gak mungkin 2 run beda sekaligus "nutup" bulan yang sama.
+export function monthsClosedOutBy(periodStart: string, periodEnd: string, thresholdDay = 28): string[] {
+  const start = new Date(`${periodStart}T00:00:00Z`);
+  const end = new Date(`${periodEnd}T00:00:00Z`);
+  const months = new Set<string>();
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    if (cursor.getUTCDate() >= thresholdDay) {
+      months.add(cursor.toISOString().slice(0, 7));
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return [...months];
+}
+
 // `client` opsional: default-nya client browser (anon) yang dipakai selama ini
 // dari Hitung Fee/Payroll Run. Cron/workflow server-only (gak ada session admin)
 // wajib kirim getSupabaseAdmin() di sini — lihat payroll-workflow.server.ts.
@@ -281,15 +306,29 @@ export async function generatePayrollDetails(
   const monthlyTypeIds = ((autoTypes ?? []) as any[])
     .filter((t) => t.trigger_frequency === "monthly_once")
     .map((t) => t.id);
+  // Bulan yang beneran ditutup sama run ini (lihat monthsClosedOutBy) — kosong
+  // artinya run ini cuma "numpang lewat" tengah bulan, monthly_once SEMUA
+  // di-skip di run ini (lihat pemakaian di bawah), nunggu run yang beneran
+  // nutup bulannya.
+  const closedOutMonths = monthsClosedOutBy(run.period_start, run.period_end);
   const chargedThisMonth = new Set<string>();
-  if (monthlyTypeIds.length > 0 && riderIds.length > 0) {
-    const runMonth = run.period_end.slice(0, 7); // 'YYYY-MM'
-    const monthStart = `${runMonth}-01`;
-    const monthEnd = new Date(Number(runMonth.slice(0, 4)), Number(runMonth.slice(5, 7)), 0)
-      .toISOString().slice(0, 10); // hari terakhir bulan itu
-    const { data: runsThisMonth } = await (client as any).from("payroll_runs")
-      .select("id").gte("period_end", monthStart).lte("period_end", monthEnd).neq("id", run.id);
-    const runIdsThisMonth = (runsThisMonth ?? []).map((r: { id: string }) => r.id);
+  if (monthlyTypeIds.length > 0 && riderIds.length > 0 && closedOutMonths.length > 0) {
+    const monthEndDates = closedOutMonths.map((m) => {
+      const [y, mo] = m.split("-").map(Number);
+      return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); // hari terakhir bulan itu
+    });
+    const rangeLo = `${closedOutMonths[0]}-01`;
+    const rangeHi = monthEndDates[monthEndDates.length - 1];
+    // Kandidat run lain yang overlap rentang bulan ini — masih di-filter lagi
+    // di bawah (recompute closedOutMonths run itu sendiri), overlap doang
+    // belum tentu run itu yang BENERAN nutup bulannya.
+    const { data: candidateRuns } = await (client as any).from("payroll_runs")
+      .select("id, period_start, period_end")
+      .neq("id", run.id)
+      .lte("period_start", rangeHi).gte("period_end", rangeLo);
+    const runIdsThisMonth = ((candidateRuns ?? []) as { id: string; period_start: string; period_end: string }[])
+      .filter((r) => monthsClosedOutBy(r.period_start, r.period_end).some((m) => closedOutMonths.includes(m)))
+      .map((r) => r.id);
     if (runIdsThisMonth.length > 0) {
       const { data: detailsThisMonth } = await (client as any).from("payroll_details")
         .select("id, rider_id").in("run_id", runIdsThisMonth).in("rider_id", riderIds);
@@ -595,7 +634,11 @@ export async function generatePayrollDetails(
     // kepotong di run client itu, sama logikanya kayak matchesClient di atas.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const autoApplicable = ((autoTypes ?? []) as any[]).filter((t) => {
-      if (t.trigger_frequency === "monthly_once" && chargedThisMonth.has(`${rider.id}|${t.id}`)) return false;
+      // closedOutMonths kosong = run ini gak nutup bulan manapun (numpang
+      // lewat tengah bulan doang) — monthly_once nunggu run yang beneran
+      // nutup bulannya, bukan asal kepotong di run pertama yang ketemu.
+      if (t.trigger_frequency === "monthly_once" &&
+        (closedOutMonths.length === 0 || chargedThisMonth.has(`${rider.id}|${t.id}`))) return false;
       if (t.applies_to_all) return true;
       const key = `${t.id}|${rider.id}`;
       return enrolledSet.has(key) && matchesClient(enrolledClient.get(key));

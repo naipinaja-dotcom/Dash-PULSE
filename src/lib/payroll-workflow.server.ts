@@ -90,6 +90,7 @@ interface FeeAutoComputeResult {
 export interface PayrollWorkflowResult {
   runs: PayrollWorkflowRunResult[];
   skippedClients: string[]; // "Client (periode)" yang run-nya udah finalized/published, gak disentuh
+  emptyClients: string[]; // "Client (periode)" jatuh tempo tapi 0 aktivitas (delivery/attendance) — beda kasus dari skippedClients, jangan digabung biar pesannya gak menyesatkan
   runLogId?: string; // id row payroll_workflow_runs (log), diisi setelah insert
 }
 
@@ -147,8 +148,14 @@ export function nowInWib(rawNow: Date = new Date()): Date {
 // jendela ±7 menit dari SATU tick terdekat) — toleransi 15 penuh bakal bikin
 // 2 tick sekaligus match & proses dobel (aman sih karena findOrCreatePayrollRun
 // idempotent, tapi buang-buang kerjaan).
-export function matchesRunTime(nowMinutesOfDay: number, runTime: string | null, toleranceMinutes = 7): boolean {
-  const [rawH, rawM] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00").split(":").map(Number);
+export function matchesRunTime(
+  nowMinutesOfDay: number,
+  runTime: string | null,
+  toleranceMinutes = 7,
+): boolean {
+  const [rawH, rawM] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00")
+    .split(":")
+    .map(Number);
   // Clamp: regex hanya cek format, bukan rentang (mis. "23:99" lolos regex).
   // Tanpa ini, target bisa >1439 dan bikin `1440 - diff` negatif -> false match di jam manapun.
   const h = Math.min(23, Math.max(0, rawH || 0));
@@ -160,7 +167,9 @@ export function matchesRunTime(nowMinutesOfDay: number, runTime: string | null, 
 
 async function loadClientPeriodSchedules(
   admin: SupabaseAdmin,
-): Promise<Map<string, { start: number; end: number; closeSameDay: boolean; runTime: string | null }[]>> {
+): Promise<
+  Map<string, { start: number; end: number; closeSameDay: boolean; runTime: string | null }[]>
+> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (admin as any)
     .from("payroll_reminder_schedules")
@@ -170,7 +179,10 @@ async function loadClientPeriodSchedules(
     .eq("active", true);
   if (error) throw new Error(`Gagal ambil jadwal periode: ${error.message}`);
 
-  const byClient = new Map<string, { start: number; end: number; closeSameDay: boolean; runTime: string | null }[]>();
+  const byClient = new Map<
+    string,
+    { start: number; end: number; closeSameDay: boolean; runTime: string | null }[]
+  >();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const s of (data ?? []) as any[]) {
     const arr = byClient.get(s.client_id) ?? [];
@@ -290,7 +302,8 @@ async function autoComputeFee(
       if (!clientScheme || clientScheme.category !== "delivery") {
         return {
           computed: false,
-          reason: "Skema Revenue Share butuh skema Client (Per Pengiriman) aktif untuk client & periode ini",
+          reason:
+            "Skema Revenue Share butuh skema Client (Per Pengiriman) aktif untuk client & periode ini",
         };
       }
       clientRevenueByRow = calcScheme(clientScheme.params, deliveryRows).perRow.map((r) => r.fee);
@@ -470,12 +483,12 @@ function buildNotification(result: PayrollWorkflowResult): {
   text: string;
   html: string;
 } {
-  const { runs, skippedClients } = result;
+  const { runs, skippedClients, emptyClients } = result;
   const totalWarnings = runs.reduce((s, r) => s + r.warnings.length, 0);
   const today = new Date().toISOString().slice(0, 10);
   const subject = `Payroll Workflow — ${today}`;
   const lines = [`*💸 Payroll Workflow — ${today}*`];
-  if (runs.length === 0) {
+  if (runs.length === 0 && emptyClients.length === 0) {
     lines.push("Gak ada periode yang jatuh tempo hari ini.");
   }
   for (const r of runs) {
@@ -492,6 +505,10 @@ function buildNotification(result: PayrollWorkflowResult): {
   }
   if (skippedClients.length)
     lines.push(`Dilewati (udah finalized/published): ${skippedClients.join(", ")}`);
+  if (emptyClients.length)
+    lines.push(
+      `⚠️ Jatuh tempo tapi 0 aktivitas (cek delivery/attendance belum sync?): ${emptyClients.join(", ")}`,
+    );
   lines.push(`Total warning: ${totalWarnings}. Cek Payroll Run untuk review sebelum publish.`);
   const text = lines.join("\n");
 
@@ -510,8 +527,9 @@ function buildNotification(result: PayrollWorkflowResult): {
   const html = `
   <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
     <h2>Payroll Workflow — ${today}</h2>
-    ${runs.length ? `<ul>${runRows}</ul>` : "<p>Gak ada periode yang jatuh tempo hari ini.</p>"}
+    ${runs.length ? `<ul>${runRows}</ul>` : emptyClients.length ? "" : "<p>Gak ada periode yang jatuh tempo hari ini.</p>"}
     ${skippedClients.length ? `<p>Dilewati (udah finalized/published): ${skippedClients.join(", ")}</p>` : ""}
+    ${emptyClients.length ? `<p style="color:#b8791f">⚠️ Jatuh tempo tapi 0 aktivitas (cek delivery/attendance belum sync?): ${emptyClients.join(", ")}</p>` : ""}
     <p>Total warning: ${totalWarnings}. Cek halaman Payroll Run untuk review sebelum publish.</p>
     <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash PULSE — Payroll Workflow.</p>
   </div>`;
@@ -546,6 +564,7 @@ export async function runPayrollWorkflow(opts: {
 
   const runs: PayrollWorkflowRunResult[] = [];
   const skippedClients: string[] = [];
+  const emptyClients: string[] = [];
   let hardError: string | null = null;
 
   try {
@@ -592,7 +611,16 @@ export async function runPayrollWorkflow(opts: {
         );
 
         const { detailCount } = await generatePayrollDetails(run, admin as never);
-        if (detailCount === 0) continue; // gak ada aktivitas periode ini — bukan warning, cuma dilewati diam-diam
+        if (detailCount === 0) {
+          // Jatuh tempo tapi 0 aktivitas (delivery/attendance belum sync) —
+          // BUKAN silent skip lagi (dulu di sini, gak kecatat di mana pun,
+          // admin gak ada cara tau kenapa client ini gak pernah muncul di
+          // notif/log walau jadwalnya udah lewat). Tetap dilewati (gak
+          // masuk `runs`, run draft-nya dibiarkan kosong nunggu retry tick
+          // berikutnya), tapi sekarang kecatat biar keliatan di notif & log.
+          emptyClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
+          continue;
+        }
 
         const { warnings, totalGross, totalNet } = await validateRun(admin, run);
         const audit = await runAudit(
@@ -622,16 +650,22 @@ export async function runPayrollWorkflow(opts: {
     hardError = (e as Error).message;
   }
 
-  const result: PayrollWorkflowResult = { runs, skippedClients };
+  const result: PayrollWorkflowResult = { runs, skippedClients, emptyClients };
   // Cron sekarang polling tiap 15 menit (dulu 4x/hari) — kalau tiap tick
   // kosong (gak ada yang jatuh tempo, gak ada error) tetap kirim notif,
   // Slack/email kebanjiran "gak ada periode" puluhan kali sehari. Trigger
   // manual/event (aksi eksplisit admin) tetap dikasih notif walau hasilnya
   // kosong, itu bukan noise — itu konfirmasi dari aksi yang mereka minta.
-  const isEmptyCronTick = opts.triggeredBy === "cron" && runs.length === 0 && !hardError;
+  // emptyClients TIDAK ikut nge-gate ini kosong — itu justru sinyal ada
+  // client jatuh tempo yang datanya belum siap, admin perlu tau tiap tick
+  // sampai datanya beres atau di-generate manual.
+  const isEmptyCronTick =
+    opts.triggeredBy === "cron" && runs.length === 0 && emptyClients.length === 0 && !hardError;
   const notif = buildNotification(result);
   const slackResult = isEmptyCronTick ? null : await sendSlackMessage(notif.text);
-  const emailResult = isEmptyCronTick ? null : await sendEmail({ subject: notif.subject, html: notif.html });
+  const emailResult = isEmptyCronTick
+    ? null
+    : await sendEmail({ subject: notif.subject, html: notif.html });
 
   const status = hardError ? (runs.length > 0 ? "partial" : "failed") : "completed";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -675,23 +709,43 @@ export async function runFeeAndPayrollForPeriod(opts: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any)
       .from("pricing_schemes")
-      .select("id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at"),
+      .select(
+        "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
+      ),
   ]);
-  if (clientErr || !client) throw new Error(`Client tidak ditemukan: ${clientErr?.message ?? opts.clientId}`);
+  if (clientErr || !client)
+    throw new Error(`Client tidak ditemukan: ${clientErr?.message ?? opts.clientId}`);
   const schemes: PricingScheme[] = (schemesRaw ?? []).map(normalize);
 
   const run = await findOrCreatePayrollRun(
-    { clientId: client.id, clientName: client.name, periodStart: opts.periodStart, periodEnd: opts.periodEnd },
+    {
+      clientId: client.id,
+      clientName: client.name,
+      periodStart: opts.periodStart,
+      periodEnd: opts.periodEnd,
+    },
     admin as never,
   );
   if (run.status !== "draft") return { skipped: `Run udah berstatus ${run.status}` };
 
-  const feeResult = await autoComputeFee(admin, schemes, client.id, opts.periodStart, opts.periodEnd);
+  const feeResult = await autoComputeFee(
+    admin,
+    schemes,
+    client.id,
+    opts.periodStart,
+    opts.periodEnd,
+  );
   const { detailCount } = await generatePayrollDetails(run, admin as never);
   if (detailCount === 0) return { skipped: "Gak ada aktivitas delivery/attendance di periode ini" };
 
   const { warnings, totalGross, totalNet } = await validateRun(admin, run);
-  const audit = await runAudit({ ...run, clientName: client.name }, detailCount, totalGross, totalNet, warnings);
+  const audit = await runAudit(
+    { ...run, clientName: client.name },
+    detailCount,
+    totalGross,
+    totalNet,
+    warnings,
+  );
 
   return {
     runId: run.id,

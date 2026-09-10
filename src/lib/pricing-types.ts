@@ -120,7 +120,8 @@ export const DELIVERY_DIMENSIONS: DeliveryDimensionOption[] = [
     name: "Weight",
     desc: "Tarif berdasarkan berat (kg) — atau kelipatan per store",
     icon: "Package",
-    callout: "Sama seperti Distance, atau mode 'Kelipatan per Store' (grouping per area, dibagi threshold).",
+    callout:
+      "Sama seperti Distance, atau mode 'Kelipatan per Store' (grouping per area, dibagi threshold).",
   },
 ];
 
@@ -167,7 +168,8 @@ export const PRICING_CATEGORIES: PricingCategoryOption[] = [
     name: "Per Kehadiran",
     desc: "Base harian + komponen (± kiriman)",
     icon: "CalendarDays",
-    callout: "Base fee harian proporsional jam kerja + insentif opsional. Bisa tambah komponen per kiriman.",
+    callout:
+      "Base fee harian proporsional jam kerja + insentif opsional. Bisa tambah komponen per kiriman.",
   },
   // "hybrid" tidak muncul di UI lagi — scheme lama tetap terbaca.
   // Skema baru pakai category "attendance" + delivery_component toggle.
@@ -199,7 +201,10 @@ export function pricingLabel(category: PricingCategory, subtype: PricingSubtype)
  * - "tier" / "tier_daily" → Distance + Weight (tier lama support dua-duanya)
  * - "threshold_multiple" → Weight (mode threshold_group)
  */
-export function calcTypeToCategory(calcType: string): { category: PricingCategory; subtype: PricingSubtype } {
+export function calcTypeToCategory(calcType: string): {
+  category: PricingCategory;
+  subtype: PricingSubtype;
+} {
   switch (calcType) {
     case "flat_unit":
       return { category: "delivery", subtype: { distance: true, weight: false } };
@@ -292,6 +297,15 @@ export interface PricingEnvelope {
   // Hanya relevan untuk category "delivery" (bukan revenue_share/attendance).
   // null/enabled=false → pricing default scheme (perilaku identik sebelum fitur ini).
   area_city_pricing: AreaCityPricing | null;
+  // Scope scheme INI SENDIRI (bukan override rate di dalamnya, beda dari
+  // area_city_pricing) ke City tertentu — dipakai buat 1 client punya
+  // BEBERAPA scheme delivery aktif sekaligus, beda calc_type per city (mis.
+  // "Tier — Jakarta" vs "Flat — Bali"). null/[] = scheme default (fallback
+  // buat city yang gak match scheme manapun). Cuma relevan buat category
+  // "delivery" — lihat resolveSchemeForCity/calcDeliveryFeeMultiCity di
+  // pricing-calc.ts. Attendance/hybrid belum bisa di-scope (attendance_logs
+  // gak punya kolom city sama sekali).
+  city_scope: string[] | null;
 }
 
 export interface PricingScheme {
@@ -306,4 +320,7 @@ export interface PricingScheme {
   effective_to: string | null;
   params: PricingEnvelope;
   created_at: string;
+  // Diflatten dari params.city_scope saat normalize() — lihat komentar di
+  // PricingEnvelope.city_scope di atas.
+  city_scope: string[] | null;
 }

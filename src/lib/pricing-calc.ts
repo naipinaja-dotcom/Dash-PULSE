@@ -5,7 +5,16 @@
 //  - rekap PER RIDER (buat preview)
 // Bisa dites terpisah dengan data contoh.
 // =========================================================
-import type { PricingEnvelope, StepTier, RangeRow, RangeDimensionConfig, ModularDeliveryConfig, AreaCityPricing, AreaPricingRule } from "./pricing-types";
+import type {
+  PricingEnvelope,
+  StepTier,
+  RangeRow,
+  RangeDimensionConfig,
+  ModularDeliveryConfig,
+  AreaCityPricing,
+  AreaPricingRule,
+  PricingScheme,
+} from "./pricing-types";
 
 // Bentuk baris data pengiriman (mengikuti tabel delivery_records)
 export interface DeliveryRow {
@@ -80,7 +89,10 @@ function buildSkippedPerRider<T extends { status?: string | null }>(
     const k = keyOf(r);
     const line = skipMap.get(k) ?? { rider: k, count: 0, statuses: {} };
     line.count++;
-    const st = String(r.status ?? "").trim().toUpperCase() || "(KOSONG)";
+    const st =
+      String(r.status ?? "")
+        .trim()
+        .toUpperCase() || "(KOSONG)";
     line.statuses[st] = (line.statuses[st] ?? 0) + 1;
     skipMap.set(k, line);
   }
@@ -91,7 +103,14 @@ export interface CalcResult {
   perRow: RowFee[]; // 1 entri per baris COMPLETED (buat commit ke DB)
   perRider: RiderLine[];
   subtotal: number;
-  billing?: { floored: boolean; admin_fee: number; management_fee: number; insurance_fee: number; ppn: number; final: number };
+  billing?: {
+    floored: boolean;
+    admin_fee: number;
+    management_fee: number;
+    insurance_fee: number;
+    ppn: number;
+    final: number;
+  };
   grandTotal: number;
   completedRows: number;
   skippedRows: number;
@@ -131,12 +150,27 @@ function applyBillingAddons(
   const beforeTax = amt + management + admin + insurance;
   const ppn = beforeTax * ((Number(billingAddons.ppn_percent) || 0) / 100);
   const grandTotal = beforeTax + ppn;
-  return { billing: { floored, admin_fee: admin, management_fee: management, insurance_fee: insurance, ppn, final: grandTotal }, grandTotal };
+  return {
+    billing: {
+      floored,
+      admin_fee: admin,
+      management_fee: management,
+      insurance_fee: insurance,
+      ppn,
+      final: grandTotal,
+    },
+    grandTotal,
+  };
 }
 
 // ---------------- helpers ----------------
-const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) => r.rider_id || r.driver_code || "(tanpa rider)";
+const norm = (s: unknown) =>
+  String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) =>
+  r.rider_id || r.driver_code || "(tanpa rider)";
 export const isCompleted = (r: { status?: string | null }) => norm(r.status) === "completed";
 
 // Override tarif per-area ditulis manual pakai prefix administratif ("Kota
@@ -165,7 +199,8 @@ function findByKey(items: any[], value: string): any {
 function resolveField(row: DeliveryRow, columnName: string): string {
   const c = norm(columnName);
   if (c.includes("service") || c.includes("layanan")) return String(row.service_type ?? "");
-  if (c.includes("return") || c.includes("delivery type") || c.includes("tipe kirim")) return String(row.delivery_type ?? "");
+  if (c.includes("return") || c.includes("delivery type") || c.includes("tipe kirim"))
+    return String(row.delivery_type ?? "");
   return String(row.district ?? "");
 }
 
@@ -178,7 +213,10 @@ function resolveField(row: DeliveryRow, columnName: string): string {
 // cuma berisi DELIVERY/RETURN, gak ada nama area) gak kepengaruh — fallback
 // district cuma jalan kalau match delivery_type gagal duluan.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function resolveRateHit(row: DeliveryRow, rateSettings: { rate_by: string; match_column: string; rates: any[] }) {
+function resolveRateHit(
+  row: DeliveryRow,
+  rateSettings: { rate_by: string; match_column: string; rates: any[] },
+) {
   if (rateSettings.rate_by === "delivery_type") {
     return (
       findByKey(rateSettings.rates, resolveField(row, "delivery type")) ??
@@ -276,7 +314,11 @@ export function calcFlatComponent(rows: DeliveryRow[], cfg: any): number[] {
 // `accumulate: "daily"` = jarak/berat 1 rider 1 hari dijumlah dulu, baru
 // dihitung tarifnya lalu dialokasikan ke tiap baris hari itu (dulunya `tier_daily`).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function calcTierComponent(rows: DeliveryRow[], cfg: any, accumulate: "daily" | "per_order" = "per_order"): number[] {
+export function calcTierComponent(
+  rows: DeliveryRow[],
+  cfg: any,
+  accumulate: "daily" | "per_order" = "per_order",
+): number[] {
   const out = new Array(rows.length).fill(0);
   const idxOf = new Map<DeliveryRow, number>();
   rows.forEach((r, i) => idxOf.set(r, i));
@@ -305,10 +347,16 @@ export function calcTierComponent(rows: DeliveryRow[], cfg: any, accumulate: "da
       // tiap baris) — total harian rider tetap benar, tapi fee PER BARIS
       // (delivery_records.fee) salah alokasi, bikin laporan per-order gak akurat.
       const distParts = cfg.distance
-        ? allocInt(distFee, drows.map((r) => Number(r.distance_km) || 0))
+        ? allocInt(
+            distFee,
+            drows.map((r) => Number(r.distance_km) || 0),
+          )
         : drows.map(() => 0);
       const weightParts = cfg.weight
-        ? allocInt(weightFee, drows.map((r) => Number(r.weight_kg) || 0))
+        ? allocInt(
+            weightFee,
+            drows.map((r) => Number(r.weight_kg) || 0),
+          )
         : drows.map(() => 0);
       drows.forEach((r, i) => (out[idxOf.get(r)!] = distParts[i] + weightParts[i]));
     }
@@ -324,7 +372,10 @@ export function calcThresholdComponent(rows: DeliveryRow[], cfg: any): number[] 
 
   const byRider = groupBy(rows, riderKey);
   for (const [, rrows] of byRider) {
-    const byStoreDay = groupBy(rrows, (r) => resolveField(r, cfg.group_by) + "||" + r.delivery_date);
+    const byStoreDay = groupBy(
+      rrows,
+      (r) => resolveField(r, cfg.group_by) + "||" + r.delivery_date,
+    );
     for (const [, grp] of byStoreDay) {
       const storeVal = resolveField(grp[0], cfg.group_by);
       const rule = findByKey(cfg.rules || [], storeVal);
@@ -332,7 +383,10 @@ export function calcThresholdComponent(rows: DeliveryRow[], cfg: any): number[] 
       const rate = Number(rule?.rate ?? cfg.default?.rate) || 0;
       const totalKg = grp.reduce((s, r) => s + (Number(r.weight_kg) || 0), 0);
       const grpFee = threshold > 0 ? Math.ceil(totalKg / threshold) * rate : 0;
-      const parts = allocInt(grpFee, grp.map((r) => Number(r.weight_kg) || 0));
+      const parts = allocInt(
+        grpFee,
+        grp.map((r) => Number(r.weight_kg) || 0),
+      );
       grp.forEach((r, i) => (out[idxOf.get(r)!] = parts[i]));
     }
   }
@@ -354,7 +408,10 @@ export function bandFeeAt(band: RangeRow, v: number): number {
   return (Number(band.base_fee) || 0) + Math.ceil(span / step) * addPerStep;
 }
 
-export function bandLookupFee(rows: RangeRow[], value: number): { fee: number; band: RangeRow | null } {
+export function bandLookupFee(
+  rows: RangeRow[],
+  value: number,
+): { fee: number; band: RangeRow | null } {
   const v = Number(value) || 0;
   for (const band of rows) {
     const lo = Number(band.from) || 0;
@@ -385,7 +442,9 @@ export function bandLookupFee(rows: RangeRow[], value: number): { fee: number; b
   // MENTOK gak peduli seberapa besar v (52kg dan 500kg sama-sama kena angka
   // band 50kg) — jadi diteruskan pakai v aslinya (band-nya "jalan terus"
   // ngikutin rumus tier, seolah `to`-nya gak terbatas).
-  const maxHiInTable = Math.max(...rows.map((b) => (b.to === null || b.to === undefined ? Infinity : Number(b.to))));
+  const maxHiInTable = Math.max(
+    ...rows.map((b) => (b.to === null || b.to === undefined ? Infinity : Number(b.to))),
+  );
   if (fallbackHi === maxHiInTable) return { fee: bandFeeAt(fallback, v), band: fallback };
   // Kalau bukan band paling atas (masih ada band lain yang menutup lebih
   // tinggi), ini beneran celah DI TENGAH tabel (band berikutnya cuma keselip
@@ -397,7 +456,10 @@ export function bandLookupFee(rows: RangeRow[], value: number): { fee: number; b
 
 // ---------------- Area City Pricing (resolver murni, lihat pricing-types.ts) ----------------
 export function normalizeCity(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 /** City kosong/gak match rule manapun (atau toggle OFF) → null = pakai pricing default scheme. */
@@ -426,9 +488,162 @@ export function resolveAreaPricingRule(
  * tier per-km diklem ke minimum_fee. Bukan formula baru, cuma orkestrasi. */
 export function calcAreaRuleFee(rule: AreaPricingRule, distanceKm: number): number {
   if (rule.model === "flat") return Number(rule.rate) || 0;
-  const row: RangeRow = { type: "tier", from: 0, to: null, base_fee: 0, step: 1, add_per_step: Number(rule.rate) || 0 };
+  const row: RangeRow = {
+    type: "tier",
+    from: 0,
+    to: null,
+    base_fee: 0,
+    step: 1,
+    add_per_step: Number(rule.rate) || 0,
+  };
   const { fee } = bandLookupFee([row], distanceKm);
   return Math.max(fee, Number(rule.minimum_fee) || 0);
+}
+
+// Tie-break yang sama persis dengan pickPricingScheme (pnl-engine.ts) — client
+// spesifik menang atas global (client_id null), lalu effective_from terbaru,
+// lalu created_at terbaru. Diekstrak ke sini (bukan diduplikat) biar
+// resolveSchemeForCity pakai urutan determinstik yang sama.
+function sortSchemeCandidates(candidates: PricingScheme[], clientId: string): PricingScheme[] {
+  return [...candidates].sort((a, b) => {
+    const aSpecific = a.client_id === clientId;
+    const bSpecific = b.client_id === clientId;
+    if (aSpecific !== bSpecific) return aSpecific ? -1 : 1;
+    if (a.effective_from !== b.effective_from) return a.effective_from > b.effective_from ? -1 : 1;
+    return a.created_at > b.created_at ? -1 : 1;
+  });
+}
+
+// Beda dari resolveAreaPricingRule (override RATE di dalam 1 scheme) — ini
+// milih SCHEME MANA yang menang buat 1 city, dari beberapa candidate scheme
+// delivery yang aktif buat client yang sama (lihat pickPricingSchemeCandidates
+// di pnl-engine.ts). City kosong/gak match scheme manapun → fallback ke
+// scheme TANPA city_scope (default), sama filosofinya kayak
+// resolveAreaPricingRule (gak pernah nebak, city gak match = pakai default).
+export function resolveSchemeForCity(
+  candidates: PricingScheme[],
+  city: string | null | undefined,
+  clientId: string,
+): PricingScheme | undefined {
+  const nc = normalizeCity(city);
+  if (nc) {
+    const exact = candidates.filter((s) => s.city_scope?.some((c) => normalizeCity(c) === nc));
+    if (exact.length > 0) return sortSchemeCandidates(exact, clientId)[0];
+    const stripped = normArea(city);
+    if (stripped) {
+      const prefixMatch = candidates.filter((s) =>
+        s.city_scope?.some((c) => normArea(c) === stripped),
+      );
+      if (prefixMatch.length === 1) return prefixMatch[0];
+    }
+  }
+  const unscoped = candidates.filter((s) => !s.city_scope?.length);
+  return sortSchemeCandidates(unscoped, clientId)[0];
+}
+
+// Dispatcher city-scoped buat scheme kategori "delivery" — group rows per
+// City (meta.city, sama field yang dipakai area_city_pricing), resolve
+// scheme pemenang tiap grup, jalanin calcScheme() per grup, gabung hasilnya
+// jadi SATU CalcResult. Billing add-ons (min_charge/admin_fee) SENGAJA
+// diterapkan SEKALI di akhir atas subtotal gabungan (pakai billing_addons
+// milik scheme default/unscoped) — bukan per grup, biar gak double-charge
+// kalau ada N city group. Cuma 1 candidate (kasus normal, belum pakai city
+// scope) → degenerate jadi 1 grup, hasilnya identik calcScheme() biasa.
+export function calcDeliveryFeeMultiCity(
+  candidates: PricingScheme[],
+  rows: DeliveryRow[],
+  clientId: string,
+  clientRevenueByRow?: number[],
+): CalcResult {
+  const completed = rows.filter(isCompleted);
+  const groups = groupBy(completed, (r) => normalizeCity(r.city));
+  const defaultScheme = candidates.find((s) => !s.city_scope?.length) ?? candidates[0];
+
+  const perRow: RowFee[] = [];
+  let perRiderMap = new Map<string, RiderLine>();
+  let subtotal = 0;
+  let completedRows = 0;
+  const warnings: string[] = [];
+  const anomalies: RowAnomaly[] = [];
+  const skippedPerRider: SkippedRiderLine[] = [];
+  let totalRevenue = 0;
+  let totalMargin = 0;
+  let hasRevenueShare = false;
+
+  // clientRevenueByRow (kalau ada) index-aligned ke `completed` secara utuh
+  // (lihat kontrak di calcScheme di atas) — peta by OBJECT REFERENCE (bukan
+  // r.id, yang bisa null/kosong di data test/edge-case) biar bisa di-slice
+  // ulang per grup, pola yang sama kayak idxOf di calcScheme/multi_drop.
+  const revenueOf = new Map<DeliveryRow, number>();
+  if (clientRevenueByRow) {
+    completed.forEach((r, i) => revenueOf.set(r, clientRevenueByRow[i]));
+  }
+
+  for (const [normCity, groupRows] of groups) {
+    const rawCity = groupRows[0]?.city ?? null;
+    const scheme = resolveSchemeForCity(candidates, rawCity, clientId);
+    if (!scheme) {
+      warnings.push(
+        `${groupRows.length} delivery di city '${rawCity ?? "(kosong)"}' gak ketemu skema manapun (gak match rule manapun & gak ada skema default).`,
+      );
+      continue;
+    }
+    const groupRevenue = clientRevenueByRow
+      ? groupRows.map((r) => revenueOf.get(r) ?? 0)
+      : undefined;
+    // rows dikirim UN-filtered (bukan groupRows hasil completed.filter di
+    // atas) supaya calcScheme() ngitung skipped-nya sendiri per grup — tapi
+    // karena kita udah filter ke `completed` duluan biar grouping-nya benar,
+    // di sini gak ada baris non-completed yang tersisa buat di-skip lagi.
+    const r = calcScheme(scheme.params, groupRows, groupRevenue);
+    perRow.push(...r.perRow);
+    for (const line of r.perRider) {
+      const cur = perRiderMap.get(line.rider);
+      perRiderMap.set(
+        line.rider,
+        cur
+          ? {
+              rider: line.rider,
+              units: cur.units + line.units,
+              base: cur.base + line.base,
+              add_kg: cur.add_kg + line.add_kg,
+              multi_drop: cur.multi_drop + line.multi_drop,
+              total: cur.total + line.total,
+            }
+          : { ...line },
+      );
+    }
+    subtotal += r.subtotal;
+    completedRows += r.completedRows;
+    warnings.push(...r.warnings);
+    anomalies.push(...r.anomalies);
+    skippedPerRider.push(...r.skippedPerRider);
+    if (r.revenueShare) {
+      hasRevenueShare = true;
+      totalRevenue += r.revenueShare.totalRevenue;
+      totalMargin += r.revenueShare.totalMargin;
+    }
+  }
+
+  const perRider = [...perRiderMap.values()].sort((a, b) => b.total - a.total);
+  const { billing, grandTotal } = applyBillingAddons(
+    subtotal,
+    defaultScheme?.params.billing_addons ?? null,
+  );
+
+  return {
+    perRow,
+    perRider,
+    subtotal,
+    billing,
+    grandTotal,
+    completedRows,
+    skippedRows: rows.length - completed.length,
+    skippedPerRider,
+    warnings,
+    anomalies,
+    revenueShare: hasRevenueShare ? { totalRevenue, totalMargin } : undefined,
+  };
 }
 
 export function calcRangeComponent(
@@ -474,7 +689,11 @@ export function calcModularDeliveryComponent(
   stats?: { unmatchedArea: number },
 ): number[] {
   const out = new Array(rows.length).fill(0);
-  const rateSettings = { rate_by: cfg.rate_by, match_column: cfg.match_column, rates: cfg.rates ?? [] };
+  const rateSettings = {
+    rate_by: cfg.rate_by,
+    match_column: cfg.match_column,
+    rates: cfg.rates ?? [],
+  };
 
   // rate_by="column"/"delivery_type" itu override PER BARIS (mis. Return flat
   // Rp12rb) yang GANTIIN total fee modular baris itu (distance+weight
@@ -497,7 +716,11 @@ export function calcModularDeliveryComponent(
           return hit ? Number(hit.rate) || 0 : null;
         });
   const overrideUsed = new Array(rows.length).fill(false);
-  const applyDim = (dimCfg: RangeDimensionConfig, valueOf: (r: DeliveryRow) => number, target: number[]) => {
+  const applyDim = (
+    dimCfg: RangeDimensionConfig,
+    valueOf: (r: DeliveryRow) => number,
+    target: number[],
+  ) => {
     calcRangeComponent(rows, dimCfg, valueOf).forEach((f, i) => {
       if (dimCfg.accumulate === "per_order" && rowOverride[i] != null) {
         if (!overrideUsed[i]) {
@@ -579,7 +802,11 @@ export function calcModularDeliveryComponent(
 // — valid karena `isCompleted` filter-nya sama persis buat kedua skema atas
 // array `rows` yang sama. Diisi oleh caller (lihat admin.calculate.tsx),
 // bukan di-fetch di sini — engine ini tetap murni, tanpa DB.
-export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientRevenueByRow?: number[]): CalcResult {
+export function calcScheme(
+  env: PricingEnvelope,
+  rows: DeliveryRow[],
+  clientRevenueByRow?: number[],
+): CalcResult {
   const warnings: string[] = [];
   const completed = rows.filter(isCompleted);
   const skipped = rows.length - completed.length;
@@ -684,7 +911,8 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     env.type === "modular_v2" &&
     !!modCfg?.distance?.enabled &&
     (modCfg.rate_by === "flat" || (modCfg.distance.rows ?? []).some((b) => b.type !== "flat"));
-  const dependsOnDistance = (["tier", "tier_daily"].includes(env.type) && !!cfg?.distance) || distanceDrivesAmount;
+  const dependsOnDistance =
+    (["tier", "tier_daily"].includes(env.type) && !!cfg?.distance) || distanceDrivesAmount;
   // Skema unit_basis "unique_address" (flat_unit: cfg.unit, modular_v2:
   // cfg.unit_basis — nama field beda per tipe, lihat calcFlatComponent &
   // calcModularDeliveryComponent) SENGAJA nge-nol-in fee kunjungan ke-2+ ke
@@ -700,19 +928,44 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     const fee = perRow[i].fee;
     const dist = Number(r.distance_km) || 0;
     if (dependsOnDistance && (!r.distance_km || dist === 0) && fee > 0) {
-      anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "zero_distance_paid", detail: `Jarak 0/kosong tapi kena fee ${fee.toLocaleString("id-ID")}` });
+      anomalies.push({
+        rider: riderKey(r),
+        date: r.delivery_date,
+        awb: r.awb,
+        kind: "zero_distance_paid",
+        detail: `Jarak 0/kosong tapi kena fee ${fee.toLocaleString("id-ID")}`,
+      });
     }
     if (dependsOnWeight && (r.weight_kg === null || r.weight_kg === undefined)) {
-      anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "missing_weight", detail: "Berat kosong padahal skema butuh berat" });
+      anomalies.push({
+        rider: riderKey(r),
+        date: r.delivery_date,
+        awb: r.awb,
+        kind: "missing_weight",
+        detail: "Berat kosong padahal skema butuh berat",
+      });
     }
     if (fee === 0 && !(uniqueAddressBillable && !uniqueAddressBillable.has(r))) {
-      anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "zero_fee", detail: "Fee 0 padahal status COMPLETED — cek apakah ada tarif yang cocok" });
+      anomalies.push({
+        rider: riderKey(r),
+        date: r.delivery_date,
+        awb: r.awb,
+        kind: "zero_fee",
+        detail: "Fee 0 padahal status COMPLETED — cek apakah ada tarif yang cocok",
+      });
     }
   });
 
   const riderMap = new Map<string, RiderLine>();
   perRow.forEach((rf) => {
-    const line = riderMap.get(rf.rider) ?? { rider: rf.rider, units: 0, base: 0, add_kg: 0, multi_drop: 0, total: 0 };
+    const line = riderMap.get(rf.rider) ?? {
+      rider: rf.rider,
+      units: 0,
+      base: 0,
+      add_kg: 0,
+      multi_drop: 0,
+      total: 0,
+    };
     line.units += 1;
     line.base += rf.base;
     line.add_kg += rf.add_kg;
@@ -733,11 +986,25 @@ export function calcScheme(env: PricingEnvelope, rows: DeliveryRow[], clientReve
     env.type === "revenue_share" && clientRevenueByRow?.length === completed.length
       ? {
           totalRevenue: clientRevenueByRow.reduce((s, v) => s + (Number(v) || 0), 0),
-          totalMargin: clientRevenueByRow.reduce((s, v) => s + (Number(v) || 0), 0) - baseByRow.reduce((s, v) => s + v, 0),
+          totalMargin:
+            clientRevenueByRow.reduce((s, v) => s + (Number(v) || 0), 0) -
+            baseByRow.reduce((s, v) => s + v, 0),
         }
       : undefined;
 
-  return { perRow, perRider, subtotal, billing, grandTotal, completedRows: completed.length, skippedRows: skipped, skippedPerRider, warnings, anomalies, revenueShare };
+  return {
+    perRow,
+    perRider,
+    subtotal,
+    billing,
+    grandTotal,
+    completedRows: completed.length,
+    skippedRows: skipped,
+    skippedPerRider,
+    warnings,
+    anomalies,
+    revenueShare,
+  };
 }
 
 // =========================================================
@@ -768,7 +1035,7 @@ export interface ShiftConfig {
   shift_number: number;
   label: string;
   start_time: string; // "HH:MM" — jam clock-in mulai masuk shift ini
-  end_time: string;   // "HH:MM" — batas atas (eksklusif)
+  end_time: string; // "HH:MM" — batas atas (eksklusif)
   full_fee: number;
   standard_minutes: number;
   // Opsional: batas jam ontime. Clock-in LEWAT jam ini = telat → insentif
@@ -790,13 +1057,16 @@ function timeToMinutes(t: string): number {
 // dipakai sesaat pas hitung fee, jadi di-derive ulang dari config skema
 // yang berlaku SEKARANG — sama seperti Rate Card panel yang juga baca
 // skema saat ini, bukan snapshot historis pas commit).
-export function findShiftFor(clockIn: string | null | undefined, shifts: ShiftConfig[]): ShiftConfig | null {
+export function findShiftFor(
+  clockIn: string | null | undefined,
+  shifts: ShiftConfig[],
+): ShiftConfig | null {
   if (!clockIn) return null;
   const m = timeToMinutes(clockIn);
   for (const s of shifts) {
     const start = timeToMinutes(s.start_time);
     const end = timeToMinutes(s.end_time);
-    if (end > start ? (m >= start && m < end) : (m >= start || m < end)) return s; // handle shift lewat tengah malam
+    if (end > start ? m >= start && m < end : m >= start || m < end) return s; // handle shift lewat tengah malam
   }
   return null;
 }
@@ -876,7 +1146,10 @@ export interface AttendanceComponentResult {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function calcAttendanceComponent(logs: AttendanceLogRow[], cfg: any): AttendanceComponentResult[] {
+export function calcAttendanceComponent(
+  logs: AttendanceLogRow[],
+  cfg: any,
+): AttendanceComponentResult[] {
   const fullFee = Number(cfg.full_fee) || 0;
   const standardMin = Number(cfg.standard_minutes) || 0;
   const overtimeOn = !!cfg.overtime?.enabled;
@@ -898,14 +1171,19 @@ export function calcAttendanceComponent(logs: AttendanceLogRow[], cfg: any): Att
     // (cfg.full_fee/standard_minutes lama). Insentif/ontime SELALU dari
     // `incentives` di bawah — satu sumber kebenaran, tidak diduplikasi per shift.
     const shift = shifts.length > 0 ? findShiftFor(r.clock_in, shifts) : null;
-    const effFullFee = shift ? (Number(shift.full_fee) || 0) : fullFee;
-    const effStandardMin = shift ? (Number(shift.standard_minutes) || 0) : standardMin;
+    const effFullFee = shift ? Number(shift.full_fee) || 0 : fullFee;
+    const effStandardMin = shift ? Number(shift.standard_minutes) || 0 : standardMin;
 
     // Clamp ke [0,1] — duration_minutes negatif (data absen rusak, mis. jam
     // keluar ke-input sebelum jam masuk) bisa bikin proportion negatif tanpa
     // batas bawah ini, dan daily_base di bawah jadi ANGKA MINUS (rider
     // ke-charge-balik), bukan cuma Rp0.
-    const proportion = effStandardMin > 0 ? Math.max(0, Math.min(1, actualMin / effStandardMin)) : (actualMin > 0 ? 1 : 0);
+    const proportion =
+      effStandardMin > 0
+        ? Math.max(0, Math.min(1, actualMin / effStandardMin))
+        : actualMin > 0
+          ? 1
+          : 0;
     const daily_base = Math.round(effFullFee * proportion);
 
     let overtime = 0;
@@ -922,7 +1200,9 @@ export function calcAttendanceComponent(logs: AttendanceLogRow[], cfg: any): Att
     let late = !!r.is_late;
     if (shift && shift.late_after && r.clock_in) {
       const shiftStart = timeToMinutes(shift.start_time);
-      late = minutesSinceShiftStart(timeToMinutes(r.clock_in), shiftStart) > minutesSinceShiftStart(timeToMinutes(shift.late_after), shiftStart);
+      late =
+        minutesSinceShiftStart(timeToMinutes(r.clock_in), shiftStart) >
+        minutesSinceShiftStart(timeToMinutes(shift.late_after), shiftStart);
     }
 
     let incentive = 0;
@@ -1016,7 +1296,9 @@ export function calcHybridScheme(
     for (const [date, drows] of byDay) {
       const day = dailyMap.get(rider + "|" + date);
       const totalDaily = (day?.daily_base ?? 0) + (day?.ontime_bonus ?? 0);
-      const rawWeights = drows.map((r) => orderBy === "weight" ? (Number(r.weight_kg) || 0) : (Number(r.distance_km) || 0));
+      const rawWeights = drows.map((r) =>
+        orderBy === "weight" ? Number(r.weight_kg) || 0 : Number(r.distance_km) || 0,
+      );
       const weights = rawWeights.some((w) => w > 0) ? rawWeights : drows.map(() => 1);
       const parts = allocInt(totalDaily, weights);
       drows.forEach((r, i) => (dailyAllocByRow[idxOf.get(r)!] = parts[i]));
@@ -1036,11 +1318,29 @@ export function calcHybridScheme(
   const anomalies: RowAnomaly[] = [];
   completed.forEach((r, i) => {
     if (orderBy === "distance" && (!r.distance_km || Number(r.distance_km) === 0))
-      anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "zero_distance_paid", detail: "Jarak 0/kosong padahal skema pakai jarak" });
+      anomalies.push({
+        rider: riderKey(r),
+        date: r.delivery_date,
+        awb: r.awb,
+        kind: "zero_distance_paid",
+        detail: "Jarak 0/kosong padahal skema pakai jarak",
+      });
     if (orderBy === "weight" && (r.weight_kg === null || r.weight_kg === undefined))
-      anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "missing_weight", detail: "Berat kosong padahal skema pakai berat" });
+      anomalies.push({
+        rider: riderKey(r),
+        date: r.delivery_date,
+        awb: r.awb,
+        kind: "missing_weight",
+        detail: "Berat kosong padahal skema pakai berat",
+      });
     if (perRow[i].fee === 0)
-      anomalies.push({ rider: riderKey(r), date: r.delivery_date, awb: r.awb, kind: "zero_fee", detail: "Fee 0 — cek data jarak/berat & tarif" });
+      anomalies.push({
+        rider: riderKey(r),
+        date: r.delivery_date,
+        awb: r.awb,
+        kind: "zero_fee",
+        detail: "Fee 0 — cek data jarak/berat & tarif",
+      });
   });
 
   // perRider summary (breakdown 3 komponen)
@@ -1070,18 +1370,37 @@ export function calcHybridScheme(
   const { billing, grandTotal } = applyBillingAddons(subtotal, env.billing_addons);
 
   if (skipped > 0) warnings.push(`${skipped} baris di-skip (status bukan COMPLETED).`);
-  if (attendanceLogs.length === 0) warnings.push("Tidak ada data absensi — daily fee & bonus ontime tidak dihitung.");
+  if (attendanceLogs.length === 0)
+    warnings.push("Tidak ada data absensi — daily fee & bonus ontime tidak dihitung.");
 
-  return { perRow, perRider, subtotal, billing, grandTotal, completedRows: completed.length, skippedRows: skipped, skippedPerRider, warnings, anomalies };
+  return {
+    perRow,
+    perRider,
+    subtotal,
+    billing,
+    grandTotal,
+    completedRows: completed.length,
+    skippedRows: skipped,
+    skippedPerRider,
+    warnings,
+    anomalies,
+  };
 }
 
-export function calcAttendanceScheme(env: PricingEnvelope, logs: AttendanceLogRow[], deliveryRows?: DeliveryRow[]): AttendanceCalcResult {
+export function calcAttendanceScheme(
+  env: PricingEnvelope,
+  logs: AttendanceLogRow[],
+  deliveryRows?: DeliveryRow[],
+): AttendanceCalcResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cfg = env.config as any;
   const standardMin = Number(cfg.standard_minutes) || 0;
 
   const warnings: string[] = [];
-  if (standardMin <= 0) warnings.push("Jam standar shift belum diisi di skema — proporsi jam kerja tidak bisa dihitung dengan benar.");
+  if (standardMin <= 0)
+    warnings.push(
+      "Jam standar shift belum diisi di skema — proporsi jam kerja tidak bisa dihitung dengan benar.",
+    );
 
   const comp = calcAttendanceComponent(logs, cfg);
 
@@ -1099,7 +1418,8 @@ export function calcAttendanceScheme(env: PricingEnvelope, logs: AttendanceLogRo
       baseByRow = calcThresholdComponent(completed, delivCfg);
     } else {
       // tier (default) — window daily_rider = akumulasi harian, per_row = per kiriman
-      const accumulate: "daily" | "per_order" = delivCfg.window === "daily_rider" ? "daily" : "per_order";
+      const accumulate: "daily" | "per_order" =
+        delivCfg.window === "daily_rider" ? "daily" : "per_order";
       const tierCfg = {
         distance: delivCfg.order_by === "distance" ? delivCfg.order_tier : null,
         weight: delivCfg.order_by === "weight" ? delivCfg.order_tier : null,
@@ -1110,7 +1430,8 @@ export function calcAttendanceScheme(env: PricingEnvelope, logs: AttendanceLogRo
       const k = riderKey(r) + "|" + r.delivery_date;
       delivCompMap.set(k, (delivCompMap.get(k) ?? 0) + baseByRow[i]);
     });
-    if (completed.length === 0) warnings.push("delivery_component aktif tapi tidak ada data pengiriman di rentang ini.");
+    if (completed.length === 0)
+      warnings.push("delivery_component aktif tapi tidak ada data pengiriman di rentang ini.");
   }
 
   let absentRows = 0;
@@ -1137,7 +1458,15 @@ export function calcAttendanceScheme(env: PricingEnvelope, logs: AttendanceLogRo
 
   const riderMap = new Map<string, AttendanceRiderLine>();
   perRow.forEach((rf, i) => {
-    const line = riderMap.get(rf.rider) ?? { rider: rf.rider, daysWorked: 0, base: 0, overtime: 0, incentive: 0, delivery_component: 0, total: 0 };
+    const line = riderMap.get(rf.rider) ?? {
+      rider: rf.rider,
+      daysWorked: 0,
+      base: 0,
+      overtime: 0,
+      incentive: 0,
+      delivery_component: 0,
+      total: 0,
+    };
     if (!logs[i].is_absent) line.daysWorked += 1;
     line.base += rf.base;
     line.overtime += rf.overtime;
@@ -1152,5 +1481,14 @@ export function calcAttendanceScheme(env: PricingEnvelope, logs: AttendanceLogRo
   const { billing, grandTotal } = applyBillingAddons(subtotal, env.billing_addons);
   if (absentRows > 0) warnings.push(`${absentRows} baris absen (fee 0).`);
 
-  return { perRow, perRider, subtotal, billing, grandTotal, totalRows: logs.length, absentRows, warnings };
+  return {
+    perRow,
+    perRider,
+    subtotal,
+    billing,
+    grandTotal,
+    totalRows: logs.length,
+    absentRows,
+    warnings,
+  };
 }

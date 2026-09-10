@@ -4,8 +4,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calculator } from "lucide-react";
 import { useT } from "@/lib/i18n";
-import type { PricingCategory, PricingSubtype, SchemeFor, PricingEnvelope, DeliveryDimensions } from "@/lib/pricing-types";
-import { calcAttendanceScheme, bandLookupFee, resolveAreaPricingRule, calcAreaRuleFee } from "@/lib/pricing-calc";
+import type {
+  PricingCategory,
+  PricingSubtype,
+  SchemeFor,
+  PricingEnvelope,
+  DeliveryDimensions,
+} from "@/lib/pricing-types";
+import {
+  calcAttendanceScheme,
+  bandLookupFee,
+  resolveAreaPricingRule,
+  calcAreaRuleFee,
+} from "@/lib/pricing-calc";
 import { formatRupiah, parseRupiah } from "@/lib/format";
 import { type DeliveryState, type RangeRowState } from "./delivery-fields";
 import type { RangeRow } from "@/lib/pricing-types";
@@ -13,7 +24,11 @@ import { type AttendanceState, buildAttendanceConfig } from "./attendance-fields
 import { type ExStep } from "./shared";
 import { type AreaCityState, buildAreaCityConfig, citiesFromRaw } from "./area-city-fields";
 
-const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+const norm = (s: unknown) =>
+  String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
 function numericRows(rows: RangeRowState[]): RangeRow[] {
   return rows.map((r) => ({
@@ -76,9 +91,12 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
   const notes: string[] = [];
   const dims = (p.subtype as DeliveryDimensions) || { distance: false, weight: false };
   const modNotes = () => {
-    if (p.category === "delivery" && p.addKgOn) notes.push("Add-KG nyala: biaya berat ditambah DI ATAS hasil ini.");
+    if (p.category === "delivery" && p.addKgOn)
+      notes.push("Add-KG nyala: biaya berat ditambah DI ATAS hasil ini.");
     if (p.multiDropOn)
-      notes.push(`Multi-drop nyala: kiriman ke-2 dst +${formatRupiah(parseRupiah(p.multiDropFee))} per kiriman.`);
+      notes.push(
+        `Multi-drop nyala: kiriman ke-2 dst +${formatRupiah(parseRupiah(p.multiDropFee))} per kiriman.`,
+      );
     if (p.schemeFor === "client" && p.billingOn)
       notes.push("Billing add-ons belum termasuk di sini (min charge / admin fee / PPN).");
   };
@@ -88,12 +106,18 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
   // bisa drift dari mesin hitung asli (lihat riwayat bug rate override di
   // atas — preview & mesin asli pernah beda hasil karena reimplementasi).
   // Override GANTI total (bukan ditambah) — sama seperti calcScheme.
-  const applyAreaCityOverride = (steps: ExStep[], currentTotal: number, distanceKm: number): number => {
+  const applyAreaCityOverride = (
+    steps: ExStep[],
+    currentTotal: number,
+    distanceKm: number,
+  ): number => {
     if (!p.areaCityOn) return currentTotal;
     const acp = buildAreaCityConfig(p.areaCity, true);
     const rule = resolveAreaPricingRule(acp, inp.city);
     if (!rule) {
-      notes.push(`Area City Pricing aktif tapi City "${inp.city || "(kosong)"}" tidak cocok rule manapun — tarif dasar di atas tetap dipakai (fallback).`);
+      notes.push(
+        `Area City Pricing aktif tapi City "${inp.city || "(kosong)"}" tidak cocok rule manapun — tarif dasar di atas tetap dipakai (fallback).`,
+      );
       return currentTotal;
     }
     const areaFee = calcAreaRuleFee(rule, distanceKm);
@@ -121,7 +145,10 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
     // override "Return" bakal kekunci ke situ dan Distance/Weight kelihatan
     // kayak gak ngaruh sama sekali (kejadian di Komu Komu Bakehouse).
     const overrideMatchValue = p.delivery.rate_by === "delivery_type" ? "Delivery" : inp.area;
-    const overrideHit = p.delivery.rate_by !== "flat" ? p.delivery.rates.find((r) => norm(r.key) === norm(overrideMatchValue)) : undefined;
+    const overrideHit =
+      p.delivery.rate_by !== "flat"
+        ? p.delivery.rates.find((r) => norm(r.key) === norm(overrideMatchValue))
+        : undefined;
     let overrideUsed = false;
     const consumeOverride = (): number | null => {
       if (!overrideHit || overrideUsed) return null;
@@ -156,7 +183,10 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
         const rate = parseRupiah(th.default_rate);
         const mult = t > 0 ? Math.ceil(kg / t) : 0;
         const fee = mult * rate;
-        steps.push({ text: `Weight (kelipatan): ${kg} kg ÷ ${t} → dibulatkan ke atas ${mult}× × ${formatRupiah(rate)}`, amount: fee });
+        steps.push({
+          text: `Weight (kelipatan): ${kg} kg ÷ ${t} → dibulatkan ke atas ${mult}× × ${formatRupiah(rate)}`,
+          amount: fee,
+        });
         total += fee;
       } else {
         const { fee: bandFee, band } = bandLookupFee(numericRows(p.delivery.weight.rows), kg);
@@ -170,7 +200,10 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
       }
     }
 
-    if (dims.distance && dims.weight) notes.push("Distance + Weight dijumlah (kecuali salah satunya kena rate override — itu gantiin totalnya, gak ditambah).");
+    if (dims.distance && dims.weight)
+      notes.push(
+        "Distance + Weight dijumlah (kecuali salah satunya kena rate override — itu gantiin totalnya, gak ditambah).",
+      );
     total = applyAreaCityOverride(steps, total, Number(inp.distance) || 0);
     modNotes();
     return { steps, total: { label: "Total", amount: total }, notes };
@@ -196,7 +229,10 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
       });
       total += fee;
     } else {
-      steps.push({ text: "Rate baris Flat masih 'Flat' — belum ada tarif buat diterapin tanpa Distance/Weight.", amount: 0 });
+      steps.push({
+        text: "Rate baris Flat masih 'Flat' — belum ada tarif buat diterapin tanpa Distance/Weight.",
+        amount: 0,
+      });
     }
     total = applyAreaCityOverride(steps, total, Number(inp.distance) || 0);
     modNotes();
@@ -205,10 +241,26 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
 
   if (p.category === "attendance") {
     const a = p.attendance;
-    const env: PricingEnvelope = { version: 1, type: "attendance", config: buildAttendanceConfig(a), add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null };
+    const env: PricingEnvelope = {
+      version: 1,
+      type: "attendance",
+      config: buildAttendanceConfig(a),
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      city_scope: null,
+    };
     const std = Number(a.standard_hours) || 0;
     const actualMin = Math.round((Number(inp.hours) || 0) * 60);
-    const res = calcAttendanceScheme(env, [{ log_date: "2026-01-01", duration_minutes: actualMin, is_late: inp.isLate, is_absent: false }]);
+    const res = calcAttendanceScheme(env, [
+      {
+        log_date: "2026-01-01",
+        duration_minutes: actualMin,
+        is_late: inp.isLate,
+        is_absent: false,
+      },
+    ]);
     const row = res.perRow[0];
     const full = parseRupiah(a.full_fee);
     const pct = std > 0 ? Math.min(100, Math.round(((Number(inp.hours) || 0) / std) * 100)) : 100;
@@ -217,11 +269,16 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
       { text: `Kerja ${inp.hours} dari ${std} jam (${pct}%) → fee dasar`, amount: row?.base ?? 0 },
     ];
     if ((row?.overtime ?? 0) > 0) steps.push({ text: "Lembur", amount: row.overtime });
-    a.incentives.filter((c) => c.label.trim()).forEach((c) => {
-      const amt = parseRupiah(c.amount);
-      const cair = c.condition === "always" || (c.condition === "ontime_only" && !inp.isLate);
-      steps.push({ text: `+ ${c.label} ${c.condition === "always" ? "(selalu)" : inp.isLate ? "(LATE — tidak cair)" : "(ONTIME ✓)"}`, amount: cair ? amt : 0 });
-    });
+    a.incentives
+      .filter((c) => c.label.trim())
+      .forEach((c) => {
+        const amt = parseRupiah(c.amount);
+        const cair = c.condition === "always" || (c.condition === "ontime_only" && !inp.isLate);
+        steps.push({
+          text: `+ ${c.label} ${c.condition === "always" ? "(selalu)" : inp.isLate ? "(LATE — tidak cair)" : "(ONTIME ✓)"}`,
+          amount: cair ? amt : 0,
+        });
+      });
     return { steps, total: { label: "Fee hari itu", amount: row?.fee ?? 0 }, notes };
   }
 
@@ -241,7 +298,10 @@ export function DeliveryCalcInputs({
   onChange: (p: Partial<CalcInputs>) => void;
 }) {
   const { t } = useT();
-  const dims = (props.subtype as { distance: boolean; weight: boolean }) || { distance: false, weight: false };
+  const dims = (props.subtype as { distance: boolean; weight: boolean }) || {
+    distance: false,
+    weight: false,
+  };
   // Rule "Per KM" butuh input jarak buat dihitung, walau dimensi Distance
   // skema dasarnya mati — tampilkan input jarak juga di kasus itu.
   const needsDistanceForAreaRule =
@@ -263,45 +323,87 @@ export function DeliveryCalcInputs({
               (buat tes fallback City yang gak terdaftar), datalist cuma nawarin
               shortcut biar gak perlu ngetik ulang nama yang udah ada. */}
           <datalist id="area-city-sim-options">
-            {[...new Set(props.areaCity.rules.flatMap((r) => citiesFromRaw(r.citiesRaw)))].map((c) => (
-              <option key={c} value={c} />
-            ))}
+            {[...new Set(props.areaCity.rules.flatMap((r) => citiesFromRaw(r.citiesRaw)))].map(
+              (c) => (
+                <option key={c} value={c} />
+              ),
+            )}
           </datalist>
         </div>
       )}
       {!dims.distance && needsDistanceForAreaRule && (
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted-foreground">{t("pfCalc.distanceKm")}</span>
-          <input type="number" min="0" step="0.1" value={inp.distance} onChange={(e) => onChange({ distance: e.target.value })}
-            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={inp.distance}
+            onChange={(e) => onChange({ distance: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5"
+          />
         </div>
       )}
       {dims.distance && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{props.delivery.distance.accumulate === "daily" ? t("pfCalc.totalDistanceToday") : t("pfCalc.distanceKm")}</span>
-          <input type="number" min="0" step="0.1" value={inp.distance} onChange={(e) => onChange({ distance: e.target.value })}
-            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+          <span className="text-[11px] text-muted-foreground">
+            {props.delivery.distance.accumulate === "daily"
+              ? t("pfCalc.totalDistanceToday")
+              : t("pfCalc.distanceKm")}
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={inp.distance}
+            onChange={(e) => onChange({ distance: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5"
+          />
         </div>
       )}
       {dims.weight && props.delivery.weight.mode === "range" && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{props.delivery.weight.accumulate === "daily" ? t("pfCalc.totalWeightToday") : t("pfCalc.weightKg")}</span>
-          <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => onChange({ weight: e.target.value })}
-            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+          <span className="text-[11px] text-muted-foreground">
+            {props.delivery.weight.accumulate === "daily"
+              ? t("pfCalc.totalWeightToday")
+              : t("pfCalc.weightKg")}
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={inp.weight}
+            onChange={(e) => onChange({ weight: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5"
+          />
         </div>
       )}
       {!dims.weight && props.delivery.weight_surcharge?.enabled && (
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{t("pfCalc.weightSurchargeTrigger")}</span>
-          <input type="number" min="0" step="0.1" value={inp.weight} onChange={(e) => onChange({ weight: e.target.value })}
-            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5" />
+          <span className="text-[11px] text-muted-foreground">
+            {t("pfCalc.weightSurchargeTrigger")}
+          </span>
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={inp.weight}
+            onChange={(e) => onChange({ weight: e.target.value })}
+            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5"
+          />
         </div>
       )}
       {dims.weight && props.delivery.weight.mode === "threshold_group" && (
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted-foreground">{t("pfCalc.totalGroupWeight")}</span>
-          <input type="number" min="0" step="0.1" value={inp.totalKg} onChange={(e) => onChange({ totalKg: e.target.value })}
-            className="w-28 text-xs rounded border border-border bg-card px-2 py-1.5" />
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={inp.totalKg}
+            onChange={(e) => onChange({ totalKg: e.target.value })}
+            className="w-28 text-xs rounded border border-border bg-card px-2 py-1.5"
+          />
         </div>
       )}
     </div>
@@ -312,7 +414,9 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
   const { t } = useT();
   const [inp, setInp] = useState<CalcInputs>(() => defaultCalcInputs(props));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setInp(defaultCalcInputs(props)); }, [props.category, props.subtype]);
+  useEffect(() => {
+    setInp(defaultCalcInputs(props));
+  }, [props.category, props.subtype]);
 
   const p = (patch: Partial<CalcInputs>) => setInp((prev) => ({ ...prev, ...patch }));
   const result = useMemo(() => computeInteractive(props, inp), [props, inp]);
@@ -326,20 +430,41 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
 
       {/* ── Inputs per tipe ── */}
       <div className="mb-3.5 space-y-2">
-        {props.category === "delivery" && <DeliveryCalcInputs props={props} inp={inp} onChange={p} />}
+        {props.category === "delivery" && (
+          <DeliveryCalcInputs props={props} inp={inp} onChange={p} />
+        )}
 
         {props.category === "attendance" && (
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex flex-col gap-1">
               <span className="text-[11px] text-muted-foreground">{t("pfCalc.workHours")}</span>
-              <input type="number" min="0" step="0.5" value={inp.hours} onChange={(e) => p({ hours: e.target.value })}
-                className="w-20 text-xs rounded border border-border bg-card px-2 py-1.5" />
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={inp.hours}
+                onChange={(e) => p({ hours: e.target.value })}
+                className="w-20 text-xs rounded border border-border bg-card px-2 py-1.5"
+              />
             </div>
             <div className="flex gap-1 pb-0.5">
-              {([{ v: false, l: t("pfCalc.ontime") }, { v: true, l: t("pfCalc.late") }] as const).map((opt) => (
-                <button key={String(opt.v)} type="button" onClick={() => p({ isLate: opt.v })}
-                  className={"text-xs px-2.5 py-1.5 rounded border-2 border-border-strong transition-colors " +
-                    (inp.isLate === opt.v ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "bg-card text-foreground hover:bg-muted")}>
+              {(
+                [
+                  { v: false, l: t("pfCalc.ontime") },
+                  { v: true, l: t("pfCalc.late") },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={String(opt.v)}
+                  type="button"
+                  onClick={() => p({ isLate: opt.v })}
+                  className={
+                    "text-xs px-2.5 py-1.5 rounded border-2 border-border-strong transition-colors " +
+                    (inp.isLate === opt.v
+                      ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium"
+                      : "bg-card text-foreground hover:bg-muted")
+                  }
+                >
                   {opt.l}
                 </button>
               ))}
@@ -353,18 +478,25 @@ export function InteractiveCalc(props: InteractiveCalcProps) {
         {result.steps.map((s, i) => (
           <div key={i} className="flex items-baseline justify-between gap-3 text-xs">
             <span className="text-muted-foreground">{s.text}</span>
-            {s.amount !== undefined && <span className="font-medium tabular-nums whitespace-nowrap">{formatRupiah(s.amount)}</span>}
+            {s.amount !== undefined && (
+              <span className="font-medium tabular-nums whitespace-nowrap">
+                {formatRupiah(s.amount)}
+              </span>
+            )}
           </div>
         ))}
         <div className="flex items-center justify-between gap-3 mt-2 pt-2 border-t border-border-strong">
           <span className="text-xs font-semibold">{result.total.label}</span>
-          <span className="text-base font-bold text-primary tabular-nums">{formatRupiah(result.total.amount)}</span>
+          <span className="text-base font-bold text-primary tabular-nums">
+            {formatRupiah(result.total.amount)}
+          </span>
         </div>
         {result.notes.length > 0 && (
           <ul className="mt-2 space-y-0.5">
             {result.notes.map((n, i) => (
               <li key={i} className="text-[11px] text-muted-foreground flex gap-1.5">
-                <span className="text-primary flex-shrink-0">•</span><span>{n}</span>
+                <span className="text-primary flex-shrink-0">•</span>
+                <span>{n}</span>
               </li>
             ))}
           </ul>

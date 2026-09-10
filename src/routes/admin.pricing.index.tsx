@@ -194,6 +194,11 @@ function PricingListPage() {
         <span className="inline-flex items-center rounded-md bg-primary text-primary-foreground border-2 border-border-strong px-2 py-0.5 text-[11px] font-medium">
           {pricingLabel(s.category, s.subtype)}
         </span>
+        {s.city_scope?.length ? (
+          <span className="ml-1.5 inline-flex items-center rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium">
+            📍 {s.city_scope.join(", ")}
+          </span>
+        ) : null}
       </td>
       <td className="px-4 py-3 text-xs text-muted-foreground">
         {formatTanggal(s.effective_from)}

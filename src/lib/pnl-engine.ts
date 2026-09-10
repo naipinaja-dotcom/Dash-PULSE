@@ -8,7 +8,17 @@
 // — mis. Alfagift, murni attendance — dia malah gak pernah MUNCUL di
 // perClient sama sekali, karena grouping dulu cuma dari delivery_records).
 // =========================================================
-import { calcScheme, calcAttendanceScheme, calcHybridScheme, billableByUniqueAddress, isCompleted, type DeliveryRow, type AttendanceLogRow } from "./pricing-calc";
+import {
+  calcScheme,
+  calcAttendanceScheme,
+  calcHybridScheme,
+  calcDeliveryFeeMultiCity,
+  resolveSchemeForCity,
+  billableByUniqueAddress,
+  isCompleted,
+  type DeliveryRow,
+  type AttendanceLogRow,
+} from "./pricing-calc";
 import type { PricingScheme, SchemeFor } from "./pricing-types";
 
 export type ClientLite = { id: string; name: string };
@@ -49,31 +59,49 @@ export interface PnlResult {
 // akhir periode laporannya di sini, bukan biarin default ke hari ini. Kalau
 // enggak, rerun buat minggu lama bisa kehitung pakai rate yang udah berubah
 // sekarang, bukan rate yang beneran berlaku pas minggu itu.
+// Filter step doang (scheme_for/version/client/tanggal) — dulu inline di
+// pickPricingScheme, diekstrak biar caller yang butuh SEMUA candidate (city-
+// scoping delivery, lihat resolveSchemeForCity/calcDeliveryFeeMultiCity di
+// pricing-calc.ts) gak perlu duplikat filter yang sama.
+export function pickPricingSchemeCandidates(
+  schemes: PricingScheme[],
+  clientId: string,
+  kind: SchemeFor,
+  asOfDate: string = new Date().toISOString().slice(0, 10),
+): PricingScheme[] {
+  return schemes.filter(
+    (s) =>
+      s.scheme_for === kind &&
+      s.params?.version === 1 &&
+      (s.client_id === clientId || s.client_id === null) &&
+      s.effective_from <= asOfDate &&
+      (!s.effective_to || s.effective_to >= asOfDate),
+  );
+}
+
+// Wrapper tipis di atas pickPricingSchemeCandidates — city=undefined bikin
+// resolveSchemeForCity SELALU jatuh ke cabang "unscoped default", jadi
+// perilakunya identik persis sama versi lama buat semua caller yang belum
+// city-aware (gak ada satupun scheme lama yang punya city_scope).
 export function pickPricingScheme(
   schemes: PricingScheme[],
   clientId: string,
   kind: SchemeFor,
   asOfDate: string = new Date().toISOString().slice(0, 10),
 ) {
-  const cands = schemes.filter(
-    (s) =>
-      s.scheme_for === kind &&
-      s.params?.version === 1 &&
-      (s.client_id === clientId || s.client_id === null) &&
-      s.effective_from <= asOfDate &&
-      (!s.effective_to || s.effective_to >= asOfDate)
+  return resolveSchemeForCity(
+    pickPricingSchemeCandidates(schemes, clientId, kind, asOfDate),
+    undefined,
+    clientId,
   );
-  return cands.sort((a, b) => {
-    const aSpecific = a.client_id === clientId;
-    const bSpecific = b.client_id === clientId;
-    if (aSpecific !== bSpecific) return aSpecific ? -1 : 1;
-    if (a.effective_from !== b.effective_from) return a.effective_from > b.effective_from ? -1 : 1;
-    return a.created_at > b.created_at ? -1 : 1;
-  })[0];
 }
 
-const normName = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
-const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) => r.rider_id || r.driver_code || null;
+const normName = (s: string | null | undefined) =>
+  String(s ?? "")
+    .trim()
+    .toLowerCase();
+const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) =>
+  r.rider_id || r.driver_code || null;
 
 // Cuma order status COMPLETED yang dianggap "order" — samain sama Hitung Fee
 // (admin.calculate.tsx) & generatePayrollDetails (lihat payroll-generate.ts),
@@ -86,7 +114,8 @@ const riderKey = (r: { rider_id?: string | null; driver_code?: string | null }) 
 // baris/AWB apa adanya.
 function orderCount(crows: DeliveryRow[], clientScheme: PricingScheme | undefined): number {
   const completed = crows.filter(isCompleted);
-  const unitBasis = (clientScheme?.params?.config as { unit_basis?: string } | undefined)?.unit_basis;
+  const unitBasis = (clientScheme?.params?.config as { unit_basis?: string } | undefined)
+    ?.unit_basis;
   if (unitBasis === "unique_address") return billableByUniqueAddress(completed).size;
   return completed.length;
 }
@@ -96,24 +125,45 @@ function orderCount(crows: DeliveryRow[], clientScheme: PricingScheme | undefine
 // env.type "attendance"/"combined" (calcScheme gak punya case buat itu,
 // jatuh ke default array-of-0). grandTotal dipakai (bukan subtotal) karena
 // sekarang billing_addons diterapin di ketiga engine (lihat pricing-calc.ts).
+// `candidates` = SEMUA scheme aktif client ini buat kind (rider/client) ini —
+// bukan 1 scheme yang udah dipilih. Kategori attendance/hybrid (belum city-
+// aware, lihat plan) tetap pakai 1 scheme representatif (resolveSchemeForCity
+// dgn city=undefined = default/unscoped, sama seperti pickPricingScheme).
+// Kategori delivery didispatch ke calcDeliveryFeeMultiCity biar tiap city bisa
+// dapet scheme delivery yang beda.
 function calcForScheme(
-  scheme: PricingScheme | undefined,
+  candidates: PricingScheme[],
+  clientId: string,
   crows: DeliveryRow[],
   cattendance: AttendanceLogWithClientName[],
   // Cuma dibaca kalau scheme.params.type === "revenue_share" (lihat
   // pricing-calc.ts:556) — abaikan buat kategori/tipe lain.
   clientRevenueByRow?: number[],
 ): { grandTotal: number; perRow: { date: string; fee: number }[] } | null {
+  // resolveSchemeForCity(..., undefined, ...) cuma jatuh ke cabang "unscoped
+  // default" — kalau SEMUA candidate client ini city-scoped (gak ada default
+  // sama sekali), itu balikin undefined padahal candidate-nya jelas ADA.
+  // Fallback ke candidates[0] cuma buat baca .category (attendance/hybrid/
+  // delivery diasumsikan seragam antar city-scoped scheme milik kind yang
+  // sama — city-scoping campur kategori belum didukung, lihat plan).
+  const scheme = resolveSchemeForCity(candidates, undefined, clientId) ?? candidates[0];
   if (!scheme) return null;
   if (scheme.category === "attendance") {
     const r = calcAttendanceScheme(scheme.params, cattendance, crows);
-    return { grandTotal: r.grandTotal, perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })) };
+    return {
+      grandTotal: r.grandTotal,
+      perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })),
+    };
   }
   if (scheme.category === "hybrid") {
     const r = calcHybridScheme(scheme.params, crows, cattendance);
-    return { grandTotal: r.grandTotal, perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })) };
+    return {
+      grandTotal: r.grandTotal,
+      perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })),
+    };
   }
-  const r = calcScheme(scheme.params, crows, clientRevenueByRow);
+  const deliveryCandidates = candidates.filter((s) => s.category === "delivery");
+  const r = calcDeliveryFeeMultiCity(deliveryCandidates, crows, clientId, clientRevenueByRow);
   return { grandTotal: r.grandTotal, perRow: r.perRow.map((x) => ({ date: x.date, fee: x.fee })) };
 }
 
@@ -146,16 +196,25 @@ export function computePnl(
   // Union client dari 2 sumber — client yang MURNI attendance (nol
   // delivery_records, mis. Alfagift) sebelumnya gak pernah masuk sini sama
   // sekali karena cuma delivery_records yang di-grouping.
-  const allClientIds = new Set([...byClient.keys(), ...attByClient.keys(), ...molisCostByClient.keys()]);
+  const allClientIds = new Set([
+    ...byClient.keys(),
+    ...attByClient.keys(),
+    ...molisCostByClient.keys(),
+  ]);
 
   const nameOf = new Map(clients.map((c) => [c.id, c.name]));
   const perClient: ClientPnl[] = [];
   for (const cid of allClientIds) {
     const crows = byClient.get(cid) ?? [];
     const cattendance = attByClient.get(cid) ?? [];
-    const riderS = pickPricingScheme(schemes, cid, "rider", asOfDate);
-    const clientS = pickPricingScheme(schemes, cid, "client", asOfDate);
-    const revResult = calcForScheme(clientS, crows, cattendance);
+    const riderCandidates = pickPricingSchemeCandidates(schemes, cid, "rider", asOfDate);
+    const clientCandidates = pickPricingSchemeCandidates(schemes, cid, "client", asOfDate);
+    // Representatif default (city=undefined) — cuma buat cek .params.type/
+    // .category di bawah, bukan buat kalkulasi langsung (itu tugas
+    // calcForScheme yang city-aware lewat candidates penuh).
+    const riderS = resolveSchemeForCity(riderCandidates, undefined, cid);
+    const clientS = resolveSchemeForCity(clientCandidates, undefined, cid);
+    const revResult = calcForScheme(clientCandidates, cid, crows, cattendance);
     // Skema rider "revenue_share" itung fee sebagai % dari revenue client
     // PER BARIS — butuh clientRevenueByRow dari hasil skema Client di atas,
     // index-aligned ke crows.filter(isCompleted) (lihat pricing-calc.ts:525).
@@ -168,13 +227,18 @@ export function computePnl(
       riderS?.params.type === "revenue_share" && clientS?.category === "delivery"
         ? revResult?.perRow.map((r) => r.fee)
         : undefined;
-    const costResult = calcForScheme(riderS, crows, cattendance, clientRevenueByRow);
+    const costResult = calcForScheme(riderCandidates, cid, crows, cattendance, clientRevenueByRow);
     const cost = (costResult?.grandTotal ?? 0) + (molisCostByClient.get(cid) ?? 0);
     const revenue = revResult ? revResult.grandTotal : null;
     const margin = revenue === null ? null : revenue - cost;
     const marginPct = revenue && revenue > 0 && margin !== null ? (margin / revenue) * 100 : null;
-    const dates = crows.map((r) => r.delivery_date).filter(Boolean).sort();
-    const drivers = new Set([...crows.map(riderKey), ...cattendance.map(riderKey)].filter((k): k is string => k !== null));
+    const dates = crows
+      .map((r) => r.delivery_date)
+      .filter(Boolean)
+      .sort();
+    const drivers = new Set(
+      [...crows.map(riderKey), ...cattendance.map(riderKey)].filter((k): k is string => k !== null),
+    );
     perClient.push({
       clientId: cid,
       client: nameOf.get(cid) ?? "(tanpa client)",
@@ -210,19 +274,32 @@ export interface TrendPoint {
   marginPct: number;
 }
 
-function bucketKey(date: string, granularity: TrendGranularity): { sortKey: string; label: string } {
+function bucketKey(
+  date: string,
+  granularity: TrendGranularity,
+): { sortKey: string; label: string } {
   const d = new Date(date + "T00:00:00");
-  if (granularity === "daily") return { sortKey: date, label: d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) };
+  if (granularity === "daily")
+    return {
+      sortKey: date,
+      label: d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }),
+    };
   if (granularity === "monthly") {
     const key = date.slice(0, 7);
-    return { sortKey: key, label: d.toLocaleDateString("id-ID", { month: "short", year: "2-digit" }) };
+    return {
+      sortKey: key,
+      label: d.toLocaleDateString("id-ID", { month: "short", year: "2-digit" }),
+    };
   }
   // weekly: kunci = Senin minggu itu
   const day = (d.getDay() + 6) % 7; // Senin=0
   const monday = new Date(d);
   monday.setDate(d.getDate() - day);
   const key = monday.toISOString().slice(0, 10);
-  return { sortKey: key, label: monday.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) };
+  return {
+    sortKey: key,
+    label: monday.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }),
+  };
 }
 
 // Rangkai trend BCR (margin %) dari seluruh perRow cost+revenue semua client, dikelompokkan per bucket waktu.

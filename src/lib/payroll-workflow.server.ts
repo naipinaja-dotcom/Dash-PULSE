@@ -38,13 +38,15 @@ import { callHermes } from "./agents/hermes-client.server";
 import { sendSlackMessage } from "./notify/slack.server";
 import { sendEmail } from "./notify/email.server";
 import { fetchAllRows } from "./fetch-all";
-import { pickPricingScheme } from "./pnl-engine";
+import { pickPricingScheme, pickPricingSchemeCandidates } from "./pnl-engine";
 import { normalize } from "./pricing-store";
 import type { PricingScheme } from "./pricing-types";
 import {
   calcScheme,
   calcAttendanceScheme,
   calcHybridScheme,
+  calcDeliveryFeeMultiCity,
+  resolveSchemeForCity,
   type DeliveryRow,
   type AttendanceLogRow,
 } from "./pricing-calc";
@@ -91,6 +93,7 @@ export interface PayrollWorkflowResult {
   runs: PayrollWorkflowRunResult[];
   skippedClients: string[]; // "Client (periode)" yang run-nya udah finalized/published, gak disentuh
   emptyClients: string[]; // "Client (periode)" jatuh tempo tapi 0 aktivitas (delivery/attendance) — beda kasus dari skippedClients, jangan digabung biar pesannya gak menyesatkan
+  failedClients: string[]; // "Client (periode): pesan error" — client ini throw (mis. Gateway Timeout) TAPI client lain di tick yang sama tetap lanjut diproses, gak ikut batal
   runLogId?: string; // id row payroll_workflow_runs (log), diisi setelah insert
 }
 
@@ -220,7 +223,17 @@ async function autoComputeFee(
   periodStart: string,
   periodEnd: string,
 ): Promise<FeeAutoComputeResult> {
-  const scheme = pickPricingScheme(schemes, clientId, "rider");
+  // candidates penuh (bukan cuma 1 scheme) — city-scoped delivery scheme
+  // (lihat pricing-calc.ts resolveSchemeForCity/calcDeliveryFeeMultiCity)
+  // butuh SEMUA scheme rider aktif client ini, bukan cuma pemenang default.
+  // `scheme` (representatif default) tetap dipakai buat gating
+  // attendance/hybrid/config di bawah — kategori itu belum city-aware.
+  const riderCandidates = pickPricingSchemeCandidates(schemes, clientId, "rider");
+  // Fallback ke riderCandidates[0]: resolveSchemeForCity(..., undefined, ...)
+  // cuma jatuh ke cabang "unscoped default" — kalau SEMUA scheme client ini
+  // city-scoped (gak ada default sama sekali), itu balikin undefined padahal
+  // scheme-nya jelas ADA. representative di sini cuma buat baca .category.
+  const scheme = resolveSchemeForCity(riderCandidates, undefined, clientId) ?? riderCandidates[0];
   if (!scheme) return { computed: false, reason: "Belum ada skema rider aktif untuk client ini" };
 
   const isAttendance = scheme.category === "attendance";
@@ -239,7 +252,7 @@ async function autoComputeFee(
             sb
               .from("delivery_records")
               .select(
-                "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+                "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
               )
               .eq("client_id", clientId)
               .gte("delivery_date", periodStart)
@@ -308,7 +321,13 @@ async function autoComputeFee(
       }
       clientRevenueByRow = calcScheme(clientScheme.params, deliveryRows).perRow.map((r) => r.fee);
     }
-    rows = calcScheme(scheme.params, deliveryRows, clientRevenueByRow).perRow.filter((r) => r.id);
+    const deliveryCandidates = riderCandidates.filter((s) => s.category === "delivery");
+    rows = calcDeliveryFeeMultiCity(
+      deliveryCandidates,
+      deliveryRows,
+      clientId,
+      clientRevenueByRow,
+    ).perRow.filter((r) => r.id);
     table = "delivery_records";
   }
 
@@ -483,12 +502,12 @@ function buildNotification(result: PayrollWorkflowResult): {
   text: string;
   html: string;
 } {
-  const { runs, skippedClients, emptyClients } = result;
+  const { runs, skippedClients, emptyClients, failedClients } = result;
   const totalWarnings = runs.reduce((s, r) => s + r.warnings.length, 0);
   const today = new Date().toISOString().slice(0, 10);
   const subject = `Payroll Workflow — ${today}`;
   const lines = [`*💸 Payroll Workflow — ${today}*`];
-  if (runs.length === 0 && emptyClients.length === 0) {
+  if (runs.length === 0 && emptyClients.length === 0 && failedClients.length === 0) {
     lines.push("Gak ada periode yang jatuh tempo hari ini.");
   }
   for (const r of runs) {
@@ -509,6 +528,8 @@ function buildNotification(result: PayrollWorkflowResult): {
     lines.push(
       `⚠️ Jatuh tempo tapi 0 aktivitas (cek delivery/attendance belum sync?): ${emptyClients.join(", ")}`,
     );
+  if (failedClients.length)
+    lines.push(`🔴 Gagal diproses (perlu di-generate manual): ${failedClients.join("; ")}`);
   lines.push(`Total warning: ${totalWarnings}. Cek Payroll Run untuk review sebelum publish.`);
   const text = lines.join("\n");
 
@@ -527,9 +548,10 @@ function buildNotification(result: PayrollWorkflowResult): {
   const html = `
   <div style="font-family:sans-serif;max-width:640px;margin:0 auto">
     <h2>Payroll Workflow — ${today}</h2>
-    ${runs.length ? `<ul>${runRows}</ul>` : emptyClients.length ? "" : "<p>Gak ada periode yang jatuh tempo hari ini.</p>"}
+    ${runs.length ? `<ul>${runRows}</ul>` : emptyClients.length || failedClients.length ? "" : "<p>Gak ada periode yang jatuh tempo hari ini.</p>"}
     ${skippedClients.length ? `<p>Dilewati (udah finalized/published): ${skippedClients.join(", ")}</p>` : ""}
     ${emptyClients.length ? `<p style="color:#b8791f">⚠️ Jatuh tempo tapi 0 aktivitas (cek delivery/attendance belum sync?): ${emptyClients.join(", ")}</p>` : ""}
+    ${failedClients.length ? `<p style="color:#c0392b">🔴 Gagal diproses (perlu di-generate manual): ${failedClients.join("; ")}</p>` : ""}
     <p>Total warning: ${totalWarnings}. Cek halaman Payroll Run untuk review sebelum publish.</p>
     <p style="color:#888;font-size:12px;margin-top:16px">Dikirim otomatis oleh Dash PULSE — Payroll Workflow.</p>
   </div>`;
@@ -565,6 +587,7 @@ export async function runPayrollWorkflow(opts: {
   const runs: PayrollWorkflowRunResult[] = [];
   const skippedClients: string[] = [];
   const emptyClients: string[] = [];
+  const failedClients: string[] = [];
   let hardError: string | null = null;
 
   try {
@@ -588,69 +611,83 @@ export async function runPayrollWorkflow(opts: {
         // kelihatan gak jalan kalau diklik di luar jendela ±7 menit itu).
         if (opts.triggeredBy === "cron" && !matchesRunTime(nowMinutesOfDay, p.runTime)) continue;
 
-        const run = await findOrCreatePayrollRun(
-          {
-            clientId: c.id,
+        // Isolasi per client+periode — dulu SATU try/catch ngebungkus SELURUH
+        // loop di atas function ini, jadi kalau satu client throw (mis.
+        // Gateway Timeout pas autoComputeFee/generatePayrollDetails), SEMUA
+        // client lain yang harusnya kebagian jatah di tick yang sama ikut
+        // batal (bukan cuma yang error). Regresi nyata: MAP BOGA gak pernah
+        // keproses di jendela jam 09:00-nya karena client lain di tick yang
+        // sama kena Gateway Timeout duluan. Sekarang tiap client+periode
+        // independen — satu gagal, yang lain tetap lanjut.
+        try {
+          const run = await findOrCreatePayrollRun(
+            {
+              clientId: c.id,
+              clientName: c.name,
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+            },
+            admin as never,
+          );
+          if (run.status !== "draft") {
+            skippedClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
+            continue;
+          }
+
+          const feeResult = await autoComputeFee(
+            admin,
+            schemes,
+            c.id,
+            period.periodStart,
+            period.periodEnd,
+          );
+
+          const { detailCount } = await generatePayrollDetails(run, admin as never);
+          if (detailCount === 0) {
+            // Jatuh tempo tapi 0 aktivitas (delivery/attendance belum sync) —
+            // BUKAN silent skip lagi (dulu di sini, gak kecatat di mana pun,
+            // admin gak ada cara tau kenapa client ini gak pernah muncul di
+            // notif/log walau jadwalnya udah lewat). Tetap dilewati (gak
+            // masuk `runs`, run draft-nya dibiarkan kosong nunggu retry tick
+            // berikutnya), tapi sekarang kecatat biar keliatan di notif & log.
+            emptyClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
+            continue;
+          }
+
+          const { warnings, totalGross, totalNet } = await validateRun(admin, run);
+          const audit = await runAudit(
+            { ...run, clientName: c.name },
+            detailCount,
+            totalGross,
+            totalNet,
+            warnings,
+          );
+
+          runs.push({
+            runId: run.id,
             clientName: c.name,
             periodStart: period.periodStart,
             periodEnd: period.periodEnd,
-          },
-          admin as never,
-        );
-        if (run.status !== "draft") {
-          skippedClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
-          continue;
+            detailCount,
+            totalGross,
+            totalNet,
+            warnings,
+            audit,
+            feeAutoComputed: feeResult.computed,
+            feeSkipReason: feeResult.reason,
+          });
+        } catch (e) {
+          failedClients.push(
+            `${c.name} (${period.periodStart}–${period.periodEnd}): ${(e as Error).message}`,
+          );
         }
-
-        const feeResult = await autoComputeFee(
-          admin,
-          schemes,
-          c.id,
-          period.periodStart,
-          period.periodEnd,
-        );
-
-        const { detailCount } = await generatePayrollDetails(run, admin as never);
-        if (detailCount === 0) {
-          // Jatuh tempo tapi 0 aktivitas (delivery/attendance belum sync) —
-          // BUKAN silent skip lagi (dulu di sini, gak kecatat di mana pun,
-          // admin gak ada cara tau kenapa client ini gak pernah muncul di
-          // notif/log walau jadwalnya udah lewat). Tetap dilewati (gak
-          // masuk `runs`, run draft-nya dibiarkan kosong nunggu retry tick
-          // berikutnya), tapi sekarang kecatat biar keliatan di notif & log.
-          emptyClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
-          continue;
-        }
-
-        const { warnings, totalGross, totalNet } = await validateRun(admin, run);
-        const audit = await runAudit(
-          { ...run, clientName: c.name },
-          detailCount,
-          totalGross,
-          totalNet,
-          warnings,
-        );
-
-        runs.push({
-          runId: run.id,
-          clientName: c.name,
-          periodStart: period.periodStart,
-          periodEnd: period.periodEnd,
-          detailCount,
-          totalGross,
-          totalNet,
-          warnings,
-          audit,
-          feeAutoComputed: feeResult.computed,
-          feeSkipReason: feeResult.reason,
-        });
       }
     }
   } catch (e) {
     hardError = (e as Error).message;
   }
 
-  const result: PayrollWorkflowResult = { runs, skippedClients, emptyClients };
+  const result: PayrollWorkflowResult = { runs, skippedClients, emptyClients, failedClients };
   // Cron sekarang polling tiap 15 menit (dulu 4x/hari) — kalau tiap tick
   // kosong (gak ada yang jatuh tempo, gak ada error) tetap kirim notif,
   // Slack/email kebanjiran "gak ada periode" puluhan kali sehari. Trigger
@@ -660,14 +697,19 @@ export async function runPayrollWorkflow(opts: {
   // client jatuh tempo yang datanya belum siap, admin perlu tau tiap tick
   // sampai datanya beres atau di-generate manual.
   const isEmptyCronTick =
-    opts.triggeredBy === "cron" && runs.length === 0 && emptyClients.length === 0 && !hardError;
+    opts.triggeredBy === "cron" &&
+    runs.length === 0 &&
+    emptyClients.length === 0 &&
+    failedClients.length === 0 &&
+    !hardError;
   const notif = buildNotification(result);
   const slackResult = isEmptyCronTick ? null : await sendSlackMessage(notif.text);
   const emailResult = isEmptyCronTick
     ? null
     : await sendEmail({ subject: notif.subject, html: notif.html });
 
-  const status = hardError ? (runs.length > 0 ? "partial" : "failed") : "completed";
+  const status =
+    hardError || failedClients.length > 0 ? (runs.length > 0 ? "partial" : "failed") : "completed";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: logRow, error: logErr } = await (admin as any)
     .from("payroll_workflow_runs")

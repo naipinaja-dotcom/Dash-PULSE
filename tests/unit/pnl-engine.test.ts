@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickPricingScheme, computePnl } from "@/lib/pnl-engine";
+import { pickPricingScheme, pickPricingSchemeCandidates, computePnl } from "@/lib/pnl-engine";
 import type { PricingScheme } from "@/lib/pricing-types";
 
 function scheme(over: Partial<PricingScheme>): PricingScheme {
@@ -15,14 +15,25 @@ function scheme(over: Partial<PricingScheme>): PricingScheme {
     effective_to: null,
     params: { version: 1 } as PricingScheme["params"],
     created_at: "2026-01-01T00:00:00Z",
+    city_scope: null,
     ...over,
   };
 }
 
 describe("pickPricingScheme", () => {
   it("prefers the newer of two overlapping client-specific schemes (GORECA regression)", () => {
-    const stale = scheme({ id: "stale", client_id: "goreca", effective_from: "2026-07-18", created_at: "2026-07-18T00:00:00Z" });
-    const correct = scheme({ id: "correct", client_id: "goreca", effective_from: "2026-07-19", created_at: "2026-07-19T00:00:00Z" });
+    const stale = scheme({
+      id: "stale",
+      client_id: "goreca",
+      effective_from: "2026-07-18",
+      created_at: "2026-07-18T00:00:00Z",
+    });
+    const correct = scheme({
+      id: "correct",
+      client_id: "goreca",
+      effective_from: "2026-07-19",
+      created_at: "2026-07-19T00:00:00Z",
+    });
     const picked = pickPricingScheme([stale, correct], "goreca", "client");
     expect(picked?.id).toBe("correct");
   });
@@ -35,7 +46,12 @@ describe("pickPricingScheme", () => {
   });
 
   it("ignores an expired scheme (effective_to in the past)", () => {
-    const expired = scheme({ id: "expired", client_id: "goreca", effective_from: "2020-01-01", effective_to: "2020-12-31" });
+    const expired = scheme({
+      id: "expired",
+      client_id: "goreca",
+      effective_from: "2020-01-01",
+      effective_to: "2020-12-31",
+    });
     const current = scheme({ id: "current", client_id: "goreca", effective_from: "2026-01-01" });
     const picked = pickPricingScheme([expired, current], "goreca", "client");
     expect(picked?.id).toBe("current");
@@ -53,7 +69,12 @@ describe("pickPricingScheme", () => {
   // periode historis mana. Backfill/rerun laporan minggu lama jadi kepilih
   // skema yang aktif HARI JOB-NYA DIJALANIN, bukan yang berlaku pas minggu itu.
   it("asOfDate menentukan skema mana yang berlaku, BUKAN tanggal panggil fungsi (backfill regression)", () => {
-    const oldRate = scheme({ id: "old-rate", client_id: "goreca", effective_from: "2026-01-01", effective_to: "2026-06-30" });
+    const oldRate = scheme({
+      id: "old-rate",
+      client_id: "goreca",
+      effective_from: "2026-01-01",
+      effective_to: "2026-06-30",
+    });
     const newRate = scheme({ id: "new-rate", client_id: "goreca", effective_from: "2026-07-01" });
     // Backfill buat periode Maret 2026 — skema yang berlaku SAAT ITU adalah
     // old-rate, walau new-rate udah aktif kalau dicek "hari ini" (default).
@@ -73,19 +94,57 @@ describe("computePnl — client attendance murni (Alfagift regression)", () => {
   const clients = [{ id: "alfagift", name: "Alfagift" }];
 
   const clientScheme = scheme({
-    id: "alfagift-client", client_id: "alfagift", scheme_for: "client", category: "attendance",
-    params: { version: 1, type: "attendance", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
-      config: { full_fee: 200000, standard_minutes: 480, incentives: [] } } as PricingScheme["params"],
+    id: "alfagift-client",
+    client_id: "alfagift",
+    scheme_for: "client",
+    category: "attendance",
+    params: {
+      version: 1,
+      type: "attendance",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: { full_fee: 200000, standard_minutes: 480, incentives: [] },
+    } as PricingScheme["params"],
   });
   const riderScheme = scheme({
-    id: "alfagift-rider", client_id: "alfagift", scheme_for: "rider", category: "attendance",
-    params: { version: 1, type: "attendance", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
-      config: { full_fee: 100000, standard_minutes: 480, incentives: [{ amount: 40000, condition: "ontime_only" }] } } as PricingScheme["params"],
+    id: "alfagift-rider",
+    client_id: "alfagift",
+    scheme_for: "rider",
+    category: "attendance",
+    params: {
+      version: 1,
+      type: "attendance",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: {
+        full_fee: 100000,
+        standard_minutes: 480,
+        incentives: [{ amount: 40000, condition: "ontime_only" }],
+      },
+    } as PricingScheme["params"],
   });
 
   const attendanceRows = [
-    { rider_id: "R1", client_name: "Alfagift", log_date: "2026-07-01", duration_minutes: 480, is_late: false, is_absent: false },
-    { rider_id: "R2", client_name: "Alfagift", log_date: "2026-07-01", duration_minutes: 480, is_late: false, is_absent: false },
+    {
+      rider_id: "R1",
+      client_name: "Alfagift",
+      log_date: "2026-07-01",
+      duration_minutes: 480,
+      is_late: false,
+      is_absent: false,
+    },
+    {
+      rider_id: "R2",
+      client_name: "Alfagift",
+      log_date: "2026-07-01",
+      duration_minutes: 480,
+      is_late: false,
+      is_absent: false,
+    },
   ];
 
   it("client shows up in perClient even with ZERO delivery_records", () => {
@@ -123,14 +182,34 @@ describe("computePnl — rider revenue_share (Komu Komu Bakehouse regression)", 
   const clients = [{ id: "komu", name: "Komu Komu Bakehouse" }];
 
   const clientScheme = scheme({
-    id: "komu-client", client_id: "komu", scheme_for: "client", category: "delivery",
-    params: { version: 1, type: "flat_unit", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
-      config: { rate_by: "flat", flat_rate: 15000 } } as PricingScheme["params"],
+    id: "komu-client",
+    client_id: "komu",
+    scheme_for: "client",
+    category: "delivery",
+    params: {
+      version: 1,
+      type: "flat_unit",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: { rate_by: "flat", flat_rate: 15000 },
+    } as PricingScheme["params"],
   });
   const riderScheme = scheme({
-    id: "komu-rider", client_id: "komu", scheme_for: "rider", category: "delivery",
-    params: { version: 1, type: "revenue_share", add_kg: null, multi_drop: null, billing_addons: null, area_city_pricing: null,
-      config: { percent_to_rider: 80 } } as PricingScheme["params"],
+    id: "komu-rider",
+    client_id: "komu",
+    scheme_for: "rider",
+    category: "delivery",
+    params: {
+      version: 1,
+      type: "revenue_share",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: { percent_to_rider: 80 },
+    } as PricingScheme["params"],
   });
 
   const deliveryRows = [
@@ -144,5 +223,93 @@ describe("computePnl — rider revenue_share (Komu Komu Bakehouse regression)", 
     expect(c?.revenue).toBe(30000); // 2 x flat_rate 15000
     expect(c?.cost).toBe(24000); // 80% of revenue, was 0 before the fix
     expect(c?.margin).toBe(6000);
+  });
+});
+
+describe("pickPricingSchemeCandidates", () => {
+  it("returns every active candidate for a client, not just the winner (unlike pickPricingScheme)", () => {
+    const jkt = scheme({
+      id: "jkt",
+      client_id: "goreca",
+      scheme_for: "rider",
+      city_scope: ["Jakarta"],
+    });
+    const bali = scheme({
+      id: "bali",
+      client_id: "goreca",
+      scheme_for: "rider",
+      city_scope: ["Bali"],
+    });
+    const candidates = pickPricingSchemeCandidates([jkt, bali], "goreca", "rider");
+    expect(candidates.map((c) => c.id).sort()).toEqual(["bali", "jkt"]);
+  });
+});
+
+// ==================================================================
+// computePnl — city-scoped rider schemes: 1 client, 2 active rider
+// schemes (beda calc_type per city, lihat resolveSchemeForCity/
+// calcDeliveryFeeMultiCity di pricing-calc.ts). Jakarta riders pakai
+// flat_unit, Bali riders pakai scheme flat_unit rate beda — engine harus
+// milih scheme yang bener per city, bukan cuma 1 scheme buat semua baris.
+// ==================================================================
+describe("computePnl — city-scoped rider schemes (multi-scheme per client)", () => {
+  const clients = [{ id: "multi", name: "Multi City Co" }];
+
+  const jktScheme = scheme({
+    id: "multi-jkt",
+    client_id: "multi",
+    scheme_for: "rider",
+    category: "delivery",
+    city_scope: ["Jakarta"],
+    params: {
+      version: 1,
+      type: "flat_unit",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      city_scope: ["Jakarta"],
+      config: { rate_by: "flat", flat_rate: 10000 },
+    } as PricingScheme["params"],
+  });
+  const baliScheme = scheme({
+    id: "multi-bali",
+    client_id: "multi",
+    scheme_for: "rider",
+    category: "delivery",
+    city_scope: ["Bali"],
+    params: {
+      version: 1,
+      type: "flat_unit",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      city_scope: ["Bali"],
+      config: { rate_by: "flat", flat_rate: 25000 },
+    } as PricingScheme["params"],
+  });
+
+  const deliveryRows = [
+    {
+      client_id: "multi",
+      rider_id: "R1",
+      delivery_date: "2026-08-21",
+      status: "COMPLETED",
+      city: "Jakarta",
+    },
+    {
+      client_id: "multi",
+      rider_id: "R2",
+      delivery_date: "2026-08-21",
+      status: "COMPLETED",
+      city: "Bali",
+    },
+  ];
+
+  it("Jakarta rows price via the Jakarta scheme, Bali rows via the Bali scheme, in one combined result", () => {
+    const { perClient } = computePnl(deliveryRows, [jktScheme, baliScheme], clients);
+    const c = perClient.find((c) => c.clientId === "multi");
+    expect(c?.cost).toBe(35000); // 10000 (Jakarta) + 25000 (Bali)
   });
 });

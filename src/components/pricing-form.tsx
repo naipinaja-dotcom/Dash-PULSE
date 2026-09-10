@@ -75,6 +75,7 @@ import {
   buildAreaCityConfig,
   loadAreaCityState,
   validateAreaCityState,
+  citiesFromRaw,
   type AreaCityState,
 } from "./pricing-form/area-city-fields";
 
@@ -91,6 +92,9 @@ interface FormState {
   multiDropFee: string;
   areaCityOn: boolean;
   areaCity: AreaCityState;
+  // Scope SCHEME INI (bukan rate di dalamnya, beda dari areaCity di atas) ke
+  // City tertentu — lihat city_scope di pricing-types.ts. Kosong = default.
+  cityScopeRaw: string;
   revenueShareOn: boolean;
   revenueSharePercent: string;
   billingOn: boolean;
@@ -114,10 +118,18 @@ function emptyForm(): FormState {
     multiDropFee: "3000",
     areaCityOn: false,
     areaCity: emptyAreaCityState(),
+    cityScopeRaw: "",
     revenueShareOn: false,
     revenueSharePercent: "80",
     billingOn: false,
-    billing: { min_charge: "", admin_fee_flat: "", management_fee_percent: "", insurance_fee_mode: "flat", insurance_fee_amount: "", ppn_percent: "11" },
+    billing: {
+      min_charge: "",
+      admin_fee_flat: "",
+      management_fee_percent: "",
+      insurance_fee_mode: "flat",
+      insurance_fee_amount: "",
+      ppn_percent: "11",
+    },
   };
 }
 
@@ -131,6 +143,8 @@ function buildEnvelope(
   // client, bukan dari dimensi Distance/Weight) — cuma masuk akal buat sisi
   // Rider. Dims/Add-KG/Multi-drop diabaikan total kalau mode ini aktif,
   // bukan ditumpuk di atasnya (fee-nya murni % revenue).
+  const cityScope = category === "delivery" ? citiesFromRaw(f.cityScopeRaw) : [];
+
   if (category === "delivery" && schemeFor === "rider" && f.revenueShareOn) {
     return {
       version: 1,
@@ -140,10 +154,12 @@ function buildEnvelope(
       multi_drop: null,
       billing_addons: null,
       area_city_pricing: null,
+      city_scope: cityScope.length ? cityScope : null,
     };
   }
 
-  const type: PricingEnvelope["type"] = category === "delivery" ? deliveryEnvelopeType(subtype, f.delivery) : "attendance";
+  const type: PricingEnvelope["type"] =
+    category === "delivery" ? deliveryEnvelopeType(subtype, f.delivery) : "attendance";
   const config: Record<string, unknown> =
     category === "delivery"
       ? (buildDeliveryConfig(subtype, f.delivery) as unknown as Record<string, unknown>)
@@ -175,6 +191,10 @@ function buildEnvelope(
     // perilaku sebelum fitur ini, lihat prioritas #1 di PRD).
     area_city_pricing:
       category === "delivery" && f.areaCityOn ? buildAreaCityConfig(f.areaCity, true) : null,
+    // Beda dari area_city_pricing di atas (override RATE) — ini scope SCHEME
+    // ini sendiri ke City tertentu, biar 1 client bisa punya beberapa scheme
+    // delivery aktif sekaligus (lihat resolveSchemeForCity di pricing-calc.ts).
+    city_scope: cityScope.length ? cityScope : null,
     billing_addons:
       schemeFor === "client" && f.billingOn
         ? {
@@ -208,7 +228,8 @@ function loadForm(scheme: PricingScheme | undefined): {
   // admin. Normalize ke "attendance" di sini biar field-nya beneran ke-render
   // & bisa direview sebelum disimpan ulang.
   const category: PricingCategory = rawCategory === "hybrid" ? "attendance" : rawCategory;
-  const subtype: PricingSubtype = scheme?.subtype ?? (category === "delivery" ? { distance: true, weight: false } : null);
+  const subtype: PricingSubtype =
+    scheme?.subtype ?? (category === "delivery" ? { distance: true, weight: false } : null);
 
   if (!scheme || !scheme.params || scheme.params.version !== 1) {
     return { form, category, subtype, schemeFor: scheme?.scheme_for ?? "rider" };
@@ -232,7 +253,15 @@ function loadForm(scheme: PricingScheme | undefined): {
       standard_hours: String((Number(c.standard_minutes) || 0) / 60 || ""),
       overtimeOn: false,
       overtime_rate_per_hour: "0",
-      incentives: c.ontime_bonus ? [{ label: "Bonus Ontime", amount: String(c.ontime_bonus), condition: "ontime_only" as const }] : [],
+      incentives: c.ontime_bonus
+        ? [
+            {
+              label: "Bonus Ontime",
+              amount: String(c.ontime_bonus),
+              condition: "ontime_only" as const,
+            },
+          ]
+        : [],
       shiftsOn: false,
       shifts: [],
       deliveryCompOn: true,
@@ -256,6 +285,9 @@ function loadForm(scheme: PricingScheme | undefined): {
   if (env.area_city_pricing?.enabled) {
     form.areaCityOn = true;
     form.areaCity = loadAreaCityState(env.area_city_pricing);
+  }
+  if (env.city_scope?.length) {
+    form.cityScopeRaw = env.city_scope.join(", ");
   }
   if (env.billing_addons) {
     form.billingOn = true;
@@ -294,7 +326,9 @@ export function PricingForm({ mode, schemeId }: { mode: "create" | "edit"; schem
   if (!ready) {
     return (
       <AdminLayout title={t("pform.editSchemeTitle")}>
-        <div className="p-10 text-center text-muted-foreground text-sm">{t("pform.loadingScheme")}</div>
+        <div className="p-10 text-center text-muted-foreground text-sm">
+          {t("pform.loadingScheme")}
+        </div>
       </AdminLayout>
     );
   }
@@ -347,7 +381,9 @@ function PricingFormInner({
     setCategory(cat);
     if (cat === "attendance") setSubtype(null);
     else if (cat === "delivery")
-      setSubtype((prev) => (prev as DeliveryDimensions | null) ?? { distance: true, weight: false });
+      setSubtype(
+        (prev) => (prev as DeliveryDimensions | null) ?? { distance: true, weight: false },
+      );
   };
 
   const [saving, setSaving] = useState(false);
@@ -397,420 +433,493 @@ function PricingFormInner({
       subtitle={t("pform.pageSubtitle")}
     >
       <div className="pricing-workbench">
-      <button
-        type="button"
-        onClick={() => navigate({ to: "/admin/pricing" })}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-4"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> {t("pform.backToList")}
-      </button>
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/admin/pricing" })}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-4"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> {t("pform.backToList")}
+        </button>
 
-      {/* Rail (kiri, sticky) + Builder (kanan) — digabung dari 3 card terpisah
+        {/* Rail (kiri, sticky) + Builder (kanan) — digabung dari 3 card terpisah
           (Info / Kategori / Modifier) biar Billing Add-ons (dulu nyempil di
           card Modifier paling bawah, di dalam ToggleBlock default-collapsed)
           keliatan begitu buka halaman, dan tabel rate + kalkulator gak perlu
           discroll jauh buat sampe. Gak ada field/handler yang dihapus — cuma
           dipindah posisi. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 mb-4 items-start">
-        <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>
-              {t("pform.schemeName")} <span className="font-normal text-muted-foreground">({t("pform.optional")})</span>
-            </FieldLabel>
-            <TextInput
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("pform.schemeNamePlaceholder")}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>{t("pform.client")}</FieldLabel>
-            <ClientCombobox
-              value={clientId}
-              onChange={setClientId}
-              placeholder={t("pform.allClients")}
-              className="w-full text-sm py-1.5"
-              options={clients.map((c) => ({ value: c.id, label: c.name }))}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel>{t("pform.effectiveFrom")}</FieldLabel>
-              <DatePicker value={effFrom} onChange={setEffFrom} className="w-full" />
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 mb-4 items-start">
+          <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
             <div className="flex flex-col gap-1.5">
               <FieldLabel>
-                {t("pform.effectiveTo")} <span className="font-normal">({t("pform.optional")})</span>
+                {t("pform.schemeName")}{" "}
+                <span className="font-normal text-muted-foreground">({t("pform.optional")})</span>
               </FieldLabel>
-              <DatePicker value={effTo} onChange={setEffTo} className="w-full" />
+              <TextInput
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("pform.schemeNamePlaceholder")}
+              />
             </div>
-          </div>
-
-          {/* Scheme for */}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">{t("pform.schemeForLabel")}</p>
-            <div className="grid grid-cols-1 gap-2">
-              {(["rider", "client"] as SchemeFor[]).map((sf) => (
-                <button
-                  key={sf}
-                  data-pricing-side={sf}
-                  type="button"
-                  onClick={() => setSchemeFor(sf)}
-                  className={
-                    "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
-                    (schemeFor === sf
-                      ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
-                      : "bg-card text-foreground hover:bg-muted")
-                  }
-                >
-                  <span className="text-xs font-medium block">
-                    {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {sf === "rider" ? t("pform.riderCostDesc") : t("pform.clientRevenueDesc")}
-                  </span>
-                </button>
-              ))}
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>{t("pform.client")}</FieldLabel>
+              <ClientCombobox
+                value={clientId}
+                onChange={setClientId}
+                placeholder={t("pform.allClients")}
+                className="w-full text-sm py-1.5"
+                options={clients.map((c) => ({ value: c.id, label: c.name }))}
+              />
             </div>
-          </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>{t("pform.effectiveFrom")}</FieldLabel>
+                <DatePicker value={effFrom} onChange={setEffFrom} className="w-full" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>
+                  {t("pform.effectiveTo")}{" "}
+                  <span className="font-normal">({t("pform.optional")})</span>
+                </FieldLabel>
+                <DatePicker value={effTo} onChange={setEffTo} className="w-full" />
+              </div>
+            </div>
 
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-              {t("pform.selectCategory")}
-            </p>
-            <div className="grid grid-cols-1 gap-2">
-              {PRICING_CATEGORIES.map((cat) => {
-                const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
-                const active = category === cat.key;
-                return (
+            {category === "delivery" && (
+              <div className="flex flex-col gap-1">
+                <FieldLabel>
+                  {t("pform.cityScopeLabel")}{" "}
+                  <span className="font-normal text-muted-foreground">({t("pform.optional")})</span>
+                </FieldLabel>
+                <span className="text-[11px] text-muted-foreground leading-snug">
+                  {t("pform.cityScopeHint")}
+                </span>
+                <TextInput
+                  value={f.cityScopeRaw}
+                  placeholder={t("pfAreaCity.citiesPlaceholder")}
+                  onChange={(e) => patch({ cityScopeRaw: e.target.value })}
+                  className="mt-0.5"
+                />
+              </div>
+            )}
+
+            {/* Scheme for */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                {t("pform.schemeForLabel")}
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {(["rider", "client"] as SchemeFor[]).map((sf) => (
                   <button
-                    key={cat.key}
-                    data-pricing-category={cat.key}
+                    key={sf}
+                    data-pricing-side={sf}
                     type="button"
-                    onClick={() => handleCategoryChange(cat.key)}
+                    onClick={() => setSchemeFor(sf)}
                     className={
-                      "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
-                      (active
+                      "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
+                      (schemeFor === sf
                         ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
                         : "bg-card text-foreground hover:bg-muted")
                     }
                   >
-                    <div className="flex items-center gap-1.5">
-                      <Icon className="w-4 h-4" />
-                      <span className="text-xs font-medium leading-tight">{cat.name}</span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground leading-snug">{cat.desc}</span>
+                    <span className="text-xs font-medium block">
+                      {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {sf === "rider" ? t("pform.riderCostDesc") : t("pform.clientRevenueDesc")}
+                    </span>
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Revenue Share — fee rider = % dari revenue client per AWB (bukan
-              dari dimensi Distance/Weight). Cuma masuk akal buat sisi Rider:
-              revenue-nya sendiri diambil dari skema Client yang aktif pas
-              Hitung Fee (lihat admin.calculate.tsx), bukan diisi di sini. */}
-          {category === "delivery" && schemeFor === "rider" && (
-            <ToggleBlock
-              label={t("pform.revenueShareLabel")}
-              hint={t("pform.revenueShareHint")}
-              on={f.revenueShareOn}
-              onToggle={(on) => patch({ revenueShareOn: on })}
-            >
-              <div className="flex flex-col gap-1.5 max-w-xs">
-                <FieldLabel>{t("pform.percentToRider")}</FieldLabel>
-                <TextInput
-                  value={f.revenueSharePercent}
-                  inputMode="decimal"
-                  onChange={(e) => patch({ revenueSharePercent: sanitizeDecimalInput(e.target.value) })}
-                />
+                ))}
               </div>
-            </ToggleBlock>
-          )}
+            </div>
 
-          {/* Dimensi delivery — checkbox Distance / Weight */}
-          {category === "delivery" && !f.revenueShareOn && (
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-2">
-                {t("pform.pricingDimensionsLabel")}
-              </label>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+                {t("pform.selectCategory")}
+              </p>
               <div className="grid grid-cols-1 gap-2">
-                {DELIVERY_DIMENSIONS.map((dim) => {
-                  const Icon = DIMENSION_ICONS[dim.key];
-                  const dims = (subtype as DeliveryDimensions) || { distance: false, weight: false };
-                  const checked = dims[dim.key] ?? false;
-
+                {PRICING_CATEGORIES.map((cat) => {
+                  const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
+                  const active = category === cat.key;
                   return (
-                    <label
-                      key={dim.key}
-                      data-pricing-dimension={dim.key}
+                    <button
+                      key={cat.key}
+                      data-pricing-category={cat.key}
+                      type="button"
+                      onClick={() => handleCategoryChange(cat.key)}
                       className={
-                        "text-left rounded-md px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border-2 border-border-strong cursor-pointer " +
-                        (checked
+                        "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
+                        (active
                           ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
                           : "bg-card text-foreground hover:bg-muted")
                       }
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => setSubtype({ ...dims, [dim.key]: e.target.checked })}
-                        className="w-4 h-4 mt-0.5 flex-shrink-0"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="text-xs font-medium leading-tight">{dim.name}</span>
-                        </div>
-                        <span className="text-[11px] text-muted-foreground leading-snug block mt-0.5">{dim.desc}</span>
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="w-4 h-4" />
+                        <span className="text-xs font-medium leading-tight">{cat.name}</span>
                       </div>
-                    </label>
+                      <span className="text-[11px] text-muted-foreground leading-snug">
+                        {cat.desc}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
             </div>
-          )}
 
-          {/* Callout */}
-          <div className="pricing-callout rounded-md border-2 border-border-strong bg-secondary px-3.5 py-2.5 flex items-start gap-2.5">
-            <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-foreground leading-relaxed">
-              {category === "delivery"
-                ? (() => {
-                    if (f.revenueShareOn) return t("pform.calloutRevenueShare");
-                    const dims = subtype as DeliveryDimensions | null;
-                    if (!dims || (!dims.distance && !dims.weight)) return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
-                    const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map((d) => d.name);
-                    if (enabled.length === 1) return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
-                    return t("pform.calloutBothDimensions");
-                  })()
-                : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
-            </p>
-          </div>
-
-          {/* Billing Add-ons — dipindah dari card Modifier paling bawah biar
-              gak nyembunyi di collapsed toggle yang jauh di bawah fold (lihat
-              diskusi redesign). Gating sama persis kayak sebelumnya:
-              scheme_for === "client" doang, gak dibatasi kategori. */}
-          {schemeFor === "client" && (
-            <ToggleBlock
-              label={t("pform.billingAddonsLabel")}
-              hint={t("pform.billingAddonsHint")}
-              on={f.billingOn}
-              onToggle={(on) => patch({ billingOn: on })}
-            >
-              <div className="grid grid-cols-1 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <FieldLabel>{t("pform.minCharge")}</FieldLabel>
-                  <RupiahInput
-                    value={f.billing.min_charge}
-                    onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <FieldLabel>{t("pform.managementFee")}</FieldLabel>
+            {/* Revenue Share — fee rider = % dari revenue client per AWB (bukan
+              dari dimensi Distance/Weight). Cuma masuk akal buat sisi Rider:
+              revenue-nya sendiri diambil dari skema Client yang aktif pas
+              Hitung Fee (lihat admin.calculate.tsx), bukan diisi di sini. */}
+            {category === "delivery" && schemeFor === "rider" && (
+              <ToggleBlock
+                label={t("pform.revenueShareLabel")}
+                hint={t("pform.revenueShareHint")}
+                on={f.revenueShareOn}
+                onToggle={(on) => patch({ revenueShareOn: on })}
+              >
+                <div className="flex flex-col gap-1.5 max-w-xs">
+                  <FieldLabel>{t("pform.percentToRider")}</FieldLabel>
                   <TextInput
-                    value={f.billing.management_fee_percent}
+                    value={f.revenueSharePercent}
                     inputMode="decimal"
                     onChange={(e) =>
-                      patch({ billing: { ...f.billing, management_fee_percent: sanitizeDecimalInput(e.target.value) } })
+                      patch({ revenueSharePercent: sanitizeDecimalInput(e.target.value) })
                     }
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <FieldLabel>{t("pform.adminFee")}</FieldLabel>
-                  <RupiahInput
-                    value={f.billing.admin_fee_flat}
-                    onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
-                  />
+              </ToggleBlock>
+            )}
+
+            {/* Dimensi delivery — checkbox Distance / Weight */}
+            {category === "delivery" && !f.revenueShareOn && (
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-2">
+                  {t("pform.pricingDimensionsLabel")}
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  {DELIVERY_DIMENSIONS.map((dim) => {
+                    const Icon = DIMENSION_ICONS[dim.key];
+                    const dims = (subtype as DeliveryDimensions) || {
+                      distance: false,
+                      weight: false,
+                    };
+                    const checked = dims[dim.key] ?? false;
+
+                    return (
+                      <label
+                        key={dim.key}
+                        data-pricing-dimension={dim.key}
+                        className={
+                          "text-left rounded-md px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border-2 border-border-strong cursor-pointer " +
+                          (checked
+                            ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                            : "bg-card text-foreground hover:bg-muted")
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => setSubtype({ ...dims, [dim.key]: e.target.checked })}
+                          className="w-4 h-4 mt-0.5 flex-shrink-0"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="text-xs font-medium leading-tight">{dim.name}</span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground leading-snug block mt-0.5">
+                            {dim.desc}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <FieldLabel>{t("pform.insuranceFee")}</FieldLabel>
-                  <div className="flex gap-1.5">
-                    <select
-                      value={f.billing.insurance_fee_mode}
+              </div>
+            )}
+
+            {/* Callout */}
+            <div className="pricing-callout rounded-md border-2 border-border-strong bg-secondary px-3.5 py-2.5 flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-foreground leading-relaxed">
+                {category === "delivery"
+                  ? (() => {
+                      if (f.revenueShareOn) return t("pform.calloutRevenueShare");
+                      const dims = subtype as DeliveryDimensions | null;
+                      if (!dims || (!dims.distance && !dims.weight))
+                        return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
+                      const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map(
+                        (d) => d.name,
+                      );
+                      if (enabled.length === 1)
+                        return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
+                      return t("pform.calloutBothDimensions");
+                    })()
+                  : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
+              </p>
+            </div>
+
+            {/* Billing Add-ons — dipindah dari card Modifier paling bawah biar
+              gak nyembunyi di collapsed toggle yang jauh di bawah fold (lihat
+              diskusi redesign). Gating sama persis kayak sebelumnya:
+              scheme_for === "client" doang, gak dibatasi kategori. */}
+            {schemeFor === "client" && (
+              <ToggleBlock
+                label={t("pform.billingAddonsLabel")}
+                hint={t("pform.billingAddonsHint")}
+                on={f.billingOn}
+                onToggle={(on) => patch({ billingOn: on })}
+              >
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>{t("pform.minCharge")}</FieldLabel>
+                    <RupiahInput
+                      value={f.billing.min_charge}
+                      onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>{t("pform.managementFee")}</FieldLabel>
+                    <TextInput
+                      value={f.billing.management_fee_percent}
+                      inputMode="decimal"
                       onChange={(e) =>
                         patch({
                           billing: {
                             ...f.billing,
-                            insurance_fee_mode: e.target.value as "flat" | "percent",
-                            insurance_fee_amount: "",
+                            management_fee_percent: sanitizeDecimalInput(e.target.value),
                           },
                         })
                       }
-                      className="w-24 flex-shrink-0 rounded-md border-2 border-border-strong bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      <option value="flat">{t("pform.insuranceModeFlat")}</option>
-                      <option value="percent">{t("pform.insuranceModePercent")}</option>
-                    </select>
-                    {f.billing.insurance_fee_mode === "percent" ? (
-                      <TextInput
-                        value={f.billing.insurance_fee_amount}
-                        inputMode="decimal"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>{t("pform.adminFee")}</FieldLabel>
+                    <RupiahInput
+                      value={f.billing.admin_fee_flat}
+                      onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>{t("pform.insuranceFee")}</FieldLabel>
+                    <div className="flex gap-1.5">
+                      <select
+                        value={f.billing.insurance_fee_mode}
                         onChange={(e) =>
-                          patch({ billing: { ...f.billing, insurance_fee_amount: sanitizeDecimalInput(e.target.value) } })
+                          patch({
+                            billing: {
+                              ...f.billing,
+                              insurance_fee_mode: e.target.value as "flat" | "percent",
+                              insurance_fee_amount: "",
+                            },
+                          })
                         }
-                      />
-                    ) : (
-                      <RupiahInput
-                        value={f.billing.insurance_fee_amount}
-                        onChange={(v) => patch({ billing: { ...f.billing, insurance_fee_amount: v } })}
-                      />
-                    )}
+                        className="w-24 flex-shrink-0 rounded-md border-2 border-border-strong bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        <option value="flat">{t("pform.insuranceModeFlat")}</option>
+                        <option value="percent">{t("pform.insuranceModePercent")}</option>
+                      </select>
+                      {f.billing.insurance_fee_mode === "percent" ? (
+                        <TextInput
+                          value={f.billing.insurance_fee_amount}
+                          inputMode="decimal"
+                          onChange={(e) =>
+                            patch({
+                              billing: {
+                                ...f.billing,
+                                insurance_fee_amount: sanitizeDecimalInput(e.target.value),
+                              },
+                            })
+                          }
+                        />
+                      ) : (
+                        <RupiahInput
+                          value={f.billing.insurance_fee_amount}
+                          onChange={(v) =>
+                            patch({ billing: { ...f.billing, insurance_fee_amount: v } })
+                          }
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel>{t("pform.ppn")}</FieldLabel>
+                    <TextInput
+                      value={f.billing.ppn_percent}
+                      inputMode="decimal"
+                      onChange={(e) =>
+                        patch({
+                          billing: {
+                            ...f.billing,
+                            ppn_percent: sanitizeDecimalInput(e.target.value),
+                          },
+                        })
+                      }
+                    />
                   </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <FieldLabel>{t("pform.ppn")}</FieldLabel>
-                  <TextInput
-                    value={f.billing.ppn_percent}
-                    inputMode="decimal"
-                    onChange={(e) =>
-                      patch({ billing: { ...f.billing, ppn_percent: sanitizeDecimalInput(e.target.value) } })
-                    }
-                  />
-                </div>
-              </div>
-            </ToggleBlock>
-          )}
-        </aside>
+              </ToggleBlock>
+            )}
+          </aside>
 
-        {/* Builder — tabel rate/attendance, modifier delivery-only (Add-KG,
+          {/* Builder — tabel rate/attendance, modifier delivery-only (Add-KG,
             Multi-drop), kalkulator hidup, semuanya dalam 1 panel biar keliatan
             bareng tanpa scroll jauh. */}
-        <div className="pricing-builder rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4">
-          {category === "delivery" && f.revenueShareOn && (
-            <RevenueShareCalc
-              clientId={clientId}
-              effFrom={effFrom}
-              effTo={effTo}
-              percentToRider={f.revenueSharePercent}
-            />
-          )}
+          <div className="pricing-builder rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4">
+            {category === "delivery" && f.revenueShareOn && (
+              <RevenueShareCalc
+                clientId={clientId}
+                effFrom={effFrom}
+                effTo={effTo}
+                percentToRider={f.revenueSharePercent}
+              />
+            )}
 
-          {category === "delivery" && !f.revenueShareOn && subtype && (
-            <DeliveryFields
-              subtype={subtype}
-              value={f.delivery}
-              onChange={(v) => patch({ delivery: v })}
-            />
-          )}
+            {category === "delivery" && !f.revenueShareOn && subtype && (
+              <DeliveryFields
+                subtype={subtype}
+                value={f.delivery}
+                onChange={(v) => patch({ delivery: v })}
+              />
+            )}
 
-          {category === "attendance" && (
-            <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
-          )}
+            {category === "attendance" && (
+              <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
+            )}
 
-          {category === "delivery" && !f.revenueShareOn && (() => {
-            const activeCount = [f.addKgOn, f.multiDropOn, f.areaCityOn].filter(Boolean).length;
-            const hasActive = activeCount > 0;
-            return (
-              <div
-                className={
-                  "rounded-md transition-colors " +
-                  (hasActive ? "border-2 border-primary bg-primary-soft" : "border-2 border-primary-soft bg-primary-soft/40")
-                }
-              >
-                <button
-                  type="button"
-                  onClick={() => setModifiersOpen((o) => !o)}
-                  className={
-                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:bg-primary-soft/70 rounded-md transition-colors " +
-                    (hasActive ? "text-primary-soft-foreground" : "text-foreground")
-                  }
-                >
-                  <span className="flex items-center gap-2.5">
-                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                    </span>
-                    <ChevronRight
-                      className={"w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " + (modifiersOpen ? "rotate-90" : "")}
-                    />
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold leading-tight">{t("pform.modifiersToggle")}</span>
-                      <span className="text-[11px] font-normal text-muted-foreground">{t("pform.modifiersSubtitle")}</span>
-                    </span>
-                  </span>
-                  {hasActive && (
-                    <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground flex-shrink-0">
-                      {activeCount} {t("pform.modifiersActiveSuffix")}
-                    </span>
-                  )}
-                </button>
-                {modifiersOpen && (
-                  <div className="px-3.5 pb-3.5 space-y-3">
-                    {!(subtype as DeliveryDimensions | null)?.weight && (
-                      <ToggleBlock
-                        label={t("pform.addKgLabel")}
-                        hint={t("pform.addKgHint")}
-                        on={f.addKgOn}
-                        onToggle={(on) => patch({ addKgOn: on })}
-                      >
-                        <StepTierEditor unit="kg" value={f.addKg} onChange={(v) => patch({ addKg: v })} />
-                      </ToggleBlock>
-                    )}
-
-                    <ToggleBlock
-                      label={t("pform.multiDropLabel")}
-                      hint={t("pform.multiDropHint")}
-                      on={f.multiDropOn}
-                      onToggle={(on) => patch({ multiDropOn: on })}
+            {category === "delivery" &&
+              !f.revenueShareOn &&
+              (() => {
+                const activeCount = [f.addKgOn, f.multiDropOn, f.areaCityOn].filter(Boolean).length;
+                const hasActive = activeCount > 0;
+                return (
+                  <div
+                    className={
+                      "rounded-md transition-colors " +
+                      (hasActive
+                        ? "border-2 border-primary bg-primary-soft"
+                        : "border-2 border-primary-soft bg-primary-soft/40")
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setModifiersOpen((o) => !o)}
+                      className={
+                        "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:bg-primary-soft/70 rounded-md transition-colors " +
+                        (hasActive ? "text-primary-soft-foreground" : "text-foreground")
+                      }
                     >
-                      <div className="flex flex-col gap-1.5 max-w-xs">
-                        <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
-                        <RupiahInput value={f.multiDropFee} onChange={(v) => patch({ multiDropFee: v })} />
+                      <span className="flex items-center gap-2.5">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
+                          <SlidersHorizontal className="w-3.5 h-3.5" />
+                        </span>
+                        <ChevronRight
+                          className={
+                            "w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " +
+                            (modifiersOpen ? "rotate-90" : "")
+                          }
+                        />
+                        <span className="flex flex-col">
+                          <span className="text-sm font-semibold leading-tight">
+                            {t("pform.modifiersToggle")}
+                          </span>
+                          <span className="text-[11px] font-normal text-muted-foreground">
+                            {t("pform.modifiersSubtitle")}
+                          </span>
+                        </span>
+                      </span>
+                      {hasActive && (
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground flex-shrink-0">
+                          {activeCount} {t("pform.modifiersActiveSuffix")}
+                        </span>
+                      )}
+                    </button>
+                    {modifiersOpen && (
+                      <div className="px-3.5 pb-3.5 space-y-3">
+                        {!(subtype as DeliveryDimensions | null)?.weight && (
+                          <ToggleBlock
+                            label={t("pform.addKgLabel")}
+                            hint={t("pform.addKgHint")}
+                            on={f.addKgOn}
+                            onToggle={(on) => patch({ addKgOn: on })}
+                          >
+                            <StepTierEditor
+                              unit="kg"
+                              value={f.addKg}
+                              onChange={(v) => patch({ addKg: v })}
+                            />
+                          </ToggleBlock>
+                        )}
+
+                        <ToggleBlock
+                          label={t("pform.multiDropLabel")}
+                          hint={t("pform.multiDropHint")}
+                          on={f.multiDropOn}
+                          onToggle={(on) => patch({ multiDropOn: on })}
+                        >
+                          <div className="flex flex-col gap-1.5 max-w-xs">
+                            <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
+                            <RupiahInput
+                              value={f.multiDropFee}
+                              onChange={(v) => patch({ multiDropFee: v })}
+                            />
+                          </div>
+                        </ToggleBlock>
+
+                        <ToggleBlock
+                          label={t("pform.areaCityPricingLabel")}
+                          hint={t("pform.areaCityPricingHint")}
+                          on={f.areaCityOn}
+                          onToggle={(on) => patch({ areaCityOn: on })}
+                        >
+                          <AreaCityFields
+                            value={f.areaCity}
+                            onChange={(v) => patch({ areaCity: v })}
+                          />
+                        </ToggleBlock>
                       </div>
-                    </ToggleBlock>
-
-                    <ToggleBlock
-                      label={t("pform.areaCityPricingLabel")}
-                      hint={t("pform.areaCityPricingHint")}
-                      on={f.areaCityOn}
-                      onToggle={(on) => patch({ areaCityOn: on })}
-                    >
-                      <AreaCityFields value={f.areaCity} onChange={(v) => patch({ areaCity: v })} />
-                    </ToggleBlock>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })()}
+                );
+              })()}
 
-          {!(category === "delivery" && f.revenueShareOn) && (
-            <InteractiveCalc
-              category={category}
-              subtype={subtype}
-              delivery={f.delivery}
-              attendance={f.attendance}
-              schemeFor={schemeFor}
-              addKgOn={f.addKgOn}
-              multiDropOn={f.multiDropOn}
-              multiDropFee={f.multiDropFee}
-              areaCityOn={f.areaCityOn}
-              areaCity={f.areaCity}
-              billingOn={f.billingOn}
-            />
-          )}
+            {!(category === "delivery" && f.revenueShareOn) && (
+              <InteractiveCalc
+                category={category}
+                subtype={subtype}
+                delivery={f.delivery}
+                attendance={f.attendance}
+                schemeFor={schemeFor}
+                addKgOn={f.addKgOn}
+                multiDropOn={f.multiDropOn}
+                multiDropFee={f.multiDropFee}
+                areaCityOn={f.areaCityOn}
+                areaCity={f.areaCity}
+                billingOn={f.billingOn}
+              />
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Footer */}
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/admin/pricing" })}
-          className="rounded-md border border-border bg-card px-4 py-2 text-sm hover:bg-muted"
-        >
-          {t("pform.cancel")}
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          <Save className="w-4 h-4" />
-          {saving ? t("pform.saving") : t("pform.saveScheme")}
-        </button>
-      </div>
+        {/* Footer */}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/admin/pricing" })}
+            className="rounded-md border border-border bg-card px-4 py-2 text-sm hover:bg-muted"
+          >
+            {t("pform.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? t("pform.saving") : t("pform.saveScheme")}
+          </button>
+        </div>
       </div>
     </AdminLayout>
   );

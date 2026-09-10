@@ -4,6 +4,8 @@ import {
   calcScheme,
   calcAttendanceScheme,
   calcHybridScheme,
+  calcDeliveryFeeMultiCity,
+  resolveSchemeForCity,
   bandLookupFee,
   bandFeeAt,
   normalizeCity,
@@ -11,18 +13,45 @@ import {
   calcAreaRuleFee,
   type DeliveryRow,
 } from "@/lib/pricing-calc";
-import type { PricingEnvelope, StepTier, AreaPricingRule } from "@/lib/pricing-types";
+import type {
+  PricingEnvelope,
+  PricingScheme,
+  StepTier,
+  AreaPricingRule,
+} from "@/lib/pricing-types";
 
 // ------------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------------
-function env(partial: Partial<PricingEnvelope> & Pick<PricingEnvelope, "type" | "config">): PricingEnvelope {
+function env(
+  partial: Partial<PricingEnvelope> & Pick<PricingEnvelope, "type" | "config">,
+): PricingEnvelope {
   return {
     version: 1,
     add_kg: null,
     multi_drop: null,
     billing_addons: null,
     area_city_pricing: null,
+    city_scope: null,
+    ...partial,
+  };
+}
+
+// Fixture minimal buat PricingScheme — dipakai tes resolveSchemeForCity/
+// calcDeliveryFeeMultiCity (city-scoped multi-scheme delivery).
+function scheme(
+  partial: Partial<PricingScheme> & Pick<PricingScheme, "id" | "params">,
+): PricingScheme {
+  return {
+    name: partial.id,
+    client_id: "C1",
+    scheme_for: "rider",
+    category: "delivery",
+    subtype: null,
+    effective_from: "2026-01-01",
+    effective_to: null,
+    created_at: "2026-01-01T00:00:00Z",
+    city_scope: null,
     ...partial,
   };
 }
@@ -78,7 +107,9 @@ describe("stepTierFee", () => {
   });
 
   it("coerces non-numeric / missing step to sane defaults", () => {
-    const t = stepTier(1000, [{ from: 0, to: null, step: 0 as unknown as number, add_per_step: 500 }]);
+    const t = stepTier(1000, [
+      { from: 0, to: null, step: 0 as unknown as number, add_per_step: 500 },
+    ]);
     // step 0 -> defaults to 1
     expect(stepTierFee(t, 3)).toBe(1000 + 3 * 500);
   });
@@ -107,7 +138,9 @@ describe("bandLookupFee", () => {
   });
 
   it("still returns 0 when the value is below the very first band (no lower band to fall back to)", () => {
-    const rows = [{ type: "flat" as const, from: 5, to: 10, base_fee: 20000, step: 0, add_per_step: 0 }];
+    const rows = [
+      { type: "flat" as const, from: 5, to: 10, base_fee: 20000, step: 0, add_per_step: 0 },
+    ];
     expect(bandLookupFee(rows, 2).fee).toBe(0);
   });
 
@@ -141,12 +174,26 @@ describe("bandFeeAt (dipakai delivery-fields.tsx buat auto-continue base fee bar
     // Tier 20-50, base 0, +2000/kg -> di titik paling atas (50), fee harusnya
     // 60000 (bukan 0) — ini angka yang mestinya diwarisin baris berikutnya
     // waktu admin klik "Add Tier" (lihat delivery-fields.tsx addRow).
-    const band = { type: "tier" as const, from: 20, to: 50, base_fee: 0, step: 1, add_per_step: 2000 };
+    const band = {
+      type: "tier" as const,
+      from: 20,
+      to: 50,
+      base_fee: 0,
+      step: 1,
+      add_per_step: 2000,
+    };
     expect(bandFeeAt(band, 50)).toBe(60000);
   });
 
   it("returns base_fee as-is for a flat band regardless of value", () => {
-    const band = { type: "flat" as const, from: 0, to: 10, base_fee: 15000, step: 0, add_per_step: 0 };
+    const band = {
+      type: "flat" as const,
+      from: 0,
+      to: 10,
+      base_fee: 15000,
+      step: 0,
+      add_per_step: 0,
+    };
     expect(bandFeeAt(band, 10)).toBe(15000);
   });
 });
@@ -157,11 +204,7 @@ describe("bandFeeAt (dipakai delivery-fields.tsx buat auto-continue base fee bar
 describe("calcScheme / flat_unit", () => {
   it("charges a flat rate per completed row", () => {
     const e = env({ type: "flat_unit", config: { rate_by: "flat", flat_rate: 10000 } });
-    const rows = [
-      row({ rider_id: "R1" }),
-      row({ rider_id: "R1" }),
-      row({ rider_id: "R2" }),
-    ];
+    const rows = [row({ rider_id: "R1" }), row({ rider_id: "R1" }), row({ rider_id: "R2" })];
     const res = calcScheme(e, rows);
     expect(res.subtotal).toBe(30000);
     expect(res.completedRows).toBe(3);
@@ -193,7 +236,10 @@ describe("calcScheme / flat_unit", () => {
   });
 
   it("unique_address: same address same day counts once (rest billed 0)", () => {
-    const e = env({ type: "flat_unit", config: { unit: "unique_address", rate_by: "flat", flat_rate: 8000 } });
+    const e = env({
+      type: "flat_unit",
+      config: { unit: "unique_address", rate_by: "flat", flat_rate: 8000 },
+    });
     const rows = [
       row({ rider_id: "R1", destination_address: "Jl. Mawar 1" }),
       row({ rider_id: "R1", destination_address: "jl. mawar 1" }), // same after norm -> 0
@@ -271,10 +317,7 @@ describe("calcScheme / tier_daily", () => {
       },
     });
     // day total km = 3 + 7 = 10 -> dayFee = 10*1000 = 10000
-    const rows = [
-      row({ rider_id: "R1", distance_km: 3 }),
-      row({ rider_id: "R1", distance_km: 7 }),
-    ];
+    const rows = [row({ rider_id: "R1", distance_km: 3 }), row({ rider_id: "R1", distance_km: 7 })];
     const res = calcScheme(e, rows);
     expect(res.subtotal).toBe(10000); // allocation must sum exactly to dayFee
     const allocated = res.perRow.reduce((s, r) => s + r.base, 0);
@@ -321,7 +364,9 @@ describe("calcScheme / revenue_share", () => {
     const e = env({ type: "revenue_share", config: { percent_to_rider: 80 } });
     const res = calcScheme(e, [row({ rider_id: "R1" })]);
     expect(res.perRow[0].fee).toBe(0);
-    expect(res.warnings).toContain("Revenue client belum dihitung — fee rider tidak bisa dihitung (0 semua).");
+    expect(res.warnings).toContain(
+      "Revenue client belum dihitung — fee rider tidak bisa dihitung (0 semua).",
+    );
   });
 });
 
@@ -333,7 +378,10 @@ describe("calcScheme / modifiers", () => {
     const e = env({
       type: "flat_unit",
       config: { rate_by: "flat", flat_rate: 10000 },
-      add_kg: { enabled: true, tier: stepTier(0, [{ from: 5, to: null, step: 1, add_per_step: 1000 }]) },
+      add_kg: {
+        enabled: true,
+        tier: stepTier(0, [{ from: 5, to: null, step: 1, add_per_step: 1000 }]),
+      },
     });
     // weight 8 -> add = ceil(3)*1000 = 3000
     const res = calcScheme(e, [row({ rider_id: "R1", weight_kg: 8 })]);
@@ -460,7 +508,13 @@ describe("calcAttendanceScheme", () => {
 
   it("pays full base + both incentives for a full on-time day", () => {
     const res = calcAttendanceScheme(env(base), [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 600, is_late: false, is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 600,
+        is_late: false,
+        is_absent: false,
+      },
     ]);
     expect(res.perRow[0].base).toBe(100000);
     expect(res.perRow[0].incentive).toBe(15000);
@@ -470,7 +524,13 @@ describe("calcAttendanceScheme", () => {
 
   it("pro-rates base by worked minutes and drops the ontime incentive when late", () => {
     const res = calcAttendanceScheme(env(base), [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 300, is_late: true, is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 300,
+        is_late: true,
+        is_absent: false,
+      },
     ]);
     expect(res.perRow[0].base).toBe(50000); // 100000 * 300/600
     expect(res.perRow[0].incentive).toBe(5000); // only "always"
@@ -478,7 +538,13 @@ describe("calcAttendanceScheme", () => {
 
   it("computes overtime for minutes beyond the standard shift", () => {
     const res = calcAttendanceScheme(env(base), [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 720, is_late: false, is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 720,
+        is_late: false,
+        is_absent: false,
+      },
     ]);
     // (720-600)/60 * 12000 = 24000 ; base capped at full (proportion min 1)
     expect(res.perRow[0].base).toBe(100000);
@@ -499,7 +565,13 @@ describe("calcAttendanceScheme", () => {
       type: "attendance",
       config: {
         ...base.config,
-        delivery_component: { enabled: true, method: "flat", unit: "per_order", flat_rate: 5000, rate_by: "flat" },
+        delivery_component: {
+          enabled: true,
+          method: "flat",
+          unit: "per_order",
+          flat_rate: 5000,
+          rate_by: "flat",
+        },
       },
     });
     const res = calcAttendanceScheme(
@@ -519,21 +591,43 @@ describe("calcAttendanceScheme", () => {
     config: {
       full_fee: 0,
       standard_minutes: 480,
-      shifts: [{ shift_number: 1, label: "Malam", start_time: "23:00", end_time: "07:00", full_fee: 100000, standard_minutes: 480, late_after: "01:00" }],
+      shifts: [
+        {
+          shift_number: 1,
+          label: "Malam",
+          start_time: "23:00",
+          end_time: "07:00",
+          full_fee: 100000,
+          standard_minutes: 480,
+          late_after: "01:00",
+        },
+      ],
       incentives: [{ name: "Ontime", condition: "ontime_only", amount: 10000 }],
     },
   });
 
   it("does not flag a clock-in shortly after an overnight shift starts as late", () => {
     const res = calcAttendanceScheme(overnightShift, [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 480, clock_in: "23:30", is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 480,
+        clock_in: "23:30",
+        is_absent: false,
+      },
     ]);
     expect(res.perRow[0].incentive).toBe(10000); // ontime bonus cair
   });
 
   it("still flags a clock-in past the overnight late_after cutoff as late", () => {
     const res = calcAttendanceScheme(overnightShift, [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 480, clock_in: "01:30", is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 480,
+        clock_in: "01:30",
+        is_absent: false,
+      },
     ]);
     expect(res.perRow[0].incentive).toBe(0); // telat, ontime bonus gak cair
   });
@@ -560,7 +654,13 @@ describe("calcHybridScheme", () => {
       row({ rider_id: "R1", delivery_date: "2026-07-01", distance_km: 6 }),
     ];
     const logs = [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 600, is_late: false, is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 600,
+        is_late: false,
+        is_absent: false,
+      },
     ];
     const res = calcHybridScheme(e, deliveries, logs);
     const line = res.perRider.find((r) => r.rider === "R1")!;
@@ -588,7 +688,11 @@ describe("calcHybridScheme", () => {
 // band Distance/Weight)
 // ==================================================================
 describe("calcScheme — modular_v2 rate_by tanpa dimensi", () => {
-  const modularEnv = (rate_by: "column" | "delivery_type", rates: { key: string; rate: number }[], match_column = "Area") =>
+  const modularEnv = (
+    rate_by: "column" | "delivery_type",
+    rates: { key: string; rate: number }[],
+    match_column = "Area",
+  ) =>
     env({
       type: "modular_v2",
       config: {
@@ -702,31 +806,41 @@ describe("calcScheme — modular_v2 rate_by=delivery_type + Distance & Weight ak
 
   it("Return deket & ringan (dua dimensi jatuh ke band flat) dihitung SEKALI, bukan dobel", () => {
     const e = wickedPiesRevenueEnv();
-    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 3, weight_kg: 5 })]);
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 3, weight_kg: 5 }),
+    ]);
     expect(res.perRow[0].fee).toBe(12000); // bukan 24000 (12rb distance + 12rb weight)
   });
 
   it("Return jauh (band distance jadi tier) tetap kena flat Return, bukan rumus tier delivery biasa", () => {
     const e = wickedPiesRevenueEnv();
-    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 50, weight_kg: 5 })]);
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 50, weight_kg: 5 }),
+    ]);
     expect(res.perRow[0].fee).toBe(12000); // bukan 12000 + 45*2000 = 102000
   });
 
   it("Return berat (band weight jadi tier) tetap kena flat Return, bukan rumus tier delivery biasa", () => {
     const e = wickedPiesRevenueEnv();
-    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 3, weight_kg: 50 })]);
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", delivery_type: "RETURN", distance_km: 3, weight_kg: 50 }),
+    ]);
     expect(res.perRow[0].fee).toBe(12000); // bukan 0 + 30*2000 = 60000
   });
 
   it("DELIVERY biasa (gak match rate table) tetap jalan normal lewat band Distance+Weight dijumlah", () => {
     const e = wickedPiesRevenueEnv();
-    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "DELIVERY", distance_km: 3, weight_kg: 5 })]);
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", delivery_type: "DELIVERY", distance_km: 3, weight_kg: 5 }),
+    ]);
     expect(res.perRow[0].fee).toBe(12000); // distance flat 12000 (gak match "Return") + weight flat 0
   });
 
   it("DELIVERY jauh & berat tetap dihitung tier per dimensi seperti biasa (gak ketutup override)", () => {
     const e = wickedPiesRevenueEnv();
-    const res = calcScheme(e, [row({ rider_id: "R1", delivery_type: "DELIVERY", distance_km: 50, weight_kg: 50 })]);
+    const res = calcScheme(e, [
+      row({ rider_id: "R1", delivery_type: "DELIVERY", distance_km: 50, weight_kg: 50 }),
+    ]);
     // distance: 12000 + 45*2000 = 102000; weight: 0 + 30*2000 = 60000
     expect(res.perRow[0].fee).toBe(162000);
   });
@@ -736,7 +850,9 @@ describe("calcScheme — modular_v2 rate_by=delivery_type + Distance & Weight ak
 // modular_v2 — weight_surcharge: berat lewat batas -> fee Distance dikali N
 // ==================================================================
 describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau berat lewat batas)", () => {
-  const distanceOnlyEnv = (weight_surcharge: { enabled: boolean; threshold_kg: number; multiplier: number } | null) =>
+  const distanceOnlyEnv = (
+    weight_surcharge: { enabled: boolean; threshold_kg: number; multiplier: number } | null,
+  ) =>
     env({
       type: "modular_v2",
       config: {
@@ -829,7 +945,13 @@ describe("billing_addons diterapkan di semua kategori", () => {
       config: { full_fee: 100000, standard_minutes: 480 },
     });
     const res = calcAttendanceScheme(e, [
-      { rider_id: "R1", log_date: "2026-07-01", duration_minutes: 480, is_late: false, is_absent: false },
+      {
+        rider_id: "R1",
+        log_date: "2026-07-01",
+        duration_minutes: 480,
+        is_late: false,
+        is_absent: false,
+      },
     ]);
     expect(res.subtotal).toBe(100000);
     // (100000 + 5000) * 1.10 = 115500
@@ -841,12 +963,26 @@ describe("billing_addons diterapkan di semua kategori", () => {
     const e = env({
       type: "combined",
       billing_addons: billing,
-      config: { full_fee: 100000, standard_minutes: 480, ontime_bonus: 0, order_by: "distance", order_tier: null },
+      config: {
+        full_fee: 100000,
+        standard_minutes: 480,
+        ontime_bonus: 0,
+        order_by: "distance",
+        order_tier: null,
+      },
     });
     const res = calcHybridScheme(
       e,
       [row({ rider_id: "R1", distance_km: 0 })],
-      [{ rider_id: "R1", log_date: "2026-07-01", duration_minutes: 480, is_late: false, is_absent: false }],
+      [
+        {
+          rider_id: "R1",
+          log_date: "2026-07-01",
+          duration_minutes: 480,
+          is_late: false,
+          is_absent: false,
+        },
+      ],
     );
     expect(res.subtotal).toBe(100000);
     expect(res.grandTotal).toBe(115500);
@@ -869,8 +1005,22 @@ describe("normalizeCity", () => {
 
 describe("resolveAreaPricingRule", () => {
   const rules: AreaPricingRule[] = [
-    { id: "jabodetabek", name: "Jabodetabek", cities: ["Jakarta", "Bogor", "Depok", "Tangerang", "Bekasi"], model: "flat", rate: 22000, minimum_fee: 0 },
-    { id: "bandung", name: "Bandung", cities: ["Bandung"], model: "per_km", rate: 3500, minimum_fee: 18000 },
+    {
+      id: "jabodetabek",
+      name: "Jabodetabek",
+      cities: ["Jakarta", "Bogor", "Depok", "Tangerang", "Bekasi"],
+      model: "flat",
+      rate: 22000,
+      minimum_fee: 0,
+    },
+    {
+      id: "bandung",
+      name: "Bandung",
+      cities: ["Bandung"],
+      model: "per_km",
+      rate: 3500,
+      minimum_fee: 18000,
+    },
   ];
 
   it("null kalau acp disabled", () => {
@@ -897,13 +1047,29 @@ describe("resolveAreaPricingRule", () => {
 
   it("prefix Kota/Kabupaten diabaikan (sama seperti district matching)", () => {
     expect(resolveAreaPricingRule({ enabled: true, rules }, "Kota Bandung")?.name).toBe("Bandung");
-    expect(resolveAreaPricingRule({ enabled: true, rules }, "kabupaten bandung")?.name).toBe("Bandung");
+    expect(resolveAreaPricingRule({ enabled: true, rules }, "kabupaten bandung")?.name).toBe(
+      "Bandung",
+    );
   });
 
   it("ambigu (>1 rule cocok setelah prefix dibuang) -> null, bukan asal pilih", () => {
     const ambiguousRules: AreaPricingRule[] = [
-      { id: "a", name: "Kota Bandung Rule", cities: ["Kota Bandung"], model: "flat", rate: 1000, minimum_fee: 0 },
-      { id: "b", name: "Kabupaten Bandung Rule", cities: ["Kabupaten Bandung"], model: "flat", rate: 2000, minimum_fee: 0 },
+      {
+        id: "a",
+        name: "Kota Bandung Rule",
+        cities: ["Kota Bandung"],
+        model: "flat",
+        rate: 1000,
+        minimum_fee: 0,
+      },
+      {
+        id: "b",
+        name: "Kabupaten Bandung Rule",
+        cities: ["Kabupaten Bandung"],
+        model: "flat",
+        rate: 2000,
+        minimum_fee: 0,
+      },
     ];
     expect(resolveAreaPricingRule({ enabled: true, rules: ambiguousRules }, "Bandung")).toBeNull();
   });
@@ -911,19 +1077,40 @@ describe("resolveAreaPricingRule", () => {
 
 describe("calcAreaRuleFee", () => {
   it("model flat: rate polos, distance diabaikan", () => {
-    const rule: AreaPricingRule = { id: "x", name: "Jabodetabek", cities: ["Jakarta"], model: "flat", rate: 22000, minimum_fee: 0 };
+    const rule: AreaPricingRule = {
+      id: "x",
+      name: "Jabodetabek",
+      cities: ["Jakarta"],
+      model: "flat",
+      rate: 22000,
+      minimum_fee: 0,
+    };
     expect(calcAreaRuleFee(rule, 0)).toBe(22000);
     expect(calcAreaRuleFee(rule, 50)).toBe(22000);
   });
 
   it("model per_km: rate × km, diklem ke minimum_fee", () => {
-    const rule: AreaPricingRule = { id: "x", name: "Bandung", cities: ["Bandung"], model: "per_km", rate: 3500, minimum_fee: 18000 };
+    const rule: AreaPricingRule = {
+      id: "x",
+      name: "Bandung",
+      cities: ["Bandung"],
+      model: "per_km",
+      rate: 3500,
+      minimum_fee: 18000,
+    };
     expect(calcAreaRuleFee(rule, 1)).toBe(18000); // 3500 < minimum -> diklem
     expect(calcAreaRuleFee(rule, 10)).toBe(35000); // 3500*10 = 35000 > minimum
   });
 
   it("model per_km tanpa minimum (0): fee bisa di bawah 0-floor manapun, ceil per km", () => {
-    const rule: AreaPricingRule = { id: "x", name: "Bali", cities: ["Bali"], model: "per_km", rate: 4000, minimum_fee: 0 };
+    const rule: AreaPricingRule = {
+      id: "x",
+      name: "Bali",
+      cities: ["Bali"],
+      model: "per_km",
+      rate: 4000,
+      minimum_fee: 0,
+    };
     expect(calcAreaRuleFee(rule, 2.1)).toBe(4000 * 3); // ceil(2.1) = 3
   });
 });
@@ -932,9 +1119,30 @@ describe("calcScheme — area_city_pricing integrasi (Noovoleum)", () => {
   const AREA_CITY = {
     enabled: true,
     rules: [
-      { id: "jabodetabek", name: "Jabodetabek", cities: ["Jakarta", "Bogor", "Depok", "Tangerang", "Bekasi"], model: "flat" as const, rate: 22000, minimum_fee: 0 },
-      { id: "bandung", name: "Bandung", cities: ["Bandung"], model: "per_km" as const, rate: 3500, minimum_fee: 18000 },
-      { id: "bali", name: "Bali", cities: ["Bali"], model: "per_km" as const, rate: 4000, minimum_fee: 25000 },
+      {
+        id: "jabodetabek",
+        name: "Jabodetabek",
+        cities: ["Jakarta", "Bogor", "Depok", "Tangerang", "Bekasi"],
+        model: "flat" as const,
+        rate: 22000,
+        minimum_fee: 0,
+      },
+      {
+        id: "bandung",
+        name: "Bandung",
+        cities: ["Bandung"],
+        model: "per_km" as const,
+        rate: 3500,
+        minimum_fee: 18000,
+      },
+      {
+        id: "bali",
+        name: "Bali",
+        cities: ["Bali"],
+        model: "per_km" as const,
+        rate: 4000,
+        minimum_fee: 25000,
+      },
     ],
   };
   const flatDefaultEnv = (areaCityPricing: typeof AREA_CITY | null) =>
@@ -945,39 +1153,184 @@ describe("calcScheme — area_city_pricing integrasi (Noovoleum)", () => {
     });
 
   it("toggle OFF (null) -> fee identik pricing default scheme, gak ada city/area_rule audit", () => {
-    const res = calcScheme(flatDefaultEnv(null), [row({ rider_id: "R1", city: "Bandung", distance_km: 10 })]);
+    const res = calcScheme(flatDefaultEnv(null), [
+      row({ rider_id: "R1", city: "Bandung", distance_km: 10 }),
+    ]);
     expect(res.perRow[0].fee).toBe(15000); // default flat_rate, bukan rule Bandung
     expect(res.perRow[0].area_rule).toBeNull();
   });
 
   it("City 'Bandung' -> rule per-km Bandung (3500/km, min 18000)", () => {
-    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "Bandung", distance_km: 10 })]);
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [
+      row({ rider_id: "R1", city: "Bandung", distance_km: 10 }),
+    ]);
     expect(res.perRow[0].fee).toBe(35000); // 3500*10
     expect(res.perRow[0].area_rule).toBe("Bandung");
     expect(res.perRow[0].city).toBe("Bandung");
   });
 
   it("City 'BALI' (case-insensitive) -> rule Bali, diklem ke minimum", () => {
-    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "BALI", distance_km: 1 })]);
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [
+      row({ rider_id: "R1", city: "BALI", distance_km: 1 }),
+    ]);
     expect(res.perRow[0].fee).toBe(25000); // 4000*1=4000 < min 25000 -> diklem
     expect(res.perRow[0].area_rule).toBe("Bali");
   });
 
   it("City tanpa rule (mis. Surabaya) -> pakai pricing default, bukan Rp0", () => {
-    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "Surabaya", distance_km: 10 })]);
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [
+      row({ rider_id: "R1", city: "Surabaya", distance_km: 10 }),
+    ]);
     expect(res.perRow[0].fee).toBe(15000); // default flat_rate
     expect(res.perRow[0].area_rule).toBe("default");
   });
 
   it("City kosong/null -> pakai pricing default, gak error", () => {
-    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: null, distance_km: 10 })]);
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [
+      row({ rider_id: "R1", city: null, distance_km: 10 }),
+    ]);
     expect(res.perRow[0].fee).toBe(15000);
     expect(res.perRow[0].area_rule).toBe("default");
   });
 
   it("Jabodetabek flat -> rate polos, jarak diabaikan", () => {
-    const res = calcScheme(flatDefaultEnv(AREA_CITY), [row({ rider_id: "R1", city: "jakarta", distance_km: 999 })]);
+    const res = calcScheme(flatDefaultEnv(AREA_CITY), [
+      row({ rider_id: "R1", city: "jakarta", distance_km: 999 }),
+    ]);
     expect(res.perRow[0].fee).toBe(22000);
     expect(res.perRow[0].area_rule).toBe("Jabodetabek");
+  });
+});
+
+// ==================================================================
+// resolveSchemeForCity — milih SCHEME MANA (bukan rate di dalamnya, beda
+// dari resolveAreaPricingRule) yang menang buat 1 city, dari beberapa
+// scheme delivery aktif client yang sama.
+// ==================================================================
+describe("resolveSchemeForCity", () => {
+  const jkt = scheme({
+    id: "jkt",
+    params: env({ type: "flat_unit", config: {} }),
+    city_scope: ["Jakarta"],
+  });
+  const bali = scheme({
+    id: "bali",
+    params: env({ type: "tier", config: {} }),
+    city_scope: ["Bali"],
+  });
+  const def = scheme({
+    id: "default",
+    params: env({ type: "flat_unit", config: {} }),
+    city_scope: null,
+  });
+  const candidates = [jkt, bali, def];
+
+  it("exact city match wins over the default scheme", () => {
+    expect(resolveSchemeForCity(candidates, "Jakarta", "C1")?.id).toBe("jkt");
+    expect(resolveSchemeForCity(candidates, "Bali", "C1")?.id).toBe("bali");
+  });
+
+  it("prefix-insensitive match ('Kota Jakarta' -> 'Jakarta' rule)", () => {
+    expect(resolveSchemeForCity(candidates, "Kota Jakarta", "C1")?.id).toBe("jkt");
+  });
+
+  it("city not scoped by any scheme -> falls back to the unscoped default", () => {
+    expect(resolveSchemeForCity(candidates, "Surabaya", "C1")?.id).toBe("default");
+  });
+
+  it("no city given -> always the unscoped default (identical to pickPricingScheme's old behavior)", () => {
+    expect(resolveSchemeForCity(candidates, undefined, "C1")?.id).toBe("default");
+    expect(resolveSchemeForCity(candidates, null, "C1")?.id).toBe("default");
+  });
+
+  it("no unscoped default exists and city doesn't match -> undefined", () => {
+    expect(resolveSchemeForCity([jkt, bali], "Surabaya", "C1")).toBeUndefined();
+  });
+});
+
+// ==================================================================
+// calcDeliveryFeeMultiCity — dispatch city-scoped: tiap city group dapet
+// scheme (calc_type) sendiri, hasil digabung jadi satu CalcResult.
+// ==================================================================
+describe("calcDeliveryFeeMultiCity", () => {
+  const jktFlat = scheme({
+    id: "jkt",
+    params: env({ type: "flat_unit", config: { rate_by: "flat", flat_rate: 10000 } }),
+    city_scope: ["Jakarta"],
+  });
+  const baliTier = scheme({
+    id: "bali",
+    params: env({
+      type: "tier",
+      // StepTier flat band: base_fee 30000 sampai base_until jauh di atas
+      // jarak berapapun yang dites, jadi hasilnya flat 30000 tanpa perlu
+      // rakit tiers[] beneran.
+      config: { distance: { base_fee: 30000, base_until: 999999, tiers: [] } },
+    }),
+    city_scope: ["Bali"],
+  });
+
+  it("routes each city's rows through its own scheme and merges the result", () => {
+    const rows = [
+      row({ rider_id: "R1", city: "Jakarta" }),
+      row({ rider_id: "R1", city: "Jakarta" }),
+      row({ rider_id: "R2", city: "Bali", distance_km: 5 }),
+    ];
+    const res = calcDeliveryFeeMultiCity([jktFlat, baliTier], rows, "C1");
+    expect(res.completedRows).toBe(3);
+    const r1 = res.perRider.find((p) => p.rider === "R1");
+    const r2 = res.perRider.find((p) => p.rider === "R2");
+    expect(r1?.total).toBe(20000); // 2 x flat 10000 (Jakarta scheme)
+    expect(r2?.total).toBe(30000); // 1 x flat band 30000 (Bali scheme)
+    expect(res.subtotal).toBe(50000);
+  });
+
+  it("city with no matching scheme and no default -> warns, fee 0, doesn't throw", () => {
+    const res = calcDeliveryFeeMultiCity(
+      [jktFlat],
+      [row({ rider_id: "R1", city: "Surabaya" })],
+      "C1",
+    );
+    expect(res.subtotal).toBe(0);
+    expect(res.warnings.some((w) => w.includes("Surabaya"))).toBe(true);
+  });
+
+  it("billing add-ons apply ONCE on the combined subtotal, not once per city group", () => {
+    const jktWithBilling = scheme({
+      id: "jkt",
+      params: env({
+        type: "flat_unit",
+        config: { rate_by: "flat", flat_rate: 10000 },
+        billing_addons: {
+          min_charge: 0,
+          admin_fee_flat: 5000,
+          management_fee_percent: 0,
+          insurance_fee_mode: "flat",
+          insurance_fee_amount: 0,
+          ppn_percent: 0,
+        },
+      }),
+      city_scope: null, // default/unscoped — satu-satunya scheme yang bawa billing_addons
+    });
+    const rows = [row({ rider_id: "R1", city: "Jakarta" }), row({ rider_id: "R2", city: "Bali" })];
+    // 2 grup (Jakarta, Bali) tapi cuma 1 candidate (unscoped) -> keduanya
+    // jatuh ke scheme yang sama, admin_fee 5000 harus keitung SEKALI, bukan
+    // 2x (dulu resiko-nya: applyBillingAddons kepanggil per grup).
+    const res = calcDeliveryFeeMultiCity([jktWithBilling], rows, "C1");
+    expect(res.subtotal).toBe(20000); // 2 x flat 10000
+    expect(res.grandTotal).toBe(25000); // +5000 admin_fee SEKALI
+  });
+
+  it("single unscoped candidate degenerates to plain calcScheme output", () => {
+    const unscoped = scheme({
+      id: "default",
+      params: env({ type: "flat_unit", config: { rate_by: "flat", flat_rate: 10000 } }),
+      city_scope: null,
+    });
+    const rows = [row({ rider_id: "R1" }), row({ rider_id: "R1" })];
+    const multi = calcDeliveryFeeMultiCity([unscoped], rows, "C1");
+    const plain = calcScheme(unscoped.params, rows);
+    expect(multi.subtotal).toBe(plain.subtotal);
+    expect(multi.grandTotal).toBe(plain.grandTotal);
   });
 });

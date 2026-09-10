@@ -13,7 +13,8 @@ export interface MockClient {
   code: string;
 }
 
-const SELECT_COLS = "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at, clients(name)";
+const SELECT_COLS =
+  "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at, clients(name)";
 
 // Exported buat caller server-only yang query pricing_schemes langsung lewat
 // admin client (mis. pnl-weekly-push.server.ts) — supaya category/subtype
@@ -42,6 +43,7 @@ export function normalize(r: any): PricingScheme {
     effective_to: r.effective_to,
     params: r.params,
     created_at: r.created_at ?? "",
+    city_scope: r.params?.city_scope?.length ? r.params.city_scope : null,
   };
 }
 
@@ -71,7 +73,11 @@ export async function listPricingSchemes(): Promise<PricingScheme[]> {
 }
 
 export async function getPricingScheme(id: string): Promise<PricingScheme | undefined> {
-  const { data, error } = await sb.from("pricing_schemes").select(SELECT_COLS).eq("id", id).maybeSingle();
+  const { data, error } = await sb
+    .from("pricing_schemes")
+    .select(SELECT_COLS)
+    .eq("id", id)
+    .maybeSingle();
   if (error) {
     console.error("[getPricingScheme]", error);
     return undefined;
@@ -79,7 +85,13 @@ export async function getPricingScheme(id: string): Promise<PricingScheme | unde
   return data ? normalize(data) : undefined;
 }
 
-export type SavePricingSchemeInput = Omit<PricingScheme, "id" | "created_at" | "client_name" | "category" | "subtype"> & {
+// category/subtype/city_scope semuanya derived dari params (calc_type/
+// city_scope) saat baca lewat normalize() — gak perlu dikirim terpisah pas
+// save, params.city_scope (diisi buildEnvelope di pricing-form.tsx) udah cukup.
+export type SavePricingSchemeInput = Omit<
+  PricingScheme,
+  "id" | "created_at" | "client_name" | "category" | "subtype" | "city_scope"
+> & {
   id?: string;
 };
 

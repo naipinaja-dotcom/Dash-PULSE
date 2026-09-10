@@ -38,13 +38,15 @@ import { callHermes } from "./agents/hermes-client.server";
 import { sendSlackMessage } from "./notify/slack.server";
 import { sendEmail } from "./notify/email.server";
 import { fetchAllRows } from "./fetch-all";
-import { pickPricingScheme } from "./pnl-engine";
+import { pickPricingScheme, pickPricingSchemeCandidates } from "./pnl-engine";
 import { normalize } from "./pricing-store";
 import type { PricingScheme } from "./pricing-types";
 import {
   calcScheme,
   calcAttendanceScheme,
   calcHybridScheme,
+  calcDeliveryFeeMultiCity,
+  resolveSchemeForCity,
   type DeliveryRow,
   type AttendanceLogRow,
 } from "./pricing-calc";
@@ -221,7 +223,17 @@ async function autoComputeFee(
   periodStart: string,
   periodEnd: string,
 ): Promise<FeeAutoComputeResult> {
-  const scheme = pickPricingScheme(schemes, clientId, "rider");
+  // candidates penuh (bukan cuma 1 scheme) — city-scoped delivery scheme
+  // (lihat pricing-calc.ts resolveSchemeForCity/calcDeliveryFeeMultiCity)
+  // butuh SEMUA scheme rider aktif client ini, bukan cuma pemenang default.
+  // `scheme` (representatif default) tetap dipakai buat gating
+  // attendance/hybrid/config di bawah — kategori itu belum city-aware.
+  const riderCandidates = pickPricingSchemeCandidates(schemes, clientId, "rider");
+  // Fallback ke riderCandidates[0]: resolveSchemeForCity(..., undefined, ...)
+  // cuma jatuh ke cabang "unscoped default" — kalau SEMUA scheme client ini
+  // city-scoped (gak ada default sama sekali), itu balikin undefined padahal
+  // scheme-nya jelas ADA. representative di sini cuma buat baca .category.
+  const scheme = resolveSchemeForCity(riderCandidates, undefined, clientId) ?? riderCandidates[0];
   if (!scheme) return { computed: false, reason: "Belum ada skema rider aktif untuk client ini" };
 
   const isAttendance = scheme.category === "attendance";
@@ -240,7 +252,7 @@ async function autoComputeFee(
             sb
               .from("delivery_records")
               .select(
-                "id, rider_id, driver_code, delivery_date, awb, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+                "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
               )
               .eq("client_id", clientId)
               .gte("delivery_date", periodStart)
@@ -309,7 +321,13 @@ async function autoComputeFee(
       }
       clientRevenueByRow = calcScheme(clientScheme.params, deliveryRows).perRow.map((r) => r.fee);
     }
-    rows = calcScheme(scheme.params, deliveryRows, clientRevenueByRow).perRow.filter((r) => r.id);
+    const deliveryCandidates = riderCandidates.filter((s) => s.category === "delivery");
+    rows = calcDeliveryFeeMultiCity(
+      deliveryCandidates,
+      deliveryRows,
+      clientId,
+      clientRevenueByRow,
+    ).perRow.filter((r) => r.id);
     table = "delivery_records";
   }
 
@@ -691,11 +709,7 @@ export async function runPayrollWorkflow(opts: {
     : await sendEmail({ subject: notif.subject, html: notif.html });
 
   const status =
-    hardError || failedClients.length > 0
-      ? runs.length > 0
-        ? "partial"
-        : "failed"
-      : "completed";
+    hardError || failedClients.length > 0 ? (runs.length > 0 ? "partial" : "failed") : "completed";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: logRow, error: logErr } = await (admin as any)
     .from("payroll_workflow_runs")

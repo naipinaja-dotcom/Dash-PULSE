@@ -42,8 +42,13 @@
 import { getSupabaseAdmin } from "./supabase-admin.server";
 import { getServerConfig } from "./config.server";
 import { normalize } from "./pricing-store";
-import { pickPricingScheme } from "./pnl-engine";
-import { calcScheme, calcAttendanceScheme } from "./pricing-calc";
+import { pickPricingScheme, pickPricingSchemeCandidates } from "./pnl-engine";
+import {
+  calcScheme,
+  calcAttendanceScheme,
+  calcDeliveryFeeMultiCity,
+  resolveSchemeForCity,
+} from "./pricing-calc";
 import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
 import { fetchLiveDeliveries } from "./api/live-fee-deliveries.functions";
 import { fetchLiveAttendance } from "./api/live-fee-attendance.functions";
@@ -111,7 +116,13 @@ async function syncOneClient(
 ): Promise<LiveFeeSyncClientResult> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const schemes = (schemesRaw as any[]).map(normalize);
-  const scheme = pickPricingScheme(schemes, client.id, "rider");
+  // candidates penuh dipakai buat dispatch delivery city-scoped di bawah;
+  // `scheme` (representatif default) tetap dipakai buat gating
+  // attendance/hybrid — kategori itu belum city-aware.
+  const riderCandidates = pickPricingSchemeCandidates(schemes, client.id, "rider");
+  // Fallback ke riderCandidates[0] kalau SEMUA scheme client ini city-scoped
+  // (gak ada default) — lihat komentar sama di payroll-workflow.server.ts.
+  const scheme = resolveSchemeForCity(riderCandidates, undefined, client.id) ?? riderCandidates[0];
   const out: LiveFeeSyncClientResult = {
     client_id: client.id,
     client_name: client.name,
@@ -147,11 +158,19 @@ async function syncOneClient(
     if (scheme.params.type === "revenue_share") {
       const clientScheme = pickPricingScheme(schemes, client.id, "client", to);
       if (!clientScheme || clientScheme.category !== "delivery") {
-        throw new Error("Skema Revenue Share butuh skema Client (Per Pengiriman) aktif untuk periode ini");
+        throw new Error(
+          "Skema Revenue Share butuh skema Client (Per Pengiriman) aktif untuk periode ini",
+        );
       }
       clientRevenueByRow = calcScheme(clientScheme.params, live.rows).perRow.map((r) => r.fee);
     }
-    const res = calcScheme(scheme.params, live.rows, clientRevenueByRow);
+    const deliveryCandidates = riderCandidates.filter((s) => s.category === "delivery");
+    const res = calcDeliveryFeeMultiCity(
+      deliveryCandidates,
+      live.rows,
+      client.id,
+      clientRevenueByRow,
+    );
     const feeByDashId = new Map<string, number>(
       res.perRow.filter((r) => r.id).map((r) => [String(r.id), Number(r.fee) || 0]),
     );
@@ -190,11 +209,12 @@ export async function runLiveFeeSync(opts: {
   gateByRunTime?: boolean;
 }): Promise<LiveFeeSyncResult> {
   const admin = getSupabaseAdmin();
-  const { from, to } = opts.from && opts.to
-    ? { from: opts.from, to: opts.to }
-    : opts.gateByRunTime
-      ? { from: jktToday(), to: jktToday() }
-      : defaultWindow();
+  const { from, to } =
+    opts.from && opts.to
+      ? { from: opts.from, to: opts.to }
+      : opts.gateByRunTime
+        ? { from: jktToday(), to: jktToday() }
+        : defaultWindow();
 
   const raw = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
   if (!raw)
@@ -250,7 +270,9 @@ export async function runLiveFeeSync(opts: {
     const wib = nowInWib();
     const nowMinutesOfDay = wib.getUTCHours() * 60 + wib.getUTCMinutes();
     clients = clients.filter((c) =>
-      (runTimesByClient.get(c.id) ?? ["09:00"]).some((rt) => matchesRunTime(nowMinutesOfDay + 30, rt)),
+      (runTimesByClient.get(c.id) ?? ["09:00"]).some((rt) =>
+        matchesRunTime(nowMinutesOfDay + 30, rt),
+      ),
     );
   }
   const providerById = new Map(providers.map((p) => [p.id, p]));

@@ -1203,18 +1203,32 @@ const T = {
     en: "Add-KG, Multi-Drop, Area City Pricing — optional, click to view/configure",
   },
   "pform.modifiersActiveSuffix": { id: "aktif", en: "active" },
+  "pform.areaLauncherLabel": {
+    id: "Beda per Area?",
+    en: "Different per Area?",
+  },
+  "pform.areaLauncherHint": {
+    id: 'Tambah City + pilih apa yang beda: kalau cuma tarifnya (Flat/Per KM), langsung disimpan ke scheme ini. Kalau model/skema-nya beda total (Revenue Share/Attendance/dll), tombol "Buat Skema" buka form scheme baru terpisah buat kamu lengkapi & save sendiri.',
+    en: "Add a City + pick what's different: if it's just the rate (Flat/Per KM), it's saved directly into this scheme. If the whole model/scheme is different (Revenue Share/Attendance/etc), \"Create Scheme\" opens a separate new scheme form for you to finish and save.",
+  },
+  "pform.areaModelDelivery": {
+    id: "Skema Delivery lain (Tier/Modular/dll)",
+    en: "Other Delivery model (Tier/Modular/etc)",
+  },
+  "pform.areaModelRevenueShare": {
+    id: "Revenue Share (% dari Client)",
+    en: "Revenue Share (% of Client)",
+  },
+  "pform.areaModelAttendance": { id: "Per Kehadiran / Attendance", en: "Attendance" },
+  "pform.areaModelAttendanceWarning": {
+    id: "Attendance belum bisa dipisah per City (data attendance belum ada kolom City) — scheme ini akan tetap jadi satu-satunya scheme Attendance aktif buat client ini, City yang diisi di sini gak beneran membatasinya.",
+    en: "Attendance can't actually be split by City yet (attendance data has no City column) — this scheme will still be the client's only active Attendance scheme; the City entered here doesn't really restrict it.",
+  },
+  "pform.createSchemeForArea": { id: "Buat Skema", en: "Create Scheme" },
   "pform.cityScopeLabel": { id: "Scope ke City", en: "Scope to City" },
   "pform.cityScopeHint": {
     id: "Kosongin = scheme default (dipakai buat City yang gak ke-scope scheme manapun). Isi = scheme ini CUMA berlaku buat City yang disebut di sini — client bisa punya beberapa scheme delivery aktif sekaligus, beda City beda scheme (mis. Jakarta pakai satu scheme, Bali pakai scheme lain).",
     en: "Leave empty = default scheme (used for any City not scoped by another scheme). Fill in = this scheme ONLY applies to the listed City — a client can have several active delivery schemes at once, different City using different schemes.",
-  },
-  "pform.areaCityPricingLabel": {
-    id: "Harga berbeda berdasarkan Area City",
-    en: "Different Pricing by City Area",
-  },
-  "pform.areaCityPricingHint": {
-    id: "Gunakan City dari data MGMT untuk memilih tarif khusus. Jika City tidak cocok, tarif dasar tetap digunakan.",
-    en: "Use MGMT City data to pick a special rate. If the City doesn't match any rule, the base rate still applies.",
   },
   "pfAreaCity.empty": {
     id: 'Belum ada rule area — klik "Tambah area" di bawah.',

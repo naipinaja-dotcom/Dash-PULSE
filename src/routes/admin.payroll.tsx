@@ -26,7 +26,11 @@ import {
   SkipForward,
   Lock,
 } from "lucide-react";
-import { generatePayrollDetails, computeInstallmentAdvance, DEDUCTION_PRIORITY } from "@/lib/payroll-generate";
+import {
+  generatePayrollDetails,
+  computeInstallmentAdvance,
+  DEDUCTION_PRIORITY,
+} from "@/lib/payroll-generate";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
 import { triggerPayrollWorkflow } from "@/lib/api/payroll-workflow.functions";
 import { IncentiveEditor } from "@/components/incentive-editor";
@@ -199,6 +203,11 @@ function PayrollPage() {
   const posthog = usePostHog();
   const { user } = useAuth();
   const [runs, setRuns] = useState<Run[]>([]);
+  // Run yang udah pernah di-push ke Spend Control (Basecamp) — lihat
+  // spend_control_pushes (audit log, bukan flag di payroll_runs). Dipakai
+  // buat warna beda di list History/Aktif, terpisah dari status draft/
+  // finalized/published.
+  const [pushedRunIds, setPushedRunIds] = useState<Set<string>>(new Set());
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [details, setDetails] = useState<Detail[]>([]);
   const [paymentHolds, setPaymentHolds] = useState<Record<string, PaymentHold>>({});
@@ -238,13 +247,23 @@ function PayrollPage() {
   const [spendControlPushing, setSpendControlPushing] = useState(false);
   const [spendControlDept, setSpendControlDept] = useState(SPEND_CONTROL_DEPARTMENTS[0].code);
   const [spendControlRows, setSpendControlRows] = useState<SpendControlRow[]>([]);
-  const [spendControlResults, setSpendControlResults] = useState<Record<string, SpendControlPushResult>>({});
-  const [selectedSpendControlRepushes, setSelectedSpendControlRepushes] = useState<Set<string>>(new Set());
+  const [spendControlResults, setSpendControlResults] = useState<
+    Record<string, SpendControlPushResult>
+  >({});
+  const [selectedSpendControlRepushes, setSelectedSpendControlRepushes] = useState<Set<string>>(
+    new Set(),
+  );
   const spendControlValidRows = spendControlRows.filter((r) => r.valid);
   const spendControlValidTotal = spendControlValidRows.reduce((s, r) => s + r.amount, 0);
-  const spendControlPushableRows = spendControlValidRows.filter((r) => !spendControlResults[r.clientId]?.ok);
-  const spendControlRepushableRows = spendControlValidRows.filter((r) => spendControlResults[r.clientId]?.ok);
-  const selectedSpendControlRepushRows = spendControlRepushableRows.filter((r) => selectedSpendControlRepushes.has(r.clientId));
+  const spendControlPushableRows = spendControlValidRows.filter(
+    (r) => !spendControlResults[r.clientId]?.ok,
+  );
+  const spendControlRepushableRows = spendControlValidRows.filter(
+    (r) => spendControlResults[r.clientId]?.ok,
+  );
+  const selectedSpendControlRepushRows = spendControlRepushableRows.filter((r) =>
+    selectedSpendControlRepushes.has(r.clientId),
+  );
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -279,6 +298,17 @@ function PayrollPage() {
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);
     else setRuns(data ?? []);
+
+    const runIds = (data ?? []).map((r: Run) => r.id);
+    if (runIds.length > 0) {
+      const { data: pushes } = await supabase
+        .from("spend_control_pushes")
+        .select("payroll_run_id")
+        .in("payroll_run_id", runIds);
+      setPushedRunIds(new Set((pushes ?? []).map((p) => p.payroll_run_id)));
+    } else {
+      setPushedRunIds(new Set());
+    }
     setLoading(false);
   };
 
@@ -316,7 +346,9 @@ function PayrollPage() {
     }
     const { data, error } = await (supabase as any)
       .from("payroll_payment_holds")
-      .select("id, detail_id, status, reason, payroll_follow_up_payments(id, amount, status, exported_at)")
+      .select(
+        "id, detail_id, status, reason, payroll_follow_up_payments(id, amount, status, exported_at)",
+      )
       .in("detail_id", detailIds);
     if (error) {
       // Migration belum dipasang tidak boleh membuat tabel payroll lama rusak.
@@ -365,7 +397,9 @@ function PayrollPage() {
     // bukan angka (mis. "9000" dianggap "lebih besar" dari "15000" karena '9'
     // > '1' di karakter pertama). Number() wajib sebelum dibandingkan/dikurangi
     // di seluruh fungsi ini biar netting nunjuk rider yang bener.
-    const shortfallRows = details.filter((d) => Number(d.total_deduction) > Number(d.gross_earning));
+    const shortfallRows = details.filter(
+      (d) => Number(d.total_deduction) > Number(d.gross_earning),
+    );
     if (!shortfallRows.length) return setNettingCandidates([]);
     const riderIds = shortfallRows.map((d) => d.rider_id);
 
@@ -385,10 +419,14 @@ function PayrollPage() {
     for (const d of shortfallRows) {
       const shortfall = Number(d.total_deduction) - Number(d.gross_earning);
       const sib = (siblingDetails as any[])
-        .filter((s) => s.rider_id === d.rider_id && Number(s.gross_earning) - Number(s.total_deduction) > 0)
+        .filter(
+          (s) =>
+            s.rider_id === d.rider_id && Number(s.gross_earning) - Number(s.total_deduction) > 0,
+        )
         .sort(
           (a, b) =>
-            (Number(b.gross_earning) - Number(b.total_deduction)) -
+            Number(b.gross_earning) -
+            Number(b.total_deduction) -
             (Number(a.gross_earning) - Number(a.total_deduction)),
         )[0];
       if (!sib) continue;
@@ -590,7 +628,9 @@ function PayrollPage() {
     if (error) throw error;
     setDeductionsByDetail((prev) => ({ ...prev, [detailId]: list }));
     setDetails((prev) =>
-      prev.map((x) => (x.id === detailId ? { ...x, total_deduction: newTotalDed, net_pay: newNet } : x)),
+      prev.map((x) =>
+        x.id === detailId ? { ...x, total_deduction: newTotalDed, net_pay: newNet } : x,
+      ),
     );
   };
 
@@ -600,7 +640,8 @@ function PayrollPage() {
   // makanya di-warning eksplisit di toast, bukan diam-diam ketimpa nanti.
   const saveDeductionEdit = async (d: Deduction) => {
     if (!activeRun) return;
-    if (savingDeductionLock.current) return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
+    if (savingDeductionLock.current)
+      return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
     savingDeductionLock.current = true;
     setSavingDeduction(true);
     try {
@@ -648,7 +689,8 @@ function PayrollPage() {
   // masih draft (sama kayak edit potongan lain di atas) biar gak numpuk sama
   // risiko Generate Ulang/publish yang udah di-warning di tempat lain.
   const addDeduction = async (detailId: string) => {
-    if (savingDeductionLock.current) return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
+    if (savingDeductionLock.current)
+      return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
     if (!newDedDescription.trim()) return toast.error("Keterangan wajib diisi");
     if (newDedAmount <= 0) return toast.error("Jumlah harus lebih dari 0");
     savingDeductionLock.current = true;
@@ -817,9 +859,7 @@ function PayrollPage() {
     setFinalizing(false);
     if (error) return toast.error(error.message);
     setActiveRun((current) =>
-      current?.id === activeRun.id
-        ? { ...current, status: "finalized" }
-        : current,
+      current?.id === activeRun.id ? { ...current, status: "finalized" } : current,
     );
     posthog.capture("payroll_run_finalized", {
       run_id: activeRun.id,
@@ -855,11 +895,16 @@ function PayrollPage() {
       // kurang duluan. paid_amount per baris dicatat di sini (cuma pas
       // Publish), selisihnya otomatis ketagih lagi periode berikutnya lewat
       // getCarriedArrears di payroll-generate.ts.
-      const grossByDetail = new Map<string, number>(dets.map((d: any) => [d.id, Number(d.gross_earning)]));
+      const grossByDetail = new Map<string, number>(
+        dets.map((d: any) => [d.id, Number(d.gross_earning)]),
+      );
       const { data: deds } = await supabase
         .from("payroll_deductions")
         .select("id, detail_id, installment_id, amount, deduction_types(code)")
-        .in("detail_id", dets.map((d: any) => d.id));
+        .in(
+          "detail_id",
+          dets.map((d: any) => d.id),
+        );
 
       const byDetail = new Map<string, any[]>();
       for (const d of (deds ?? []) as any[]) {
@@ -872,7 +917,8 @@ function PayrollPage() {
         let remaining = grossByDetail.get(detailId) ?? 0;
         const sorted = [...(rows ?? [])].sort(
           (a: any, b: any) =>
-            (DEDUCTION_PRIORITY[a.deduction_types?.code] ?? 99) - (DEDUCTION_PRIORITY[b.deduction_types?.code] ?? 99),
+            (DEDUCTION_PRIORITY[a.deduction_types?.code] ?? 99) -
+            (DEDUCTION_PRIORITY[b.deduction_types?.code] ?? 99),
         );
         for (const row of sorted as any[]) {
           const amount = Number(row.amount);
@@ -897,9 +943,7 @@ function PayrollPage() {
         .eq("id", activeRun.id);
       if (e2) return toast.error(e2.message);
       setActiveRun((current) =>
-        current?.id === activeRun.id
-          ? { ...current, status: "published" }
-          : current,
+        current?.id === activeRun.id ? { ...current, status: "published" } : current,
       );
       posthog.capture("payroll_run_published", {
         run_id: activeRun.id,
@@ -1044,12 +1088,13 @@ function PayrollPage() {
       // Gak early-return lagi walau SEMUA rider di run ini lagi ditahan —
       // kasbon-nya (di bawah, dari `details` penuh) tetap harus jalan.
       const riderIds = [...new Set(payableDetails.map((d) => d.rider_id))];
-      const { data: bankData, error } = riderIds.length > 0
-        ? await (supabase as any)
-            .from("riders")
-            .select("id, full_name, bank_name, bank_account, bank_account_holder")
-            .in("id", riderIds)
-        : { data: [] as unknown[], error: null };
+      const { data: bankData, error } =
+        riderIds.length > 0
+          ? await (supabase as any)
+              .from("riders")
+              .select("id, full_name, bank_name, bank_account, bank_account_holder")
+              .in("id", riderIds)
+          : { data: [] as unknown[], error: null };
       if (error) throw error;
       const bankOf = new Map((bankData ?? []).map((r: any) => [r.id, r]));
 
@@ -1100,7 +1145,9 @@ function PayrollPage() {
       toast.success(
         `Bulk payment ${rows.length} rider berhasil di-generate` +
           (kasbonRows.length ? `, termasuk ${kasbonRows.length} transfer ke penerima kasbon` : "") +
-          (heldCount ? `; ${heldCount} net pay rider yang di-hold dikeluarkan dari file reguler (kasbonnya tetap ikut ditransfer).` : ""),
+          (heldCount
+            ? `; ${heldCount} net pay rider yang di-hold dikeluarkan dari file reguler (kasbonnya tetap ikut ditransfer).`
+            : ""),
       );
     } catch (e) {
       toast.error((e as Error).message);
@@ -1171,7 +1218,10 @@ function PayrollPage() {
 
       let businessUnitByProviderId = new Map<number, "SCHEDULED" | "XDOCK" | null>();
       const [{ data: clientRows, error }, { data: pushRows }, sess] = await Promise.all([
-        (supabase as any).from("clients").select("id, name, project_name, contract, provider_id").in("id", clientIds),
+        (supabase as any)
+          .from("clients")
+          .select("id, name, project_name, contract, provider_id")
+          .in("id", clientIds),
         (supabase as any)
           .from("spend_control_pushes")
           .select("client_id, request_code, workflow_configured, workflow_missing_reason, attempt")
@@ -1186,7 +1236,12 @@ function PayrollPage() {
       setSpendControlResults(
         (pushRows ?? []).reduce((latest: Record<string, SpendControlPushResult>, p: any) => {
           if (!latest[p.client_id]) {
-            latest[p.client_id] = { ok: true, requestCode: p.request_code ?? undefined, workflowConfigured: p.workflow_configured, workflowMissingReason: p.workflow_missing_reason ?? undefined };
+            latest[p.client_id] = {
+              ok: true,
+              requestCode: p.request_code ?? undefined,
+              workflowConfigured: p.workflow_configured,
+              workflowMissingReason: p.workflow_missing_reason ?? undefined,
+            };
           }
           return latest;
         }, {}),
@@ -1207,7 +1262,9 @@ function PayrollPage() {
       // jangan paksa keduanya pakai bulan period_end.
       const start = new Date(`${activeRun.period_start}T00:00:00Z`);
       const end = new Date(`${activeRun.period_end}T00:00:00Z`);
-      const sameMonth = start.getUTCMonth() === end.getUTCMonth() && start.getUTCFullYear() === end.getUTCFullYear();
+      const sameMonth =
+        start.getUTCMonth() === end.getUTCMonth() &&
+        start.getUTCFullYear() === end.getUTCFullYear();
       const period = sameMonth
         ? `${start.getUTCDate()}-${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`
         : `${start.getUTCDate()} ${BULAN[start.getUTCMonth()]} ${start.getUTCFullYear()} - ${end.getUTCDate()} ${BULAN[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
@@ -1215,9 +1272,10 @@ function PayrollPage() {
       const rows: SpendControlRow[] = clientIds.map((clientId) => {
         const client = (clientRows ?? []).find((c: any) => c.id === clientId);
         const clientName = client?.name ?? "(client tidak ditemukan)";
-        const businessUnit = client?.provider_id != null
-          ? businessUnitByProviderId.get(client.provider_id) ?? null
-          : null;
+        const businessUnit =
+          client?.provider_id != null
+            ? (businessUnitByProviderId.get(client.provider_id) ?? null)
+            : null;
         // clients.contract di DB cuma "DEI" | "DPI" (lihat migration
         // 20260815155830_clients_contract_field.sql) — API Spend Control
         // butuh prefix "PT_" (PT_DEI | PT_DPI, lihat §11 guide).
@@ -1237,7 +1295,8 @@ function PayrollPage() {
           amount: byClient.get(clientId) ?? 0,
           businessUnit,
           contract,
-          valid: businessUnit !== null && contract !== null && title.length <= SPEND_CONTROL_TITLE_LIMIT,
+          valid:
+            businessUnit !== null && contract !== null && title.length <= SPEND_CONTROL_TITLE_LIMIT,
         };
       });
       rows.sort((a, b) => a.clientName.localeCompare(b.clientName));
@@ -1257,7 +1316,8 @@ function PayrollPage() {
     if (isRepush) {
       const confirmed = await confirmDialog({
         title: `Perbarui ${rowsToPush.length} pengajuan Spend Control?`,
-        description: "Ini membuat payment request BARU dengan nominal payroll terbaru. Pengajuan lama tidak otomatis dibatalkan atau di-hold di Spend Control; pastikan pengajuan lama ditindaklanjuti di sana agar tidak terjadi pembayaran ganda.",
+        description:
+          "Ini membuat payment request BARU dengan nominal payroll terbaru. Pengajuan lama tidak otomatis dibatalkan atau di-hold di Spend Control; pastikan pengajuan lama ditindaklanjuti di sana agar tidak terjadi pembayaran ganda.",
         confirmText: "Ya, buat pengajuan baru",
         cancelText: "Batal",
       });
@@ -1282,7 +1342,11 @@ function PayrollPage() {
             amount: r.amount,
             businessUnit: r.businessUnit,
             contract: r.contract,
-            externalReference: { system: "dash-pulse-payroll", payrollRunId: activeRun.id, clientId: r.clientId },
+            externalReference: {
+              system: "dash-pulse-payroll",
+              payrollRunId: activeRun.id,
+              clientId: r.clientId,
+            },
           })),
         },
       });
@@ -1302,14 +1366,18 @@ function PayrollPage() {
         // Semua row berhasil dibuat (sebagian tanpa workflow) — tetap tutup,
         // warning workflow-nya udah kebaca lewat toast, badge per-client
         // tersimpan di histori (spend_control_pushes) buat ditindaklanjuti nanti.
-        toast.warning(`${okCount} terkirim, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)`);
+        toast.warning(
+          `${okCount} terkirim, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)`,
+        );
         setSpendControlOpen(false);
       } else {
         // Ada yang gagal — biarkan dialog terbuka biar keliatan row mana yang
         // error, dan re-push cuma nyasar row yang belum sukses.
         toast.warning(
           `${okCount} terkirim` +
-            (unconfigured ? `, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)` : "") +
+            (unconfigured
+              ? `, ${unconfigured} tanpa workflow (butuh setup manual di Spend Control)`
+              : "") +
             `, ${failCount} gagal`,
         );
       }
@@ -1380,11 +1448,26 @@ function PayrollPage() {
 
   const exportFollowUpPayment = async (format: "csv" | "xls") => {
     if (!activeRun) return;
-    const readyPayments = Object.values(paymentHolds).flatMap((hold) =>
-      (hold.payroll_follow_up_payments ?? [])
-        .filter((payment) => payment.status === "ready")
-        .map((payment) => ({ ...payment, riderId: details.find((detail) => detail.id === hold.detail_id)?.rider_id })),
-    ).filter((payment): payment is { id: string; amount: number; status: "ready"; exported_at: string | null; riderId: string } => !!payment.riderId);
+    const readyPayments = Object.values(paymentHolds)
+      .flatMap((hold) =>
+        (hold.payroll_follow_up_payments ?? [])
+          .filter((payment) => payment.status === "ready")
+          .map((payment) => ({
+            ...payment,
+            riderId: details.find((detail) => detail.id === hold.detail_id)?.rider_id,
+          })),
+      )
+      .filter(
+        (
+          payment,
+        ): payment is {
+          id: string;
+          amount: number;
+          status: "ready";
+          exported_at: string | null;
+          riderId: string;
+        } => !!payment.riderId,
+      );
 
     if (readyPayments.length === 0)
       return toast.message("Belum ada pembayaran susulan yang siap diexport untuk payroll ini.");
@@ -1416,14 +1499,17 @@ function PayrollPage() {
         exportIds.push(payment.id);
       }
       if (missingBank.length) {
-        toast.warning(`${missingBank.length} rider susulan dilewati karena data bank belum lengkap.`);
+        toast.warning(
+          `${missingBank.length} rider susulan dilewati karena data bank belum lengkap.`,
+        );
       }
 
       // Kasbon rider yang di-hold sudah ikut ditransfer dari Bulk Payment
       // reguler (lihat exportBulkPayment) — cuma net pay-nya yang ditahan,
       // jadi TIDAK diulang di sini lagi biar penerima kasbon gak ketransfer dobel.
 
-      if (rows.length === 0) return toast.error("Tidak ada pembayaran susulan dengan data bank lengkap.");
+      if (rows.length === 0)
+        return toast.error("Tidak ada pembayaran susulan dengan data bank lengkap.");
 
       const filename = `Pembayaran Susulan - ${activeRun.name} - ${activeRun.period_end}`;
       if (format === "csv") downloadBulkPaymentCSV(filename, rows);
@@ -1483,7 +1569,11 @@ function PayrollPage() {
               className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:opacity-90 transition-opacity"
               title="Jalankan payroll workflow manual (tarik data API + hitung + buat run) untuk semua client berjadwal yang jatuh tempo hari ini"
             >
-              {runningWorkflow ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              {runningWorkflow ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
               {runningWorkflow ? "Menjalankan…" : "Run Workflow Sekarang"}
             </button>
           )}
@@ -1495,7 +1585,11 @@ function PayrollPage() {
               className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-border-strong text-destructive px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-destructive hover:text-destructive-foreground transition-colors"
               title="Hapus draft run yang belum ada detail rider (biasanya kebuat otomatis untuk client tanpa jadwal)"
             >
-              {deletingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {deletingBulk ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {deletingBulk ? "Menghapus…" : "Hapus Draft Kosong"}
             </button>
           )}
@@ -1535,33 +1629,41 @@ function PayrollPage() {
               <Loader2 className="w-4 h-4 animate-spin mx-auto" />
             ) : (
               pagedRuns.map((r) => {
-                  const isActive = activeRun?.id === r.id;
-                  const statusColor = isActive
-                    ? "text-primary-foreground"
+                const isActive = activeRun?.id === r.id;
+                const isPushed = pushedRunIds.has(r.id);
+                const statusColor = isActive
+                  ? "text-primary-foreground"
+                  : isPushed
+                    ? "text-success"
                     : r.status === "published"
                       ? "text-primary"
                       : r.status === "finalized"
                         ? "text-warning"
                         : "text-muted-foreground";
-                  const clientName = r.client_id
-                    ? (clients.find((c) => c.id === r.client_id)?.name ?? "(client tak dikenal)")
-                    : "Semua Client";
-                  return (
-                    <button
-                      key={r.id}
-                      onClick={() => setActiveRun(r)}
-                      className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors ${isActive ? "bg-primary text-primary-foreground border-2 border-border-strong shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "hover:bg-muted/60"}`}
+                const clientName = r.client_id
+                  ? (clients.find((c) => c.id === r.client_id)?.name ?? "(client tak dikenal)")
+                  : "Semua Client";
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => setActiveRun(r)}
+                    className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors ${isActive ? "bg-primary text-primary-foreground border-2 border-border-strong shadow-[3px_3px_0_0_var(--color-border-strong)] font-medium" : "hover:bg-muted/60"}`}
+                  >
+                    <div className="truncate font-medium text-[13px]">{clientName}</div>
+                    <div
+                      className={`text-xs mt-0.5 truncate ${isActive ? "text-primary-foreground opacity-90" : "text-muted-foreground"}`}
                     >
-                      <div className="truncate font-medium text-[13px]">{clientName}</div>
-                      <div className={`text-xs mt-0.5 truncate ${isActive ? "text-primary-foreground opacity-90" : "text-muted-foreground"}`}>
-                        {r.name}
-                      </div>
-                      <div className={`text-xs mt-0.5 font-semibold ${statusColor}`}>
-                        {r.period_start} → {r.period_end} · {r.status}
-                      </div>
-                    </button>
-                  );
-                })
+                      {r.name}
+                    </div>
+                    <div
+                      className={`text-xs mt-0.5 font-semibold inline-flex items-center gap-1 ${statusColor}`}
+                    >
+                      {r.period_start} → {r.period_end} · {r.status}
+                      {isPushed && <CheckCircle2 className="w-3 h-3 flex-shrink-0" />}
+                    </div>
+                  </button>
+                );
+              })
             )}
             {!loading && filteredRuns.length === 0 && (
               <p className="text-xs text-muted-foreground px-3 py-2">
@@ -1750,7 +1852,12 @@ function PayrollPage() {
                           className="flex-col items-start gap-0.5 py-2"
                         >
                           <span className="flex items-center gap-2 font-medium">
-                            {exportingFollowUp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Pembayaran Susulan (CSV)
+                            {exportingFollowUp ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}{" "}
+                            Pembayaran Susulan (CSV)
                           </span>
                           <span className="text-xs text-muted-foreground pl-5">
                             Khusus rider yang hold-nya sudah dilepas
@@ -1770,8 +1877,14 @@ function PayrollPage() {
                     {/* Push ke Spend Control — preview lalu submit ke Basecamp (lihat spend-request-api-integration.md) */}
                     <button
                       onClick={openSpendControlPreview}
-                      disabled={activeRun.status === "draft" || details.length === 0 || spendControlLoading}
-                      title={activeRun.status === "draft" ? "Finalize dulu" : "Preview push ke Spend Control"}
+                      disabled={
+                        activeRun.status === "draft" || details.length === 0 || spendControlLoading
+                      }
+                      title={
+                        activeRun.status === "draft"
+                          ? "Finalize dulu"
+                          : "Preview push ke Spend Control"
+                      }
                       className="inline-flex items-center gap-1.5 rounded-lg border-2 border-border-strong px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-40 hover:text-primary hover:bg-muted active:scale-[0.97] transition-all"
                     >
                       {spendControlLoading ? (
@@ -1999,7 +2112,9 @@ function PayrollPage() {
                             <td className="px-2 py-2.5 text-[13px] tabular-nums">
                               Rp{Number(d.incentive).toLocaleString("id-ID")}
                             </td>
-                            <td className={`px-2 py-2.5 text-[13px] tabular-nums ${Number(d.penalty) > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                            <td
+                              className={`px-2 py-2.5 text-[13px] tabular-nums ${Number(d.penalty) > 0 ? "text-destructive" : "text-muted-foreground"}`}
+                            >
                               Rp{Number(d.penalty).toLocaleString("id-ID")}
                             </td>
                             <td className="px-2 py-2.5 text-[13px] tabular-nums">
@@ -2028,7 +2143,10 @@ function PayrollPage() {
                                   <span className="inline-flex rounded-full border-2 border-border-strong bg-warning px-2 py-0.5 font-medium text-warning-foreground">
                                     Ditahan
                                   </span>
-                                  <p className="max-w-36 truncate text-[10px] text-muted-foreground" title={paymentHolds[d.id].reason}>
+                                  <p
+                                    className="max-w-36 truncate text-[10px] text-muted-foreground"
+                                    title={paymentHolds[d.id].reason}
+                                  >
                                     {paymentHolds[d.id].reason}
                                   </p>
                                   <button
@@ -2045,11 +2163,16 @@ function PayrollPage() {
                                     Susulan Pembayaran
                                   </span>
                                   <p className="text-[10px] text-muted-foreground">
-                                    {paymentHolds[d.id].payroll_follow_up_payments?.[0]?.status === "exported" ? "Sudah diexport" : "Siap diexport"}
+                                    {paymentHolds[d.id].payroll_follow_up_payments?.[0]?.status ===
+                                    "exported"
+                                      ? "Sudah diexport"
+                                      : "Siap diexport"}
                                   </p>
                                 </div>
                               ) : activeRun.status === "draft" ? (
-                                <span className="text-[11px] font-medium text-muted-foreground">Finalize dulu</span>
+                                <span className="text-[11px] font-medium text-muted-foreground">
+                                  Finalize dulu
+                                </span>
                               ) : (
                                 <button
                                   onClick={() => {
@@ -2057,7 +2180,11 @@ function PayrollPage() {
                                     setHoldReason("");
                                   }}
                                   disabled={paymentHoldBusyId === d.id || Number(d.net_pay) <= 0}
-                                  title={Number(d.net_pay) <= 0 ? "Net pay harus lebih dari Rp0" : "Tahan dari bulk payment reguler"}
+                                  title={
+                                    Number(d.net_pay) <= 0
+                                      ? "Net pay harus lebih dari Rp0"
+                                      : "Tahan dari bulk payment reguler"
+                                  }
                                   className="rounded-md border-2 border-border-strong bg-warning px-2 py-1 text-[11px] font-semibold text-warning-foreground hover:bg-warning/85 disabled:opacity-50"
                                 >
                                   {paymentHoldBusyId === d.id ? "Memproses…" : "Tahan pembayaran"}
@@ -2138,23 +2265,27 @@ function PayrollPage() {
                                             <span className="w-32 text-right tabular-nums font-medium">
                                               Rp{Number(ded.amount).toLocaleString("id-ID")}
                                             </span>
-                                            {activeRun.status !== "published" && ded.installment_id && (
-                                              <button
-                                                onClick={() => skipInstallmentThisPeriod(ded)}
-                                                disabled={skippingInstallmentId === ded.installment_id}
-                                                title="Skip periode ini (gak kepotong sekarang, lanjut normal periode berikutnya)"
-                                                className="text-muted-foreground hover:text-warning disabled:opacity-50"
-                                              >
-                                                {skippingInstallmentId === ded.installment_id ? (
-                                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                ) : (
-                                                  <SkipForward className="w-3.5 h-3.5" />
-                                                )}
-                                              </button>
-                                            )}
                                             {activeRun.status !== "published" &&
-                                              (!ded.description?.toLowerCase().includes("tunggakan") ||
-                                              user?.isMasterAdmin ? (
+                                              ded.installment_id && (
+                                                <button
+                                                  onClick={() => skipInstallmentThisPeriod(ded)}
+                                                  disabled={
+                                                    skippingInstallmentId === ded.installment_id
+                                                  }
+                                                  title="Skip periode ini (gak kepotong sekarang, lanjut normal periode berikutnya)"
+                                                  className="text-muted-foreground hover:text-warning disabled:opacity-50"
+                                                >
+                                                  {skippingInstallmentId === ded.installment_id ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                  ) : (
+                                                    <SkipForward className="w-3.5 h-3.5" />
+                                                  )}
+                                                </button>
+                                              )}
+                                            {activeRun.status !== "published" &&
+                                              (!ded.description
+                                                ?.toLowerCase()
+                                                .includes("tunggakan") || user?.isMasterAdmin ? (
                                                 <button
                                                   onClick={() => startEditDeduction(ded)}
                                                   title="Edit potongan ini"
@@ -2176,7 +2307,9 @@ function PayrollPage() {
                                         <div className="flex items-center gap-2 pt-1">
                                           <select
                                             value={newDedTypeId ?? ""}
-                                            onChange={(e) => setNewDedTypeId(e.target.value || null)}
+                                            onChange={(e) =>
+                                              setNewDedTypeId(e.target.value || null)
+                                            }
                                             className="w-40 rounded-md border border-border bg-background px-2 py-1 text-[12px]"
                                           >
                                             <option value="">(tanpa jenis)</option>
@@ -2194,8 +2327,14 @@ function PayrollPage() {
                                           />
                                           <input
                                             inputMode="numeric"
-                                            value={newDedAmount ? newDedAmount.toLocaleString("id-ID") : ""}
-                                            onChange={(e) => setNewDedAmount(parseRupiah(e.target.value))}
+                                            value={
+                                              newDedAmount
+                                                ? newDedAmount.toLocaleString("id-ID")
+                                                : ""
+                                            }
+                                            onChange={(e) =>
+                                              setNewDedAmount(parseRupiah(e.target.value))
+                                            }
                                             placeholder="Jumlah"
                                             className="w-32 rounded-md border border-border bg-background px-2 py-1 text-[12px] text-right tabular-nums"
                                           />
@@ -2297,7 +2436,8 @@ function PayrollPage() {
               </div>
               <DialogTitle className="text-xl">Tahan pembayaran rider</DialogTitle>
               <DialogDescription className="leading-relaxed">
-                {holdDetail?.riders?.full_name ?? "Rider"} tidak akan masuk file Bulk Payment reguler. Nominal gaji dan payslip tetap tersimpan.
+                {holdDetail?.riders?.full_name ?? "Rider"} tidak akan masuk file Bulk Payment
+                reguler. Nominal gaji dan payslip tetap tersimpan.
               </DialogDescription>
             </DialogHeader>
             <div className="mt-5 space-y-3">
@@ -2305,7 +2445,12 @@ function PayrollPage() {
                 Alasan hold <span className="text-destructive">*</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {["Verifikasi data", "Kasus operasional", "Menunggu persetujuan", "Dokumen belum lengkap"].map((reason) => (
+                {[
+                  "Verifikasi data",
+                  "Kasus operasional",
+                  "Menunggu persetujuan",
+                  "Dokumen belum lengkap",
+                ].map((reason) => (
                   <button
                     key={reason}
                     type="button"
@@ -2346,7 +2491,11 @@ function PayrollPage() {
                 onClick={() => holdDetail && holdPayment(holdDetail, holdReason)}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-warning px-4 py-2 text-sm font-semibold text-warning-foreground hover:bg-warning/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {paymentHoldBusyId ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                {paymentHoldBusyId ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4" />
+                )}
                 Tahan pembayaran
               </button>
             </DialogFooter>
@@ -2361,12 +2510,15 @@ function PayrollPage() {
             <DialogHeader>
               <DialogTitle className="text-xl">Push ke Spend Control</DialogTitle>
               <DialogDescription className="leading-relaxed">
-                Payment Request per client untuk run {activeRun?.name} akan dikirim ke Basecamp Spend Control atas nama {user?.email ?? "akun ini"}.
+                Payment Request per client untuk run {activeRun?.name} akan dikirim ke Basecamp
+                Spend Control atas nama {user?.email ?? "akun ini"}.
               </DialogDescription>
             </DialogHeader>
 
             <div className="mt-4">
-              <label className="text-xs text-muted-foreground font-medium">Departemen pengaju</label>
+              <label className="text-xs text-muted-foreground font-medium">
+                Departemen pengaju
+              </label>
               <select
                 value={spendControlDept}
                 onChange={(e) => setSpendControlDept(e.target.value)}
@@ -2374,7 +2526,9 @@ function PayrollPage() {
                 className="mt-1 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
               >
                 {SPEND_CONTROL_DEPARTMENTS.map((d) => (
-                  <option key={d.code} value={d.code}>{d.label}</option>
+                  <option key={d.code} value={d.code}>
+                    {d.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -2401,67 +2555,85 @@ function PayrollPage() {
                       {spendControlRows.map((r) => {
                         const result = spendControlResults[r.clientId];
                         return (
-                        <tr key={r.clientId} className="border-t border-border">
-                          <td className="px-3 py-2 whitespace-nowrap">{r.clientName}</td>
-                          <td className="px-3 py-2">
-                            <div className={r.title.length > SPEND_CONTROL_TITLE_LIMIT ? "text-destructive" : ""}>
-                              {r.title}
-                            </div>
-                            {r.title.length > SPEND_CONTROL_TITLE_LIMIT && (
-                              <div className="text-destructive text-[11px] mt-0.5">
-                                {r.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter — kepanjangan, perbaiki nama client sebelum push
+                          <tr key={r.clientId} className="border-t border-border">
+                            <td className="px-3 py-2 whitespace-nowrap">{r.clientName}</td>
+                            <td className="px-3 py-2">
+                              <div
+                                className={
+                                  r.title.length > SPEND_CONTROL_TITLE_LIMIT
+                                    ? "text-destructive"
+                                    : ""
+                                }
+                              >
+                                {r.title}
                               </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right whitespace-nowrap">{formatRupiah(r.amount)}</td>
-                          <td className="px-3 py-2">
-                            {r.businessUnit ?? (
-                              <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
-                                Belum ada revenue stream
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            {r.contract ?? (
-                              <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
-                                Contract belum diisi
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            {!result && "—"}
-                            {result?.ok && result.workflowConfigured === false && (
-                              <span className="rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-warning text-[11px]" title={result.workflowMissingReason}>
-                                Terkirim, tanpa workflow
-                              </span>
-                            )}
-                            {result?.ok && result.workflowConfigured !== false && (
-                              <span className="rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-success text-[11px]">
-                                {result.requestCode ?? "Terkirim"}
-                              </span>
-                            )}
-                            {result?.ok && r.valid && (
-                              <label className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedSpendControlRepushes.has(r.clientId)}
-                                  disabled={spendControlPushing}
-                                  onChange={(e) => setSelectedSpendControlRepushes((selected) => {
-                                    const next = new Set(selected);
-                                    if (e.target.checked) next.add(r.clientId); else next.delete(r.clientId);
-                                    return next;
-                                  })}
-                                />
-                                Perbarui pengajuan
-                              </label>
-                            )}
-                            {result && !result.ok && (
-                              <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]" title={result.error}>
-                                Gagal
-                              </span>
-                            )}
-                          </td>
-                        </tr>
+                              {r.title.length > SPEND_CONTROL_TITLE_LIMIT && (
+                                <div className="text-destructive text-[11px] mt-0.5">
+                                  {r.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter —
+                                  kepanjangan, perbaiki nama client sebelum push
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                              {formatRupiah(r.amount)}
+                            </td>
+                            <td className="px-3 py-2">
+                              {r.businessUnit ?? (
+                                <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
+                                  Belum ada revenue stream
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {r.contract ?? (
+                                <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]">
+                                  Contract belum diisi
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {!result && "—"}
+                              {result?.ok && result.workflowConfigured === false && (
+                                <span
+                                  className="rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-warning text-[11px]"
+                                  title={result.workflowMissingReason}
+                                >
+                                  Terkirim, tanpa workflow
+                                </span>
+                              )}
+                              {result?.ok && result.workflowConfigured !== false && (
+                                <span className="rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-success text-[11px]">
+                                  {result.requestCode ?? "Terkirim"}
+                                </span>
+                              )}
+                              {result?.ok && r.valid && (
+                                <label className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedSpendControlRepushes.has(r.clientId)}
+                                    disabled={spendControlPushing}
+                                    onChange={(e) =>
+                                      setSelectedSpendControlRepushes((selected) => {
+                                        const next = new Set(selected);
+                                        if (e.target.checked) next.add(r.clientId);
+                                        else next.delete(r.clientId);
+                                        return next;
+                                      })
+                                    }
+                                  />
+                                  Perbarui pengajuan
+                                </label>
+                              )}
+                              {result && !result.ok && (
+                                <span
+                                  className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive text-[11px]"
+                                  title={result.error}
+                                >
+                                  Gagal
+                                </span>
+                              )}
+                            </td>
+                          </tr>
                         );
                       })}
                       {spendControlRows.length === 0 && (
@@ -2488,7 +2660,15 @@ function PayrollPage() {
                 </div>
                 {activeRun && (
                   <p className="mt-2 text-[11px] text-muted-foreground">
-                    Attachment: <a href={spendControlAttachmentUrl(activeRun.id)} target="_blank" rel="noreferrer" className="underline">{spendControlAttachmentUrl(activeRun.id)}</a>
+                    Attachment:{" "}
+                    <a
+                      href={spendControlAttachmentUrl(activeRun.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      {spendControlAttachmentUrl(activeRun.id)}
+                    </a>
                   </p>
                 )}
               </>
@@ -2505,11 +2685,19 @@ function PayrollPage() {
               </button>
               <button
                 type="button"
-                disabled={spendControlLoading || spendControlPushing || spendControlPushableRows.length === 0}
+                disabled={
+                  spendControlLoading ||
+                  spendControlPushing ||
+                  spendControlPushableRows.length === 0
+                }
                 onClick={() => submitSpendControlPush(spendControlPushableRows)}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {spendControlPushing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                {spendControlPushing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowUpRight className="h-4 w-4" />
+                )}
                 {spendControlPushableRows.length === 0 && spendControlValidRows.length > 0
                   ? "Semua sudah terkirim"
                   : `Push ${spendControlPushableRows.length} ke Spend Control`}

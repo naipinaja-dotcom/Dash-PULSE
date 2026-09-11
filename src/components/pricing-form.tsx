@@ -3,7 +3,7 @@
 // pricing-form/attendance-fields.tsx (kategori 2), kalkulator interaktif ke
 // pricing-form/interactive-calc.tsx.
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, Link } from "@tanstack/react-router";
 import { usePostHog } from "@posthog/react";
 import { AdminLayout } from "@/components/admin-layout";
 import { ClientCombobox } from "@/components/client-combobox";
@@ -37,6 +37,9 @@ import {
   Layers,
   ChevronRight,
   SlidersHorizontal,
+  Plus,
+  Trash2,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -70,16 +73,57 @@ import { InteractiveCalc } from "./pricing-form/interactive-calc";
 import { RevenueShareCalc } from "./pricing-form/revenue-share-calc";
 import { loadDeliveryCompState } from "./pricing-form/attendance-delivery-comp";
 import {
-  AreaCityFields,
-  emptyAreaCityState,
   buildAreaCityConfig,
-  loadAreaCityState,
   validateAreaCityState,
   citiesFromRaw,
   type AreaCityState,
+  type AreaRuleState,
 } from "./pricing-form/area-city-fields";
 
 const CATEGORY_ICONS = { Truck, CalendarDays, Layers } as const;
+
+// SATU daftar "Area" (rail) buat 2 kebutuhan sekaligus, tiap baris pilih
+// sendiri lewat `kind`:
+//  - flat/per_km: rate-override BUAT SCHEME INI SENDIRI (disimpen ke
+//    area_city_pricing pas Save — persis mekanisme lama, cuma UI-nya digabung).
+//  - delivery_other/revenue_share/attendance: model/skema BEDA — gak bisa jadi
+//    rate-override di scheme yang sama, jadi baris ini cuma quick-add
+//    launcher ke /admin/pricing/new (lihat spawnsScheme), gak pernah disave
+//    ke scheme ini.
+const AREA_KIND_OPTIONS = [
+  { key: "flat", labelKey: "pfAreaCity.modelFlat", spawnsScheme: false },
+  { key: "per_km", labelKey: "pfAreaCity.modelPerKm", spawnsScheme: false },
+  {
+    key: "delivery_other",
+    labelKey: "pform.areaModelDelivery",
+    spawnsScheme: true,
+    category: "delivery" as const,
+    revenueShare: false,
+  },
+  {
+    key: "revenue_share",
+    labelKey: "pform.areaModelRevenueShare",
+    spawnsScheme: true,
+    category: "delivery" as const,
+    revenueShare: true,
+  },
+  {
+    key: "attendance",
+    labelKey: "pform.areaModelAttendance",
+    spawnsScheme: true,
+    category: "attendance" as const,
+    revenueShare: false,
+  },
+] as const;
+
+interface AreaLauncherRow {
+  id: string;
+  name: string;
+  citiesRaw: string;
+  kind: (typeof AREA_KIND_OPTIONS)[number]["key"];
+  rate: string;
+  minimumFee: string;
+}
 const DIMENSION_ICONS = { distance: Ruler, weight: Package } as const;
 
 // -------------------- Bentuk state form (semua string, di-parse saat simpan) --------------------
@@ -90,10 +134,10 @@ interface FormState {
   addKg: StepTierState;
   multiDropOn: boolean;
   multiDropFee: string;
-  areaCityOn: boolean;
-  areaCity: AreaCityState;
-  // Scope SCHEME INI (bukan rate di dalamnya, beda dari areaCity di atas) ke
-  // City tertentu — lihat city_scope di pricing-types.ts. Kosong = default.
+  // Scope SCHEME INI ke City tertentu — lihat city_scope di pricing-types.ts.
+  // Kosong = default. Rate-override per city & launcher skema lain buat
+  // model beda hidup di `areaRows` (state terpisah, lihat PricingFormInner),
+  // bukan di FormState — satu daftar "Area" gabungan buat keduanya.
   cityScopeRaw: string;
   revenueShareOn: boolean;
   revenueSharePercent: string;
@@ -116,8 +160,6 @@ function emptyForm(): FormState {
     addKg: emptyStepTier(),
     multiDropOn: false,
     multiDropFee: "3000",
-    areaCityOn: false,
-    areaCity: emptyAreaCityState(),
     cityScopeRaw: "",
     revenueShareOn: false,
     revenueSharePercent: "80",
@@ -138,6 +180,11 @@ function buildEnvelope(
   subtype: PricingSubtype,
   schemeFor: SchemeFor,
   f: FormState,
+  // Baris "Area" (rail) yang kind-nya flat/per_km — rate-override buat scheme
+  // ini sendiri. Baris kind revenue_share/attendance TIDAK pernah sampai
+  // sini (itu launcher ke scheme LAIN, difilter di caller sebelum manggil
+  // fungsi ini — lihat handleSave).
+  areaCityRules: AreaRuleState[],
 ): PricingEnvelope {
   // Revenue Share ganti total cara hitung base fee (persen dari revenue
   // client, bukan dari dimensi Distance/Weight) — cuma masuk akal buat sisi
@@ -190,7 +237,9 @@ function buildEnvelope(
     // resolveAreaPricingRule di pricing-calc.ts fallback ke default (identik
     // perilaku sebelum fitur ini, lihat prioritas #1 di PRD).
     area_city_pricing:
-      category === "delivery" && f.areaCityOn ? buildAreaCityConfig(f.areaCity, true) : null,
+      category === "delivery" && areaCityRules.length > 0
+        ? buildAreaCityConfig({ rules: areaCityRules }, true)
+        : null,
     // Beda dari area_city_pricing di atas (override RATE) — ini scope SCHEME
     // ini sendiri ke City tertentu, biar 1 client bisa punya beberapa scheme
     // delivery aktif sekaligus (lihat resolveSchemeForCity di pricing-calc.ts).
@@ -217,8 +266,10 @@ function loadForm(scheme: PricingScheme | undefined): {
   category: PricingCategory;
   subtype: PricingSubtype;
   schemeFor: SchemeFor;
+  areaRows: AreaLauncherRow[];
 } {
   const form = emptyForm();
+  let areaRows: AreaLauncherRow[] = [];
   const rawCategory: PricingCategory = scheme?.category ?? "delivery";
   // "hybrid" gak ada tab/field-nya lagi di form ini (PRICING_CATEGORIES cuma
   // delivery/attendance) — dulu category state dibiarin "hybrid" walau
@@ -232,7 +283,7 @@ function loadForm(scheme: PricingScheme | undefined): {
     scheme?.subtype ?? (category === "delivery" ? { distance: true, weight: false } : null);
 
   if (!scheme || !scheme.params || scheme.params.version !== 1) {
-    return { form, category, subtype, schemeFor: scheme?.scheme_for ?? "rider" };
+    return { form, category, subtype, schemeFor: scheme?.scheme_for ?? "rider", areaRows };
   }
 
   const env = scheme.params;
@@ -283,8 +334,14 @@ function loadForm(scheme: PricingScheme | undefined): {
     form.multiDropFee = String(env.multi_drop.fee_per_extra_shipment ?? "");
   }
   if (env.area_city_pricing?.enabled) {
-    form.areaCityOn = true;
-    form.areaCity = loadAreaCityState(env.area_city_pricing);
+    areaRows = env.area_city_pricing.rules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      citiesRaw: r.cities.join(", "),
+      kind: r.model,
+      rate: String(r.rate ?? ""),
+      minimumFee: String(r.minimum_fee ?? ""),
+    }));
   }
   if (env.city_scope?.length) {
     form.cityScopeRaw = env.city_scope.join(", ");
@@ -301,7 +358,7 @@ function loadForm(scheme: PricingScheme | undefined): {
     };
   }
 
-  return { form, category, subtype, schemeFor: scheme.scheme_for ?? "rider" };
+  return { form, category, subtype, schemeFor: scheme.scheme_for ?? "rider", areaRows };
 }
 
 // -------------------- Main form --------------------
@@ -309,7 +366,25 @@ function loadForm(scheme: PricingScheme | undefined): {
 // form-nya di-mount. Ini penting karena field di bawah pakai useState(initial)
 // yang cuma jalan sekali pas mount — kalau datanya nyusul belakangan, field
 // bakal tetep kosong. Jadi tunggu dulu, baru render form-nya.
-export function PricingForm({ mode, schemeId }: { mode: "create" | "edit"; schemeId?: string }) {
+// Pre-fill opsional buat mode="create" — diisi dari search params
+// `/admin/pricing/new` (lihat launcher "Area" di bawah & route file-nya).
+// Diabaikan total di mode="edit" (scheme yang udah ada selalu menang).
+export interface PricingFormInitial {
+  clientId?: string;
+  cityScope?: string;
+  category?: PricingCategory;
+  revenueShare?: boolean;
+}
+
+export function PricingForm({
+  mode,
+  schemeId,
+  initial,
+}: {
+  mode: "create" | "edit";
+  schemeId?: string;
+  initial?: PricingFormInitial;
+}) {
   const { t } = useT();
   const [existing, setExisting] = useState<PricingScheme | null>(null);
   const [ready, setReady] = useState(mode === "create");
@@ -334,16 +409,23 @@ export function PricingForm({ mode, schemeId }: { mode: "create" | "edit"; schem
   }
 
   return (
-    <PricingFormInner key={existing?.id ?? "new"} mode={mode} existing={existing ?? undefined} />
+    <PricingFormInner
+      key={existing?.id ?? "new"}
+      mode={mode}
+      existing={existing ?? undefined}
+      initial={existing ? undefined : initial}
+    />
   );
 }
 
 function PricingFormInner({
   mode,
   existing,
+  initial,
 }: {
   mode: "create" | "edit";
   existing?: PricingScheme;
+  initial?: PricingFormInitial;
 }) {
   const { t } = useT();
   const navigate = useNavigate();
@@ -353,22 +435,36 @@ function PricingFormInner({
   const loaded = useMemo(() => loadForm(existing), [existing]);
 
   const [name, setName] = useState(existing?.name ?? "");
-  const [clientId, setClientId] = useState(existing?.client_id ?? "");
+  const [clientId, setClientId] = useState(existing?.client_id ?? initial?.clientId ?? "");
   const [schemeFor, setSchemeFor] = useState<SchemeFor>(loaded.schemeFor);
   const [effFrom, setEffFrom] = useState(
     existing?.effective_from ?? new Date().toISOString().slice(0, 10),
   );
   const [effTo, setEffTo] = useState(existing?.effective_to ?? "");
-  const [category, setCategory] = useState<PricingCategory>(loaded.category);
-  const [subtype, setSubtype] = useState<PricingSubtype>(loaded.subtype);
-  const [f, setF] = useState<FormState>(loaded.form);
+  const [category, setCategory] = useState<PricingCategory>(initial?.category ?? loaded.category);
+  const [subtype, setSubtype] = useState<PricingSubtype>(
+    initial?.category
+      ? initial.category === "delivery"
+        ? { distance: true, weight: false }
+        : null
+      : loaded.subtype,
+  );
+  const [f, setF] = useState<FormState>(() =>
+    initial
+      ? {
+          ...loaded.form,
+          cityScopeRaw: initial.cityScope ?? loaded.form.cityScopeRaw,
+          revenueShareOn: initial.revenueShare ?? loaded.form.revenueShareOn,
+        }
+      : loaded.form,
+  );
   // Modifier Tambahan (Add-KG/Multi-drop/Area City Pricing) — collapsed by
   // default, tapi auto-terbuka kalau skema yang lagi dibuka udah pakai salah
   // satu (biar gak nyembunyiin setting yang sedang aktif). Dihitung sekali dari
   // data awal (bukan reaktif ke f.*) — sekali user buka manual atau nutup lagi,
   // itu keputusan mereka, gak dipaksa balik oleh perubahan checkbox internal.
   const [modifiersOpen, setModifiersOpen] = useState(
-    loaded.form.addKgOn || loaded.form.multiDropOn || loaded.form.areaCityOn,
+    loaded.form.addKgOn || loaded.form.multiDropOn,
   );
 
   useEffect(() => {
@@ -376,6 +472,37 @@ function PricingFormInner({
   }, []);
 
   const patch = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
+
+  // Daftar "Area" gabungan (rail) — baris kind flat/per_km jadi rate-override
+  // buat SCHEME INI SENDIRI (area_city_pricing, disave pas Save), baris kind
+  // delivery_other/revenue_share/attendance cuma launcher ke scheme LAIN
+  // (ephemeral, gak disave — hilang kalau form di-refresh, sengaja, lihat plan).
+  const [areaRows, setAreaRows] = useState<AreaLauncherRow[]>(loaded.areaRows);
+  const areaCityRules: AreaRuleState[] = areaRows
+    .filter((r) => r.kind === "flat" || r.kind === "per_km")
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      citiesRaw: r.citiesRaw,
+      model: r.kind as "flat" | "per_km",
+      rate: r.rate,
+      minimum_fee: r.minimumFee,
+    }));
+  const addAreaRow = () =>
+    setAreaRows((prev) => [
+      ...prev,
+      {
+        id: `area_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        name: "",
+        citiesRaw: "",
+        kind: "flat",
+        rate: "",
+        minimumFee: "",
+      },
+    ]);
+  const patchAreaRow = (id: string, p: Partial<AreaLauncherRow>) =>
+    setAreaRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  const removeAreaRow = (id: string) => setAreaRows((prev) => prev.filter((r) => r.id !== id));
 
   const handleCategoryChange = (cat: PricingCategory) => {
     setCategory(cat);
@@ -389,8 +516,8 @@ function PricingFormInner({
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     if (!effFrom) return toast.error(t("pform.effFromRequired"));
-    if (category === "delivery" && f.areaCityOn) {
-      const err = validateAreaCityState(f.areaCity);
+    if (category === "delivery" && areaCityRules.length > 0) {
+      const err = validateAreaCityState({ rules: areaCityRules });
       if (err) return toast.error(err);
     }
     // Nama opsional — kalau dikosongin, dibikinin otomatis dari client + sisi + tipe.
@@ -410,7 +537,7 @@ function PricingFormInner({
         scheme_for: schemeFor,
         effective_from: effFrom,
         effective_to: effTo || null,
-        params: buildEnvelope(category, subtype, schemeFor, f),
+        params: buildEnvelope(category, subtype, schemeFor, f, areaCityRules),
       });
       posthog.capture("pricing_scheme_saved", {
         mode,
@@ -485,20 +612,136 @@ function PricingFormInner({
             </div>
 
             {category === "delivery" && (
-              <div className="flex flex-col gap-1">
-                <FieldLabel>
-                  {t("pform.cityScopeLabel")}{" "}
-                  <span className="font-normal text-muted-foreground">({t("pform.optional")})</span>
-                </FieldLabel>
-                <span className="text-[11px] text-muted-foreground leading-snug">
-                  {t("pform.cityScopeHint")}
-                </span>
-                <TextInput
-                  value={f.cityScopeRaw}
-                  placeholder={t("pfAreaCity.citiesPlaceholder")}
-                  onChange={(e) => patch({ cityScopeRaw: e.target.value })}
-                  className="mt-0.5"
-                />
+              <div className="flex flex-col gap-3 rounded-md border border-dashed border-border-strong p-3">
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>
+                    {t("pform.cityScopeLabel")}{" "}
+                    <span className="font-normal text-muted-foreground">
+                      ({t("pform.optional")})
+                    </span>
+                  </FieldLabel>
+                  <span className="text-[11px] text-muted-foreground leading-snug">
+                    {t("pform.cityScopeHint")}
+                  </span>
+                  <TextInput
+                    value={f.cityScopeRaw}
+                    placeholder={t("pfAreaCity.citiesPlaceholder")}
+                    onChange={(e) => patch({ cityScopeRaw: e.target.value })}
+                    className="mt-0.5"
+                  />
+                </div>
+
+                <div className="border-t border-border pt-3 flex flex-col gap-2">
+                  <div className="flex flex-col gap-0.5">
+                    <FieldLabel>{t("pform.areaLauncherLabel")}</FieldLabel>
+                    <span className="text-[11px] text-muted-foreground leading-snug">
+                      {t("pform.areaLauncherHint")}
+                    </span>
+                  </div>
+                  {areaRows.map((row) => {
+                    const opt = AREA_KIND_OPTIONS.find((o) => o.key === row.kind)!;
+                    const cities = citiesFromRaw(row.citiesRaw);
+                    return (
+                      <div
+                        key={row.id}
+                        className="flex flex-col gap-1.5 rounded-md bg-muted/50 p-2.5"
+                      >
+                        <div className="flex items-start gap-1.5">
+                          <TextInput
+                            value={row.name}
+                            placeholder={t("pfAreaCity.areaNamePlaceholder")}
+                            onChange={(e) => patchAreaRow(row.id, { name: e.target.value })}
+                            className="flex-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeAreaRow(row.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-muted flex-shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <TextInput
+                          value={row.citiesRaw}
+                          placeholder={t("pfAreaCity.citiesPlaceholder")}
+                          onChange={(e) => patchAreaRow(row.id, { citiesRaw: e.target.value })}
+                        />
+                        <select
+                          value={row.kind}
+                          onChange={(e) =>
+                            patchAreaRow(row.id, {
+                              kind: e.target.value as AreaLauncherRow["kind"],
+                            })
+                          }
+                          className="rounded-md border-2 border-border-strong bg-card px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                        >
+                          {AREA_KIND_OPTIONS.map((o) => (
+                            <option key={o.key} value={o.key}>
+                              {t(o.labelKey)}
+                            </option>
+                          ))}
+                        </select>
+
+                        {!opt.spawnsScheme ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex-1">
+                              <RupiahInput
+                                value={row.rate}
+                                onChange={(v) => patchAreaRow(row.id, { rate: v })}
+                                placeholder={
+                                  row.kind === "flat"
+                                    ? t("pfAreaCity.rateFlat")
+                                    : t("pfAreaCity.ratePerKm")
+                                }
+                              />
+                            </div>
+                            {row.kind === "per_km" && (
+                              <div className="flex-1">
+                                <RupiahInput
+                                  value={row.minimumFee}
+                                  onChange={(v) => patchAreaRow(row.id, { minimumFee: v })}
+                                  placeholder={t("pfAreaCity.minimumFee")}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <Link
+                            to="/admin/pricing/new"
+                            search={{
+                              clientId: clientId || undefined,
+                              cityScope: cities.length ? cities.join(", ") : undefined,
+                              category: opt.category,
+                              revenueShare: opt.revenueShare || undefined,
+                            }}
+                            disabled={cities.length === 0}
+                            className={
+                              "inline-flex items-center justify-center gap-1 rounded-md border-2 border-border-strong px-2.5 py-1.5 text-xs font-medium " +
+                              (cities.length === 0
+                                ? "pointer-events-none opacity-50 bg-muted"
+                                : "bg-primary text-primary-foreground hover:opacity-90")
+                            }
+                          >
+                            {t("pform.createSchemeForArea")}{" "}
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          </Link>
+                        )}
+                        {row.kind === "attendance" && (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                            {t("pform.areaModelAttendanceWarning")}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={addAreaRow}
+                    className="w-full text-xs text-primary border border-dashed border-primary-border rounded-md px-3 py-1.5 hover:bg-primary-soft/50 inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> {t("pfAreaCity.addArea")}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -790,7 +1033,7 @@ function PricingFormInner({
             {category === "delivery" &&
               !f.revenueShareOn &&
               (() => {
-                const activeCount = [f.addKgOn, f.multiDropOn, f.areaCityOn].filter(Boolean).length;
+                const activeCount = [f.addKgOn, f.multiDropOn].filter(Boolean).length;
                 const hasActive = activeCount > 0;
                 return (
                   <div
@@ -865,18 +1108,6 @@ function PricingFormInner({
                             />
                           </div>
                         </ToggleBlock>
-
-                        <ToggleBlock
-                          label={t("pform.areaCityPricingLabel")}
-                          hint={t("pform.areaCityPricingHint")}
-                          on={f.areaCityOn}
-                          onToggle={(on) => patch({ areaCityOn: on })}
-                        >
-                          <AreaCityFields
-                            value={f.areaCity}
-                            onChange={(v) => patch({ areaCity: v })}
-                          />
-                        </ToggleBlock>
                       </div>
                     )}
                   </div>
@@ -893,8 +1124,8 @@ function PricingFormInner({
                 addKgOn={f.addKgOn}
                 multiDropOn={f.multiDropOn}
                 multiDropFee={f.multiDropFee}
-                areaCityOn={f.areaCityOn}
-                areaCity={f.areaCity}
+                areaCityOn={areaCityRules.length > 0}
+                areaCity={{ rules: areaCityRules }}
                 billingOn={f.billingOn}
               />
             )}

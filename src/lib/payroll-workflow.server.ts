@@ -558,18 +558,39 @@ function buildNotification(result: PayrollWorkflowResult): {
   return { subject, text, html };
 }
 
-export async function runPayrollWorkflow(opts: {
-  triggeredBy: "cron" | "manual" | "event";
-  triggeredByUserId?: string;
-}): Promise<PayrollWorkflowResult> {
-  const admin = getSupabaseAdmin();
-  // WIB, bukan UTC mentah — lihat komentar nowInWib(). Penting sejak cron
-  // ini dipoll tiap 15 menit sepanjang hari (termasuk jendela 00:00-06:59
-  // WIB yang secara UTC masih "kemarin").
-  const today = nowInWib();
-  const nowMinutesOfDay = today.getUTCHours() * 60 + today.getUTCMinutes();
-  const startedAt = new Date().toISOString();
+// Query awal (clients/schedules/pricing_schemes, lihat loadWorkflowInputs)
+// itu prasyarat SEBELUM loop per-client bisa mulai sama sekali — beda dari
+// per-client try/catch di bawah (yang udah diisolasi), gangguan Supabase
+// sesaat (Gateway Timeout) di SINI dulu bikin SELURUH tick gagal duluan
+// sebelum sempat tau client mana aja yang due, TANPA kesempatan retry dalam
+// invocation yang sama. Regresi nyata: tick 09:00 WIB (persis jendela
+// run_time banyak client) kena Gateway Timeout ~1-5 detik di query ini,
+// seluruh batch "Senin" gak keproses SAMA SEKALI, dan karena baris ini masih
+// di luar try/catch manapun waktu itu, gak ada jejak di payroll_workflow_runs
+// ataupun notif Slack/Email — cuma gap kosong yang diam-diam bikin client
+// itu kelewat SEMINGGU PENUH (jadwal mingguan gak balik lagi sampe hari yang
+// sama minggu depan). Retry ringan di sini nyerap blip beberapa detik SEBELUM
+// sempat gagal; runPayrollWorkflow sekarang juga bungkus baris ini di try
+// yang sama dengan loop per-client, jadi SEKALIPUN retry habis, hardError
+// tetap ke-log & ke-notif (bukan menghilang total kayak sebelumnya).
+export async function withTransientRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 3,
+  delayMs = 1500,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
 
+async function loadWorkflowInputs(admin: SupabaseAdmin) {
   const [{ data: clients, error: clientsErr }, periodsByClient, { data: schemesRaw }] =
     await Promise.all([
       admin.from("clients").select("id, name").eq("active", true),
@@ -582,7 +603,24 @@ export async function runPayrollWorkflow(opts: {
         ),
     ]);
   if (clientsErr) throw new Error(`Gagal ambil daftar client: ${clientsErr.message}`);
-  const schemes: PricingScheme[] = (schemesRaw ?? []).map(normalize);
+  return {
+    clients: clients ?? [],
+    periodsByClient,
+    schemes: ((schemesRaw ?? []) as unknown[]).map(normalize) as PricingScheme[],
+  };
+}
+
+export async function runPayrollWorkflow(opts: {
+  triggeredBy: "cron" | "manual" | "event";
+  triggeredByUserId?: string;
+}): Promise<PayrollWorkflowResult> {
+  const admin = getSupabaseAdmin();
+  // WIB, bukan UTC mentah — lihat komentar nowInWib(). Penting sejak cron
+  // ini dipoll tiap 15 menit sepanjang hari (termasuk jendela 00:00-06:59
+  // WIB yang secara UTC masih "kemarin").
+  const today = nowInWib();
+  const nowMinutesOfDay = today.getUTCHours() * 60 + today.getUTCMinutes();
+  const startedAt = new Date().toISOString();
 
   const runs: PayrollWorkflowRunResult[] = [];
   const skippedClients: string[] = [];
@@ -591,7 +629,10 @@ export async function runPayrollWorkflow(opts: {
   let hardError: string | null = null;
 
   try {
-    for (const c of clients ?? []) {
+    const { clients, periodsByClient, schemes } = await withTransientRetry(() =>
+      loadWorkflowInputs(admin),
+    );
+    for (const c of clients) {
       // Client belum di-setup jadwal (Reminder Calendar) ATAU belum ada skema
       // harga (rider) — jangan auto-bikin payroll run buat client itu sama
       // sekali. findOrCreatePayrollRun INSERT row draft duluan sebelum tau ada

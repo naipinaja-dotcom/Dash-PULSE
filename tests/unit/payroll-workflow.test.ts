@@ -1,5 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { resolvePeriodIfDue, nowInWib, matchesRunTime } from "@/lib/payroll-workflow.server";
+import { describe, expect, it, vi } from "vitest";
+import {
+  resolvePeriodIfDue,
+  nowInWib,
+  matchesRunTime,
+  withTransientRetry,
+} from "@/lib/payroll-workflow.server";
+
+describe("withTransientRetry", () => {
+  it("mengembalikan hasil langsung kalau percobaan pertama sukses", async () => {
+    const fn = vi.fn().mockResolvedValue("ok");
+    await expect(withTransientRetry(fn, 3, 0)).resolves.toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("nyerap blip sesaat: retry sampai sukses, gak langsung throw di percobaan pertama", async () => {
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Gateway Timeout"))
+      .mockResolvedValueOnce("ok");
+    await expect(withTransientRetry(fn, 3, 0)).resolves.toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("throw error asli setelah semua percobaan habis (bukan silently swallowed)", async () => {
+    const fn = vi.fn().mockRejectedValue(new Error("Gateway Timeout"));
+    await expect(withTransientRetry(fn, 3, 0)).rejects.toThrow("Gateway Timeout");
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+});
 
 describe("resolvePeriodIfDue", () => {
   it("default weekly Senin(1)-Minggu(0): jatuh tempo pas hari ini Senin", () => {
@@ -40,7 +68,9 @@ describe("resolvePeriodIfDue", () => {
       periodEnd: "2026-07-16",
     });
     // Fri-Mon belum jatuh tempo di hari yang sama
-    expect(resolvePeriodIfDue(new Date("2026-07-17T00:00:00Z"), friMon.start, friMon.end)).toBeNull();
+    expect(
+      resolvePeriodIfDue(new Date("2026-07-17T00:00:00Z"), friMon.start, friMon.end),
+    ).toBeNull();
   });
 
   it("closeSameDay=true: Selasa(2)-Kamis(4) jatuh tempo PAS hari Kamis itu sendiri (bukan besoknya)", () => {

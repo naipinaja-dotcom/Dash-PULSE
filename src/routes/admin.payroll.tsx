@@ -1356,6 +1356,10 @@ function PayrollPage() {
         for (const r of results) next[r.clientId] = r;
         return next;
       });
+      // Refresh pushedRunIds (badge ijo di list run) — tanpa ini, badge cuma
+      // ke-update kalau halaman di-reload manual, padahal push barusan
+      // sukses di run yang lagi dibuka sekarang juga.
+      loadRuns();
       const okCount = results.filter((r) => r.ok).length;
       const unconfigured = results.filter((r) => r.ok && r.workflowConfigured === false).length;
       const failCount = results.length - okCount;

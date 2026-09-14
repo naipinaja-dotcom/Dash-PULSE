@@ -54,7 +54,8 @@ import { fetchLiveDeliveries } from "./api/live-fee-deliveries.functions";
 import { fetchLiveAttendance } from "./api/live-fee-attendance.functions";
 import { upsertLiveDeliveries } from "./sync-live-deliveries";
 import { upsertLiveAttendance } from "./sync-live-attendance";
-import { matchesRunTime, nowInWib } from "./payroll-workflow.server";
+import { matchesRunTime, nowInWib, withTransientRetry } from "./payroll-workflow.server";
+import { sendSlackMessage } from "./notify/slack.server";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
@@ -221,38 +222,70 @@ export async function runLiveFeeSync(opts: {
     throw new Error("DASH_MGMT_API_TOKEN belum di-set di server — isi di .env lalu restart.");
   const dashToken = `Bearer ${raw}`;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adminAny = admin as any;
-  const [
-    { data: clientsRaw, error: cErr },
-    providers,
-    { data: schemesRaw, error: sErr },
-    { data: remindersRaw, error: rErr },
-  ] = await Promise.all([
-    adminAny
-      .from("clients")
-      .select("id, name, provider_id")
-      .eq("active", true)
-      .not("provider_id", "is", null),
-    fetchApiProviders(dashToken),
-    adminAny
-      .from("pricing_schemes")
-      .select(
-        "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
-      ),
-    // "Daftar reminder" — client_id level-client (rider_id null) yang aktif.
-    // Ini scoping WAJIB (lihat komentar di atas file) — provider_id doang
-    // gak cukup buat nandain client mana yang mau diproses cron ini.
-    adminAny
-      .from("payroll_reminder_schedules")
-      .select("client_id, run_time")
-      .eq("active", true)
-      .is("rider_id", null)
-      .not("client_id", "is", null),
-  ]);
-  if (cErr) throw new Error(`Gagal ambil clients: ${cErr.message}`);
-  if (sErr) throw new Error(`Gagal ambil pricing_schemes: ${sErr.message}`);
-  if (rErr) throw new Error(`Gagal ambil payroll_reminder_schedules: ${rErr.message}`);
+  let clientsRaw: unknown[] | null;
+  let providers: ApiProvider[];
+  let schemesRaw: unknown[] | null;
+  let remindersRaw: { client_id: string; run_time: string | null }[] | null;
+  try {
+    // Query awal (clients/providers/pricing_schemes/reminder schedules) itu
+    // prasyarat SEBELUM loop per-client (yang udah diisolasi try/catch-nya
+    // sendiri, lihat syncOneClient di bawah) bisa mulai. TANPA retry di sini,
+    // blip Supabase/mgmt API sesaat (Gateway Timeout) bikin SELURUH tick gagal
+    // duluan, TANPA jejak APAPUN — beda dari payroll-workflow.server.ts, file
+    // ini bahkan gak punya log table sendiri (lihat komentar di atas file),
+    // jadi kegagalan di sini history-nya cuma "data ga ketarik" yang baru
+    // ketauan pas admin manual cek angka payroll udah kadung salah/rider
+    // komplain. withTransientRetry (sama persis yang dipakai
+    // payroll-workflow.server.ts) nyerap blip beberapa detik di sini, dan
+    // catch di bawah nge-alert Slack kalau tetep gagal — biar ketauan LANGSUNG,
+    // bukan berhari-hari kemudian.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const adminAny = admin as any;
+    const result = await withTransientRetry(() =>
+      Promise.all([
+        adminAny
+          .from("clients")
+          .select("id, name, provider_id")
+          .eq("active", true)
+          .not("provider_id", "is", null),
+        fetchApiProviders(dashToken),
+        adminAny
+          .from("pricing_schemes")
+          .select(
+            "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
+          ),
+        // "Daftar reminder" — client_id level-client (rider_id null) yang aktif.
+        // Ini scoping WAJIB (lihat komentar di atas file) — provider_id doang
+        // gak cukup buat nandain client mana yang mau diproses cron ini.
+        adminAny
+          .from("payroll_reminder_schedules")
+          .select("client_id, run_time")
+          .eq("active", true)
+          .is("rider_id", null)
+          .not("client_id", "is", null),
+      ]).then(([clientsRes, providersRes, schemesRes, remindersRes]) => {
+        if (clientsRes.error) throw new Error(`Gagal ambil clients: ${clientsRes.error.message}`);
+        if (schemesRes.error)
+          throw new Error(`Gagal ambil pricing_schemes: ${schemesRes.error.message}`);
+        if (remindersRes.error)
+          throw new Error(
+            `Gagal ambil payroll_reminder_schedules: ${remindersRes.error.message}`,
+          );
+        return {
+          clientsRaw: clientsRes.data,
+          providers: providersRes as ApiProvider[],
+          schemesRaw: schemesRes.data,
+          remindersRaw: remindersRes.data,
+        };
+      }),
+    );
+    ({ clientsRaw, providers, schemesRaw, remindersRaw } = result);
+  } catch (e) {
+    await sendSlackMessage(
+      `⚠️ Live Fee Sync GAGAL total (retry habis) — nol client ke-sync tick ini: ${(e as Error).message}`,
+    );
+    throw e;
+  }
 
   const remindedClientIds = new Set(
     (remindersRaw ?? []).map((r: { client_id: string }) => r.client_id),
@@ -301,6 +334,19 @@ export async function runLiveFeeSync(opts: {
         error: (e as Error).message,
       });
     }
+  }
+
+  // Per-client error (mis. mgmt API timeout buat 1 client doang) sebelumnya
+  // cuma nyangkut di `results` yang balik ke pemanggil (pg_cron via
+  // net.http_post) — gak ada yang beneran baca response itu, jadi diam-diam
+  // ilang. Sama kayak alert kegagalan total di atas, biar ketauan hari itu
+  // juga, bukan pas rider udah komplain duluan.
+  const failed = results.filter((r) => r.error);
+  if (failed.length > 0) {
+    await sendSlackMessage(
+      `⚠️ Live Fee Sync: ${failed.length}/${clients.length} client gagal (${from}${from === to ? "" : ` s.d. ${to}`}) — ` +
+        failed.map((r) => `${r.client_name}: ${r.error}`).join("; "),
+    );
   }
 
   return {

@@ -33,6 +33,16 @@
 --
 -- Cara ganti/matikan (jalankan di Supabase SQL Editor):
 --   select cron.unschedule('payroll-workflow-15min');
+--
+-- UPDATE 2026-09-14: nambahin timeout_milliseconds := 30000 (via
+-- cron.alter_job, bukan bikin migration baru) biar SAMA kayak
+-- live-fee-sync-15min (20260831000000_live_fee_sync_15min_cron.sql) — dulu
+-- job ini gak eksplisit set apapun, jadi ke-timeout pg_net's own default
+-- (jauh lebih pendek dari kebutuhan Supabase yang lagi lag + retry
+-- withTransientRetry yang baru ditambahin di payroll-workflow.server.ts),
+-- bikin net._http_response nyatet "timed_out" padahal function-nya beneran
+-- kelar normal di belakang layar — noise doang di monitoring, bukan
+-- fungsional, tapi worth disamain biar gak nyasar pas debug lain kali.
 
 -- create extension if not exists pg_cron;
 -- create extension if not exists pg_net;
@@ -41,6 +51,7 @@
 --   select net.http_post(
 --     url := '<PRODUCTION_URL>/api/payroll-workflow',
 --     headers := jsonb_build_object('Content-Type', 'application/json', 'x-payroll-workflow-secret', '<PAYROLL_WORKFLOW_SECRET>'),
---     body := '{"trigger": "scheduler"}'::jsonb
+--     body := '{"trigger": "scheduler"}'::jsonb,
+--     timeout_milliseconds := 30000
 --   );
 -- $$);

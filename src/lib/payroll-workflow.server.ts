@@ -661,30 +661,67 @@ export async function runPayrollWorkflow(opts: {
         // sama kena Gateway Timeout duluan. Sekarang tiap client+periode
         // independen — satu gagal, yang lain tetap lanjut.
         try {
-          const run = await findOrCreatePayrollRun(
-            {
-              clientId: c.id,
-              clientName: c.name,
-              periodStart: period.periodStart,
-              periodEnd: period.periodEnd,
-            },
-            admin as never,
-          );
-          if (run.status !== "draft") {
+          // Seluruh pipeline client+periode ini (find/create run -> auto fee
+          // -> generate detail -> validate -> audit) dibungkus SATU retry —
+          // sebelum ini cuma initial fetch & final log-write yang di-retry,
+          // padahal Gateway Timeout paling sering justru nyangkut di SINI
+          // (autoComputeFee/generatePayrollDetails, masing-masing beberapa
+          // query Supabase). Kena timeout di salah satu langkah ini sebelum
+          // ini artinya client itu MASUK failedClients dan gak keproses tick
+          // itu — buat client mingguan (Jumat-Senin dst.), itu ARTINYA
+          // KELEWAT SEMINGGU PENUH karena matchesRunTime cuma buka jendela
+          // ±7 menit sekali per hari. Retry di sini aman diulang dari awal:
+          // findOrCreatePayrollRun reuse row yang udah ada (idempotent), dan
+          // generatePayrollDetails DELETE+INSERT dalam satu RPC transaction
+          // (juga idempotent) — lihat komentar masing-masing fungsi.
+          const outcome = await withTransientRetry(async () => {
+            const run = await findOrCreatePayrollRun(
+              {
+                clientId: c.id,
+                clientName: c.name,
+                periodStart: period.periodStart,
+                periodEnd: period.periodEnd,
+              },
+              admin as never,
+            );
+            if (run.status !== "draft") return { kind: "skipped" as const };
+
+            const feeResult = await autoComputeFee(
+              admin,
+              schemes,
+              c.id,
+              period.periodStart,
+              period.periodEnd,
+            );
+
+            const { detailCount } = await generatePayrollDetails(run, admin as never);
+            if (detailCount === 0) return { kind: "empty" as const };
+
+            const { warnings, totalGross, totalNet } = await validateRun(admin, run);
+            const audit = await runAudit(
+              { ...run, clientName: c.name },
+              detailCount,
+              totalGross,
+              totalNet,
+              warnings,
+            );
+            return {
+              kind: "success" as const,
+              run,
+              detailCount,
+              totalGross,
+              totalNet,
+              warnings,
+              audit,
+              feeResult,
+            };
+          });
+
+          if (outcome.kind === "skipped") {
             skippedClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
             continue;
           }
-
-          const feeResult = await autoComputeFee(
-            admin,
-            schemes,
-            c.id,
-            period.periodStart,
-            period.periodEnd,
-          );
-
-          const { detailCount } = await generatePayrollDetails(run, admin as never);
-          if (detailCount === 0) {
+          if (outcome.kind === "empty") {
             // Jatuh tempo tapi 0 aktivitas (delivery/attendance belum sync) —
             // BUKAN silent skip lagi (dulu di sini, gak kecatat di mana pun,
             // admin gak ada cara tau kenapa client ini gak pernah muncul di
@@ -695,27 +732,18 @@ export async function runPayrollWorkflow(opts: {
             continue;
           }
 
-          const { warnings, totalGross, totalNet } = await validateRun(admin, run);
-          const audit = await runAudit(
-            { ...run, clientName: c.name },
-            detailCount,
-            totalGross,
-            totalNet,
-            warnings,
-          );
-
           runs.push({
-            runId: run.id,
+            runId: outcome.run.id,
             clientName: c.name,
             periodStart: period.periodStart,
             periodEnd: period.periodEnd,
-            detailCount,
-            totalGross,
-            totalNet,
-            warnings,
-            audit,
-            feeAutoComputed: feeResult.computed,
-            feeSkipReason: feeResult.reason,
+            detailCount: outcome.detailCount,
+            totalGross: outcome.totalGross,
+            totalNet: outcome.totalNet,
+            warnings: outcome.warnings,
+            audit: outcome.audit,
+            feeAutoComputed: outcome.feeResult.computed,
+            feeSkipReason: outcome.feeResult.reason,
           });
         } catch (e) {
           failedClients.push(

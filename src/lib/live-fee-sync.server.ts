@@ -268,9 +268,7 @@ export async function runLiveFeeSync(opts: {
         if (schemesRes.error)
           throw new Error(`Gagal ambil pricing_schemes: ${schemesRes.error.message}`);
         if (remindersRes.error)
-          throw new Error(
-            `Gagal ambil payroll_reminder_schedules: ${remindersRes.error.message}`,
-          );
+          throw new Error(`Gagal ambil payroll_reminder_schedules: ${remindersRes.error.message}`);
         return {
           clientsRaw: clientsRes.data,
           providers: providersRes as ApiProvider[],
@@ -323,8 +321,15 @@ export async function runLiveFeeSync(opts: {
       continue;
     }
     try {
+      // syncOneClient sendiri beberapa query Supabase + panggil mgmt API
+      // eksternal — Gateway Timeout di salah satu langkahnya sebelum ini
+      // langsung masuk `results` sebagai error tanpa dicoba ulang, padahal
+      // upsertLiveDeliveries/upsertLiveAttendance idempotent (lihat komentar
+      // di atas file), jadi aman diulang dari awal.
       results.push(
-        await syncOneClient(admin, client, provider, dashToken, schemesRaw ?? [], from, to),
+        await withTransientRetry(() =>
+          syncOneClient(admin, client, provider, dashToken, schemesRaw ?? [], from, to),
+        ),
       );
     } catch (e) {
       results.push({

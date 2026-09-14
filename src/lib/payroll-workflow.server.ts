@@ -661,30 +661,67 @@ export async function runPayrollWorkflow(opts: {
         // sama kena Gateway Timeout duluan. Sekarang tiap client+periode
         // independen — satu gagal, yang lain tetap lanjut.
         try {
-          const run = await findOrCreatePayrollRun(
-            {
-              clientId: c.id,
-              clientName: c.name,
-              periodStart: period.periodStart,
-              periodEnd: period.periodEnd,
-            },
-            admin as never,
-          );
-          if (run.status !== "draft") {
+          // Seluruh pipeline client+periode ini (find/create run -> auto fee
+          // -> generate detail -> validate -> audit) dibungkus SATU retry —
+          // sebelum ini cuma initial fetch & final log-write yang di-retry,
+          // padahal Gateway Timeout paling sering justru nyangkut di SINI
+          // (autoComputeFee/generatePayrollDetails, masing-masing beberapa
+          // query Supabase). Kena timeout di salah satu langkah ini sebelum
+          // ini artinya client itu MASUK failedClients dan gak keproses tick
+          // itu — buat client mingguan (Jumat-Senin dst.), itu ARTINYA
+          // KELEWAT SEMINGGU PENUH karena matchesRunTime cuma buka jendela
+          // ±7 menit sekali per hari. Retry di sini aman diulang dari awal:
+          // findOrCreatePayrollRun reuse row yang udah ada (idempotent), dan
+          // generatePayrollDetails DELETE+INSERT dalam satu RPC transaction
+          // (juga idempotent) — lihat komentar masing-masing fungsi.
+          const outcome = await withTransientRetry(async () => {
+            const run = await findOrCreatePayrollRun(
+              {
+                clientId: c.id,
+                clientName: c.name,
+                periodStart: period.periodStart,
+                periodEnd: period.periodEnd,
+              },
+              admin as never,
+            );
+            if (run.status !== "draft") return { kind: "skipped" as const };
+
+            const feeResult = await autoComputeFee(
+              admin,
+              schemes,
+              c.id,
+              period.periodStart,
+              period.periodEnd,
+            );
+
+            const { detailCount } = await generatePayrollDetails(run, admin as never);
+            if (detailCount === 0) return { kind: "empty" as const };
+
+            const { warnings, totalGross, totalNet } = await validateRun(admin, run);
+            const audit = await runAudit(
+              { ...run, clientName: c.name },
+              detailCount,
+              totalGross,
+              totalNet,
+              warnings,
+            );
+            return {
+              kind: "success" as const,
+              run,
+              detailCount,
+              totalGross,
+              totalNet,
+              warnings,
+              audit,
+              feeResult,
+            };
+          });
+
+          if (outcome.kind === "skipped") {
             skippedClients.push(`${c.name} (${period.periodStart}–${period.periodEnd})`);
             continue;
           }
-
-          const feeResult = await autoComputeFee(
-            admin,
-            schemes,
-            c.id,
-            period.periodStart,
-            period.periodEnd,
-          );
-
-          const { detailCount } = await generatePayrollDetails(run, admin as never);
-          if (detailCount === 0) {
+          if (outcome.kind === "empty") {
             // Jatuh tempo tapi 0 aktivitas (delivery/attendance belum sync) —
             // BUKAN silent skip lagi (dulu di sini, gak kecatat di mana pun,
             // admin gak ada cara tau kenapa client ini gak pernah muncul di
@@ -695,27 +732,18 @@ export async function runPayrollWorkflow(opts: {
             continue;
           }
 
-          const { warnings, totalGross, totalNet } = await validateRun(admin, run);
-          const audit = await runAudit(
-            { ...run, clientName: c.name },
-            detailCount,
-            totalGross,
-            totalNet,
-            warnings,
-          );
-
           runs.push({
-            runId: run.id,
+            runId: outcome.run.id,
             clientName: c.name,
             periodStart: period.periodStart,
             periodEnd: period.periodEnd,
-            detailCount,
-            totalGross,
-            totalNet,
-            warnings,
-            audit,
-            feeAutoComputed: feeResult.computed,
-            feeSkipReason: feeResult.reason,
+            detailCount: outcome.detailCount,
+            totalGross: outcome.totalGross,
+            totalNet: outcome.totalNet,
+            warnings: outcome.warnings,
+            audit: outcome.audit,
+            feeAutoComputed: outcome.feeResult.computed,
+            feeSkipReason: outcome.feeResult.reason,
           });
         } catch (e) {
           failedClients.push(
@@ -751,22 +779,38 @@ export async function runPayrollWorkflow(opts: {
 
   const status =
     hardError || failedClients.length > 0 ? (runs.length > 0 ? "partial" : "failed") : "completed";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: logRow, error: logErr } = await (admin as any)
-    .from("payroll_workflow_runs")
-    .insert({
-      trigger_type: opts.triggeredBy,
-      triggered_by:
-        opts.triggeredByUserId ?? (opts.triggeredBy === "cron" ? "system-cron" : "admin"),
-      status,
-      started_at: startedAt,
-      finished_at: new Date().toISOString(),
-      result: { ...result, notifyStatus: { slack: slackResult, email: emailResult } },
-      error: hardError,
-    })
-    .select("id")
-    .single();
-  if (logErr) console.error("[payroll-workflow] gagal simpan log run:", logErr.message);
+  // Insert log ini sendiri kena Gateway Timeout juga di prod (2026-09-14,
+  // tick 06:00 UTC) — function-nya KELAR normal (bukan hardError, per-client
+  // loop di atas udah selesai, HTTP 200 balik ke caller), tapi baris INSERT
+  // paling akhir ini gagal, dan sebelum ini cuma di-console.error tanpa
+  // retry -> hasil run itu (siapa yang sukses/gagal) HILANG TOTAL walau
+  // prosesnya sendiri jalan. Retry sama kayak initial fetch di atas, biar
+  // blip sesaat di langkah TERAKHIR ini juga gak bikin seluruh audit trail
+  // lenyap.
+  let logRow: { id: string } | undefined;
+  try {
+    logRow = await withTransientRetry(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (admin as any)
+        .from("payroll_workflow_runs")
+        .insert({
+          trigger_type: opts.triggeredBy,
+          triggered_by:
+            opts.triggeredByUserId ?? (opts.triggeredBy === "cron" ? "system-cron" : "admin"),
+          status,
+          started_at: startedAt,
+          finished_at: new Date().toISOString(),
+          result: { ...result, notifyStatus: { slack: slackResult, email: emailResult } },
+          error: hardError,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      return data;
+    });
+  } catch (e) {
+    console.error("[payroll-workflow] gagal simpan log run:", (e as Error).message);
+  }
 
   if (hardError && runs.length === 0) throw new Error(hardError);
   return { ...result, runLogId: logRow?.id as string | undefined };

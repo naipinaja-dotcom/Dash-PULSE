@@ -751,22 +751,38 @@ export async function runPayrollWorkflow(opts: {
 
   const status =
     hardError || failedClients.length > 0 ? (runs.length > 0 ? "partial" : "failed") : "completed";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: logRow, error: logErr } = await (admin as any)
-    .from("payroll_workflow_runs")
-    .insert({
-      trigger_type: opts.triggeredBy,
-      triggered_by:
-        opts.triggeredByUserId ?? (opts.triggeredBy === "cron" ? "system-cron" : "admin"),
-      status,
-      started_at: startedAt,
-      finished_at: new Date().toISOString(),
-      result: { ...result, notifyStatus: { slack: slackResult, email: emailResult } },
-      error: hardError,
-    })
-    .select("id")
-    .single();
-  if (logErr) console.error("[payroll-workflow] gagal simpan log run:", logErr.message);
+  // Insert log ini sendiri kena Gateway Timeout juga di prod (2026-09-14,
+  // tick 06:00 UTC) — function-nya KELAR normal (bukan hardError, per-client
+  // loop di atas udah selesai, HTTP 200 balik ke caller), tapi baris INSERT
+  // paling akhir ini gagal, dan sebelum ini cuma di-console.error tanpa
+  // retry -> hasil run itu (siapa yang sukses/gagal) HILANG TOTAL walau
+  // prosesnya sendiri jalan. Retry sama kayak initial fetch di atas, biar
+  // blip sesaat di langkah TERAKHIR ini juga gak bikin seluruh audit trail
+  // lenyap.
+  let logRow: { id: string } | undefined;
+  try {
+    logRow = await withTransientRetry(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (admin as any)
+        .from("payroll_workflow_runs")
+        .insert({
+          trigger_type: opts.triggeredBy,
+          triggered_by:
+            opts.triggeredByUserId ?? (opts.triggeredBy === "cron" ? "system-cron" : "admin"),
+          status,
+          started_at: startedAt,
+          finished_at: new Date().toISOString(),
+          result: { ...result, notifyStatus: { slack: slackResult, email: emailResult } },
+          error: hardError,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      return data;
+    });
+  } catch (e) {
+    console.error("[payroll-workflow] gagal simpan log run:", (e as Error).message);
+  }
 
   if (hardError && runs.length === 0) throw new Error(hardError);
   return { ...result, runLogId: logRow?.id as string | undefined };

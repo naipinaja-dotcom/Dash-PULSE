@@ -83,7 +83,11 @@ function defaultWindow(): { from: string; to: string } {
   return { from: fromDt.toISOString().slice(0, 10), to };
 }
 
-interface ClientRow {
+// Diekspor — payroll-workflow.server.ts pakai ini + syncOneClient buat
+// narik ulang data client TEPAT sebelum generate payroll-nya (lihat komentar
+// di sana), bukan cuma ngandelin sync periodik yang jadwalnya independen
+// dari kapan payroll itu sendiri beneran di-generate.
+export interface ClientRow {
   id: string;
   name: string;
   provider_id: number | null;
@@ -106,7 +110,7 @@ export interface LiveFeeSyncResult {
   results: LiveFeeSyncClientResult[];
 }
 
-async function syncOneClient(
+export async function syncOneClient(
   admin: SupabaseAdmin,
   client: ClientRow,
   provider: ApiProvider,

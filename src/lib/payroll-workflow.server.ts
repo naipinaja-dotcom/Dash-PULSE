@@ -128,45 +128,14 @@ export function resolvePeriodIfDue(
   return { periodStart: fmt(start), periodEnd: fmt(refDay) };
 }
 
-// `new Date()` mentahan itu instant UTC — kalau dibaca langsung pake
-// getUTCDate()/getUTCDay() (kayak resolvePeriodIfDue di atas), jam 00:00-06:59
-// WIB itu MASIH tanggal/hari KEMARIN di UTC (WIB = UTC+7). Cron cuma dulu
-// aman karena jam-jamnya (02:00 & 09:00 UTC) kebetulan gak pernah nyebrang
-// batas hari UTC vs WIB — begitu ditambah checkpoint 01:00/06:00 WIB (=
-// 18:00/23:00 UTC HARI SEBELUMNYA), atau begitu di-poll tiap 15 menit
-// sepanjang hari (nyentuh jendela itu tiap malam), baca UTC mentah bakal
-// salah hari. Geser instant-nya +7 jam dulu SEBELUM dibaca — setelah itu
-// getUTCDate()/getUTCDay()/getUTCHours() dari hasil geseran ini merepresentasikan
-// tanggal/jam WIB yang benar (trik standar buat "baca tanggal lokal" tanpa
-// Intl/timezone lib).
-export function nowInWib(rawNow: Date = new Date()): Date {
-  return new Date(rawNow.getTime() + 7 * 60 * 60 * 1000);
-}
-
-// Cron pengecekan jalan tiap 15 menit (00:00, 00:15, 00:30, ...) — tiap
-// tick, cek apakah jam SEKARANG (WIB) lagi paling dekat sama jam custom yang
-// di-set client (`run_time`, format "HH:MM", default "09:00" kalau kosong).
-// Toleransi 7 menit (bukan 15) SENGAJA dipilih supaya PAS SATU tick yang
-// match per target (jarak antar tick 15 menit, jadi tiap target cuma masuk
-// jendela ±7 menit dari SATU tick terdekat) — toleransi 15 penuh bakal bikin
-// 2 tick sekaligus match & proses dobel (aman sih karena findOrCreatePayrollRun
-// idempotent, tapi buang-buang kerjaan).
-export function matchesRunTime(
-  nowMinutesOfDay: number,
-  runTime: string | null,
-  toleranceMinutes = 7,
-): boolean {
-  const [rawH, rawM] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00")
-    .split(":")
-    .map(Number);
-  // Clamp: regex hanya cek format, bukan rentang (mis. "23:99" lolos regex).
-  // Tanpa ini, target bisa >1439 dan bikin `1440 - diff` negatif -> false match di jam manapun.
-  const h = Math.min(23, Math.max(0, rawH || 0));
-  const m = Math.min(59, Math.max(0, rawM || 0));
-  const target = h * 60 + m;
-  const diff = Math.abs(nowMinutesOfDay - target);
-  return Math.min(diff, 1440 - diff) <= toleranceMinutes; // Math.min(...) buat wrap-around lewat tengah malam
-}
+// nowInWib/matchesRunTime/withTransientRetry pindah ke workflow-shared.server.ts
+// (dipakai bareng sama live-fee-sync.server.ts, lihat komentar di file itu
+// soal kenapa gak boleh tinggal di sini lagi — circular import). Re-export
+// di sini biar importer lama (tests, dst.) gak perlu ganti path.
+export { nowInWib, matchesRunTime, withTransientRetry } from "./workflow-shared.server";
+import { nowInWib, matchesRunTime, withTransientRetry } from "./workflow-shared.server";
+import { syncOneClient, type ClientRow } from "./live-fee-sync.server";
+import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
 
 async function loadClientPeriodSchedules(
   admin: SupabaseAdmin,
@@ -558,42 +527,10 @@ function buildNotification(result: PayrollWorkflowResult): {
   return { subject, text, html };
 }
 
-// Query awal (clients/schedules/pricing_schemes, lihat loadWorkflowInputs)
-// itu prasyarat SEBELUM loop per-client bisa mulai sama sekali — beda dari
-// per-client try/catch di bawah (yang udah diisolasi), gangguan Supabase
-// sesaat (Gateway Timeout) di SINI dulu bikin SELURUH tick gagal duluan
-// sebelum sempat tau client mana aja yang due, TANPA kesempatan retry dalam
-// invocation yang sama. Regresi nyata: tick 09:00 WIB (persis jendela
-// run_time banyak client) kena Gateway Timeout ~1-5 detik di query ini,
-// seluruh batch "Senin" gak keproses SAMA SEKALI, dan karena baris ini masih
-// di luar try/catch manapun waktu itu, gak ada jejak di payroll_workflow_runs
-// ataupun notif Slack/Email — cuma gap kosong yang diam-diam bikin client
-// itu kelewat SEMINGGU PENUH (jadwal mingguan gak balik lagi sampe hari yang
-// sama minggu depan). Retry ringan di sini nyerap blip beberapa detik SEBELUM
-// sempat gagal; runPayrollWorkflow sekarang juga bungkus baris ini di try
-// yang sama dengan loop per-client, jadi SEKALIPUN retry habis, hardError
-// tetap ke-log & ke-notif (bukan menghilang total kayak sebelumnya).
-export async function withTransientRetry<T>(
-  fn: () => Promise<T>,
-  attempts = 3,
-  delayMs = 1500,
-): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
-    }
-  }
-  throw lastErr;
-}
-
 async function loadWorkflowInputs(admin: SupabaseAdmin) {
   const [{ data: clients, error: clientsErr }, periodsByClient, { data: schemesRaw }] =
     await Promise.all([
-      admin.from("clients").select("id, name").eq("active", true),
+      admin.from("clients").select("id, name, provider_id").eq("active", true),
       loadClientPeriodSchedules(admin),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (admin as any)
@@ -603,10 +540,38 @@ async function loadWorkflowInputs(admin: SupabaseAdmin) {
         ),
     ]);
   if (clientsErr) throw new Error(`Gagal ambil daftar client: ${clientsErr.message}`);
+
+  // Provider list (buat force-resync per-client sebelum generate — lihat
+  // komentar panjang di runPayrollWorkflow) — SENGAJA best-effort dan
+  // terpisah dari batch di atas: kalau mgmt API/token lagi bermasalah,
+  // jangan sampai itu ngeblok SELURUH proses payroll (banyak client malah
+  // gak punya provider_id sama sekali, gak butuh ini). Gagal di sini cuma
+  // bikin fitur force-resync di-skip tick ini — payroll tetap jalan generate
+  // dari data yang udah ada di delivery_records/attendance_logs (perilaku
+  // lama sebelum fitur ini ditambahkan), bukan bikin SEMUA client gagal
+  // gara-gara mgmt API down.
+  let providers: ApiProvider[] = [];
+  let dashToken: string | null = null;
+  const rawToken = (process.env.DASH_MGMT_API_TOKEN || "").replace(/^\s*Bearer\s+/i, "").trim();
+  if (rawToken) {
+    dashToken = `Bearer ${rawToken}`;
+    try {
+      providers = await fetchApiProviders(dashToken);
+    } catch (e) {
+      console.error(
+        "[payroll-workflow] gagal ambil provider list, skip force-resync tick ini:",
+        (e as Error).message,
+      );
+    }
+  }
+
   return {
-    clients: clients ?? [],
+    clients: (clients ?? []) as ClientRow[],
     periodsByClient,
     schemes: ((schemesRaw ?? []) as unknown[]).map(normalize) as PricingScheme[],
+    schemesRaw: (schemesRaw ?? []) as unknown[],
+    providers,
+    dashToken,
   };
 }
 
@@ -629,9 +594,8 @@ export async function runPayrollWorkflow(opts: {
   let hardError: string | null = null;
 
   try {
-    const { clients, periodsByClient, schemes } = await withTransientRetry(() =>
-      loadWorkflowInputs(admin),
-    );
+    const { clients, periodsByClient, schemes, schemesRaw, providers, dashToken } =
+      await withTransientRetry(() => loadWorkflowInputs(admin));
     for (const c of clients) {
       // Client belum di-setup jadwal (Reminder Calendar) ATAU belum ada skema
       // harga (rider) — jangan auto-bikin payroll run buat client itu sama
@@ -685,6 +649,36 @@ export async function runPayrollWorkflow(opts: {
               admin as never,
             );
             if (run.status !== "draft") return { kind: "skipped" as const };
+
+            // Force re-sync data client ini dari mgmt API buat PERSIS periode
+            // ini, tepat sebelum hitung fee — nutup akar masalah "data belum
+            // lengkap pas payroll di-generate" yang berulang kali kejadian
+            // (Nusantara Card Semesta/Saturdays/GORECA/Noovoleum, 2026-09-17):
+            // sync periodik (live-fee-sync-15min, gated ±7 menit dari
+            // run_time) bisa aja belum sempat narik semua hari dalam periode
+            // itu pas payroll-workflow jalan. Cuma jalan kalau client ini
+            // ke-link ke provider (provider_id) DAN provider list berhasil
+            // dimuat (loadWorkflowInputs) — client tanpa provider_id (gak ada
+            // sumber mgmt API buat di-tarik) lanjut generate dari data yang
+            // ada seperti biasa. SENGAJA gak di-try/catch lokal biar ikut
+            // retry 3x bareng langkah lain di closure ini (withTransientRetry
+            // di atas) — kalau tetep gagal, client ini masuk failedClients
+            // (ke-log & ke-alert) alih-alih diam-diam lanjut pakai data yang
+            // mungkin belum lengkap.
+            if (c.provider_id != null && dashToken) {
+              const provider = providers.find((p) => p.id === c.provider_id);
+              if (provider) {
+                await syncOneClient(
+                  admin,
+                  c,
+                  provider,
+                  dashToken,
+                  schemesRaw,
+                  period.periodStart,
+                  period.periodEnd,
+                );
+              }
+            }
 
             const feeResult = await autoComputeFee(
               admin,

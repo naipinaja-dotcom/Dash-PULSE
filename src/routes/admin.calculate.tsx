@@ -34,7 +34,16 @@ import { loadLiveFeeAttendance } from "@/lib/api/live-fee-attendance.functions";
 import { loadApiProviders, type ApiProvider } from "@/lib/api/providers.functions";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
-import { Loader2, Play, AlertTriangle, Info, Save, ChevronRight, Radio, Database } from "lucide-react";
+import {
+  Loader2,
+  Play,
+  AlertTriangle,
+  Info,
+  Save,
+  ChevronRight,
+  Radio,
+  Database,
+} from "lucide-react";
 
 export const Route = createFileRoute("/admin/calculate")({ component: CalculatePage });
 
@@ -48,20 +57,23 @@ function firstOfMonth() {
 // commit() & commitInvoice(). Fee/invoice-nya sendiri udah kesimpen valid
 // SEBELUM ini dipanggil, jadi audit log gagal itu sekunder: dikasih tau lewat
 // warning (bukan error) biar user gak salah kira data utamanya ilang.
-async function logFeeAudit(entry: {
-  action: "commit_payroll" | "commit_invoice";
-  client_id: string | null;
-  scheme_id: string;
-  scheme_name: string | null;
-  scheme_snapshot: unknown;
-  period_start: string;
-  period_end: string;
-  row_count: number;
-  total_amount: number;
-  committed_by: string | null;
-  calc_table?: string;
-  affected_row_ids?: unknown[];
-}, successMessage: string) {
+async function logFeeAudit(
+  entry: {
+    action: "commit_payroll" | "commit_invoice";
+    client_id: string | null;
+    scheme_id: string;
+    scheme_name: string | null;
+    scheme_snapshot: unknown;
+    period_start: string;
+    period_end: string;
+    row_count: number;
+    total_amount: number;
+    committed_by: string | null;
+    calc_table?: string;
+    affected_row_ids?: unknown[];
+  },
+  successMessage: string,
+) {
   const { error } = await (supabase as any).from("fee_calculation_audit_log").insert(entry);
   if (error) toast.warning(`${successMessage}, tapi audit log gagal disimpan: ${error.message}`);
 }
@@ -103,9 +115,13 @@ function CalculatePage() {
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const selectedClient = clients.find((c) => c.id === clientId) ?? null;
   const matchedProvider = selectedClient
-    ? ((selectedClient.provider_id != null ? providers.find((p) => p.id === selectedClient.provider_id) : null) ??
-        providers.find((p) => p.name.trim().toLowerCase() === selectedClient.name.trim().toLowerCase()) ??
-        null)
+    ? ((selectedClient.provider_id != null
+        ? providers.find((p) => p.id === selectedClient.provider_id)
+        : null) ??
+      providers.find(
+        (p) => p.name.trim().toLowerCase() === selectedClient.name.trim().toLowerCase(),
+      ) ??
+      null)
     : null;
   const apiProviderId = matchedProvider?.id ?? null;
   // BU dari revenue_stream provider — kalau cuma 1 stream, pakai itu buat
@@ -169,7 +185,7 @@ function CalculatePage() {
         let dq = supabase
           .from("delivery_records")
           .select(
-            "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+            "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type, sender_name",
           )
           .gte("delivery_date", from)
           .lte("delivery_date", to);
@@ -180,7 +196,9 @@ function CalculatePage() {
         // Fetch attendance logs for same range
         let aq = (supabase as any)
           .from("attendance_logs")
-          .select("id, rider_id, driver_code, log_date, clock_in, duration_minutes, is_late, is_absent")
+          .select(
+            "id, rider_id, driver_code, log_date, clock_in, duration_minutes, is_late, is_absent",
+          )
           .gte("log_date", from)
           .lte("log_date", to);
         if (clientId) aq = aq.eq("client_id", clientId);
@@ -223,7 +241,12 @@ function CalculatePage() {
           const key = r.rider_id || r.driver_code || "(tanpa rider)";
           const rf = res.perRow[i];
           if (!rf) return;
-          (ddHybrid[key] ??= []).push({ date: r.delivery_date, km: r.distance_km, kg: r.weight_kg, fee: rf.fee });
+          (ddHybrid[key] ??= []).push({
+            date: r.delivery_date,
+            km: r.distance_km,
+            kg: r.weight_kg,
+            fee: rf.fee,
+          });
         });
         setDrilldown(ddHybrid);
       } else if (scheme.category === "attendance") {
@@ -264,7 +287,7 @@ function CalculatePage() {
           let dq = supabase
             .from("delivery_records")
             .select(
-              "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+              "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type, sender_name",
             )
             .gte("delivery_date", from)
             .lte("delivery_date", to);
@@ -305,7 +328,7 @@ function CalculatePage() {
         let q = supabase
           .from("delivery_records")
           .select(
-            "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+            "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type, sender_name",
           )
           .gte("delivery_date", from)
           .lte("delivery_date", to);
@@ -350,7 +373,9 @@ function CalculatePage() {
               (!s.effective_to || s.effective_to >= from),
           );
           if (!clientScheme) {
-            toast.error("Belum ada skema Client (Per Pengiriman) aktif untuk client & periode ini — revenue-nya gak bisa dihitung.");
+            toast.error(
+              "Belum ada skema Client (Per Pengiriman) aktif untuk client & periode ini — revenue-nya gak bisa dihitung.",
+            );
             return;
           }
           const clientRes = calcScheme(clientScheme.params, rows);
@@ -369,7 +394,12 @@ function CalculatePage() {
           const key = r.rider_id || r.driver_code || "(tanpa rider)";
           const rf = res.perRow[i];
           if (!rf) return;
-          (ddDeliv[key] ??= []).push({ date: r.delivery_date, km: r.distance_km, kg: r.weight_kg, fee: rf.fee });
+          (ddDeliv[key] ??= []).push({
+            date: r.delivery_date,
+            km: r.distance_km,
+            kg: r.weight_kg,
+            fee: rf.fee,
+          });
         });
         setDrilldown(ddDeliv);
       }
@@ -410,10 +440,18 @@ function CalculatePage() {
       const token = sess.session?.access_token ?? "";
       if (scheme.category === "attendance") {
         const live = await loadLiveFeeAttendance({
-          data: { token, providerId: apiProviderId, from, to, shifts: (scheme.params.config as any)?.shifts ?? [] },
+          data: {
+            token,
+            providerId: apiProviderId,
+            from,
+            to,
+            shifts: (scheme.params.config as any)?.shifts ?? [],
+          },
         });
         if (live.rows.length === 0)
-          return toast.message("API tersambung, tapi tidak ada absensi (clock-out) di rentang ini.");
+          return toast.message(
+            "API tersambung, tapi tidak ada absensi (clock-out) di rentang ini.",
+          );
         if (
           !(await confirmDialog({
             title: "Sync absensi ke database?",
@@ -423,21 +461,45 @@ function CalculatePage() {
           }))
         )
           return;
-        const res = await upsertLiveAttendance(clientId, live.rows, from, to, `API sync attendance · ${from}..${to}`);
+        const res = await upsertLiveAttendance(
+          clientId,
+          live.rows,
+          from,
+          to,
+          `API sync attendance · ${from}..${to}`,
+        );
         posthog.capture("live_attendance_synced", {
-          client_id: clientId, provider_id: apiProviderId, inserted: res.inserted, period_from: from, period_to: to,
+          client_id: clientId,
+          provider_id: apiProviderId,
+          inserted: res.inserted,
+          period_from: from,
+          period_to: to,
         });
         toast.success(
           `Sync selesai: ${res.inserted} shift tersimpan${res.ridersCreated ? `, ${res.ridersCreated} rider baru` : ""}.`,
         );
       } else {
         const live = await loadLiveFeeDeliveries({
-          data: { token, providerId: apiProviderId, businessUnit: apiBusinessUnit || null, from, to },
+          data: {
+            token,
+            providerId: apiProviderId,
+            businessUnit: apiBusinessUnit || null,
+            from,
+            to,
+          },
         });
         if (live.rows.length === 0)
-          return toast.message("API tersambung, tapi tidak ada pengiriman di rentang & provider ini.");
+          return toast.message(
+            "API tersambung, tapi tidak ada pengiriman di rentang & provider ini.",
+          );
         const ALLOWED = new Set(["COMPLETED", "FAILED"]);
-        const usable = live.rows.filter((r) => ALLOWED.has(String(r.status ?? "").trim().toUpperCase()));
+        const usable = live.rows.filter((r) =>
+          ALLOWED.has(
+            String(r.status ?? "")
+              .trim()
+              .toUpperCase(),
+          ),
+        );
         const dropped = live.rows.length - usable.length;
         if (
           !(await confirmDialog({
@@ -448,10 +510,19 @@ function CalculatePage() {
           }))
         )
           return;
-        const res = await upsertLiveDeliveries(clientId, live.rows, `API sync · ${live.meta.business_unit} · ${from}..${to}`);
+        const res = await upsertLiveDeliveries(
+          clientId,
+          live.rows,
+          `API sync · ${live.meta.business_unit} · ${from}..${to}`,
+        );
         posthog.capture("live_deliveries_synced", {
-          client_id: clientId, provider_id: apiProviderId, inserted: res.inserted, overwritten: res.overwritten,
-          dropped: res.dropped, period_from: from, period_to: to,
+          client_id: clientId,
+          provider_id: apiProviderId,
+          inserted: res.inserted,
+          overwritten: res.overwritten,
+          dropped: res.dropped,
+          period_from: from,
+          period_to: to,
         });
         toast.success(
           `Sync selesai: ${res.inserted} baris tersimpan` +
@@ -481,7 +552,8 @@ function CalculatePage() {
     if (rows.length === 0) return toast.error("Tidak ada baris untuk disimpan.");
     const table = isAttendance ? "attendance_logs" : "delivery_records";
 
-    if (commitLock.current) return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
+    if (commitLock.current)
+      return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
     commitLock.current = true;
     setCommitting(true);
     try {
@@ -490,9 +562,15 @@ function CalculatePage() {
       // slip; published = udah kepake) — Hitung Fee ulang gak boleh diam-diam
       // nimpa data sumbernya. Cuma draft yang masih boleh di-commit ulang bebas
       // (konsisten sama guard "draft only" di admin.payroll.tsx & payroll-workflow.server.ts).
-      let publishedQ = (supabase as any).from("payroll_runs").select("id, name, status")
-        .eq("period_start", from).eq("period_end", to).in("status", ["finalized", "published"]);
-      publishedQ = clientId ? publishedQ.eq("client_id", clientId) : publishedQ.is("client_id", null);
+      let publishedQ = (supabase as any)
+        .from("payroll_runs")
+        .select("id, name, status")
+        .eq("period_start", from)
+        .eq("period_end", to)
+        .in("status", ["finalized", "published"]);
+      publishedQ = clientId
+        ? publishedQ.eq("client_id", clientId)
+        : publishedQ.is("client_id", null);
       const { data: publishedRun } = await publishedQ.maybeSingle();
       if (publishedRun) {
         const isPublished = publishedRun.status === "published";
@@ -538,11 +616,17 @@ function CalculatePage() {
       if (clientId) {
         const otherTable = table === "attendance_logs" ? "delivery_records" : "attendance_logs";
         const dateCol = otherTable === "attendance_logs" ? "log_date" : "delivery_date";
-        const { error: resetErr } = await (supabase as any).from(otherTable).update({ fee: 0 })
+        const { error: resetErr } = await (supabase as any)
+          .from(otherTable)
+          .update({ fee: 0 })
           .eq("client_id", clientId)
-          .gte(dateCol, from).lte(dateCol, to)
+          .gte(dateCol, from)
+          .lte(dateCol, to)
           .neq("fee", 0);
-        if (resetErr) toast.warning(`Fee tersimpan, tapi gagal bersihin sisa fee lama di ${otherTable}: ${resetErr.message}`);
+        if (resetErr)
+          toast.warning(
+            `Fee tersimpan, tapi gagal bersihin sisa fee lama di ${otherTable}: ${resetErr.message}`,
+          );
       }
       // Audit trail: catat siapa yang commit, kapan, skema/config PERSIS yang
       // dipakai (snapshot, bukan referensi hidup ke pricing_schemes yang bisa
@@ -552,18 +636,23 @@ function CalculatePage() {
       // affected_row_ids: PERSIS baris yang barusan di-update — dipakai buat
       // "Reject" (salah pilih tanggal/client, udah keburu commit) biar bisa
       // di-reset balik ke fee=0 tanpa nyenggol baris lain yang gak terkait.
-      await logFeeAudit({
-        action: "commit_payroll",
-        client_id: clientId || null,
-        scheme_id: ranScheme.id,
-        scheme_name: ranScheme.name ?? null,
-        scheme_snapshot: ranScheme.params,
-        period_start: from, period_end: to,
-        row_count: done, total_amount: totalFee,
-        calc_table: table,
-        affected_row_ids: rows.map((r) => r.id).filter(Boolean),
-        committed_by: user?.id ?? null,
-      }, "Fee tersimpan");
+      await logFeeAudit(
+        {
+          action: "commit_payroll",
+          client_id: clientId || null,
+          scheme_id: ranScheme.id,
+          scheme_name: ranScheme.name ?? null,
+          scheme_snapshot: ranScheme.params,
+          period_start: from,
+          period_end: to,
+          row_count: done,
+          total_amount: totalFee,
+          calc_table: table,
+          affected_row_ids: rows.map((r) => r.id).filter(Boolean),
+          committed_by: user?.id ?? null,
+        },
+        "Fee tersimpan",
+      );
 
       posthog.capture("fee_committed_to_payroll", {
         category: ranScheme.category,
@@ -576,8 +665,15 @@ function CalculatePage() {
       // Auto-bikin/reuse Payroll Run buat client+periode ini, dan langsung
       // generate detail-nya — biar begitu balik ke halaman Payroll Run, run-nya
       // udah ADA dan udah SIAP direview, tanpa langkah "Buat Run" manual lagi.
-      const clientName = clientId ? (clients.find((c) => c.id === clientId)?.name ?? "Client") : "Semua Client";
-      const run = await findOrCreatePayrollRun({ clientId: clientId || null, clientName, periodStart: from, periodEnd: to });
+      const clientName = clientId
+        ? (clients.find((c) => c.id === clientId)?.name ?? "Client")
+        : "Semua Client";
+      const run = await findOrCreatePayrollRun({
+        clientId: clientId || null,
+        clientName,
+        periodStart: from,
+        periodEnd: to,
+      });
       await generatePayrollDetails(run);
 
       toast.success(`Fee tersimpan ke ${done} baris. Payroll Run "${clientName}" siap direview.`);
@@ -600,7 +696,8 @@ function CalculatePage() {
     // (state skema delivery) walau skema yang lagi jalan attendance/hybrid,
     // jadi billing-nya kebaca dari run yang gak nyambung sama sekali.
     const total = r.grandTotal;
-    if (commitLock.current) return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
+    if (commitLock.current)
+      return toast.error("Masih memproses permintaan sebelumnya, tunggu sebentar.");
     commitLock.current = true;
     setCommitting(true);
     try {
@@ -632,16 +729,21 @@ function CalculatePage() {
       });
       if (error) throw error;
       // Audit trail — sama seperti commit() di atas, snapshot skema + siapa/kapan.
-      await logFeeAudit({
-        action: "commit_invoice",
-        client_id: clientId,
-        scheme_id: ranScheme.id,
-        scheme_name: ranScheme.name ?? null,
-        scheme_snapshot: ranScheme.params,
-        period_start: from, period_end: to,
-        row_count: r.perRider.length, total_amount: total,
-        committed_by: user?.id ?? null,
-      }, "Invoice tersimpan");
+      await logFeeAudit(
+        {
+          action: "commit_invoice",
+          client_id: clientId,
+          scheme_id: ranScheme.id,
+          scheme_name: ranScheme.name ?? null,
+          scheme_snapshot: ranScheme.params,
+          period_start: from,
+          period_end: to,
+          row_count: r.perRider.length,
+          total_amount: total,
+          committed_by: user?.id ?? null,
+        },
+        "Invoice tersimpan",
+      );
       posthog.capture("invoice_committed", {
         category: ranScheme.category,
         subtype: ranScheme.subtype ?? null,
@@ -714,7 +816,8 @@ function CalculatePage() {
                   ) : (
                     <> · semua BU</>
                   )}
-                  . Hitung baca dari database — klik <strong>Tarik & Sync dari API</strong> dulu kalau mau nyegerin.
+                  . Hitung baca dari database — klik <strong>Tarik & Sync dari API</strong> dulu
+                  kalau mau nyegerin.
                 </span>
                 <button
                   type="button"
@@ -722,7 +825,11 @@ function CalculatePage() {
                   disabled={syncing || !schemeId}
                   className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-primary/40 text-primary px-2.5 py-1 text-xs font-medium disabled:opacity-50 flex-shrink-0"
                 >
-                  {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                  {syncing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Database className="w-3.5 h-3.5" />
+                  )}
                   {syncing ? "Menyinkron…" : "Tarik & Sync dari API"}
                 </button>
               </>
@@ -861,7 +968,9 @@ function CalculatePage() {
                       <tr className="border-t border-border">
                         <td className="p-3 font-medium">
                           <button
-                            onClick={() => setExpandedRider(expandedRider === l.rider ? null : l.rider)}
+                            onClick={() =>
+                              setExpandedRider(expandedRider === l.rider ? null : l.rider)
+                            }
                             className="flex items-center gap-1.5 text-left hover:text-primary"
                           >
                             <ChevronRight
@@ -872,7 +981,9 @@ function CalculatePage() {
                         </td>
                         <td className="p-3 text-right text-muted-foreground">{l.units}</td>
                         <td className="p-3 text-right">{formatRupiah(l.base)}</td>
-                        <td className="p-3 text-right">{l.add_kg ? formatRupiah(l.add_kg) : "—"}</td>
+                        <td className="p-3 text-right">
+                          {l.add_kg ? formatRupiah(l.add_kg) : "—"}
+                        </td>
                         <td className="p-3 text-right">
                           {l.multi_drop ? formatRupiah(l.multi_drop) : "—"}
                         </td>
@@ -957,12 +1068,18 @@ function CalculatePage() {
           {combinedResult.billing && (
             <div className="rounded-md border border-border bg-card px-4 py-3 mb-4 text-sm space-y-1">
               <Line label="Subtotal" value={formatRupiah(combinedResult.subtotal)} />
-              {combinedResult.billing.floored && <Line label="→ dinaikkan ke Min Charge" value="" muted />}
+              {combinedResult.billing.floored && (
+                <Line label="→ dinaikkan ke Min Charge" value="" muted />
+              )}
               <Line label="+ Admin Fee" value={formatRupiah(combinedResult.billing.admin_fee)} />
               <Line label="+ Asuransi" value={formatRupiah(combinedResult.billing.insurance_fee)} />
               <Line label="+ PPN" value={formatRupiah(combinedResult.billing.ppn)} />
               <div className="border-t border-border mt-2 pt-2">
-                <Line label="Total Tagihan" value={formatRupiah(combinedResult.billing.final)} bold />
+                <Line
+                  label="Total Tagihan"
+                  value={formatRupiah(combinedResult.billing.final)}
+                  bold
+                />
               </div>
             </div>
           )}
@@ -1051,7 +1168,9 @@ function CalculatePage() {
                       <tr className="border-t border-border">
                         <td className="p-3 font-medium">
                           <button
-                            onClick={() => setExpandedRider(expandedRider === l.rider ? null : l.rider)}
+                            onClick={() =>
+                              setExpandedRider(expandedRider === l.rider ? null : l.rider)
+                            }
                             className="flex items-center gap-1.5 text-left hover:text-primary"
                           >
                             <ChevronRight
@@ -1131,7 +1250,9 @@ function CalculatePage() {
           {attResult.billing && (
             <div className="rounded-md border border-border bg-card px-4 py-3 mb-4 text-sm space-y-1">
               <Line label="Subtotal" value={formatRupiah(attResult.subtotal)} />
-              {attResult.billing.floored && <Line label="→ dinaikkan ke Min Charge" value="" muted />}
+              {attResult.billing.floored && (
+                <Line label="→ dinaikkan ke Min Charge" value="" muted />
+              )}
               <Line label="+ Admin Fee" value={formatRupiah(attResult.billing.admin_fee)} />
               <Line label="+ Asuransi" value={formatRupiah(attResult.billing.insurance_fee)} />
               <Line label="+ PPN" value={formatRupiah(attResult.billing.ppn)} />
@@ -1189,7 +1310,9 @@ function CalculatePage() {
                         <tr className="border-t border-border">
                           <td className="p-3 font-medium">
                             <button
-                              onClick={() => setExpandedRider(expandedRider === l.rider ? null : l.rider)}
+                              onClick={() =>
+                                setExpandedRider(expandedRider === l.rider ? null : l.rider)
+                              }
                               className="flex items-center gap-1.5 text-left hover:text-primary"
                             >
                               <ChevronRight
@@ -1315,7 +1438,9 @@ function SummaryCard({
 }) {
   return (
     <div className="admin-kpi-card p-4" data-variant={highlight ? "primary" : "default"}>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
       <div className="admin-metric-value text-[22px] font-bold mt-1">{value}</div>
     </div>
   );

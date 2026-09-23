@@ -16,6 +16,7 @@ import {
   bandLookupFee,
   resolveAreaPricingRule,
   calcAreaRuleFee,
+  weightSurchargeMultiplier,
 } from "@/lib/pricing-calc";
 import { formatRupiah, parseRupiah } from "@/lib/format";
 import { type DeliveryState, type RangeRowState } from "./delivery-fields";
@@ -150,26 +151,40 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
         ? p.delivery.rates.find((r) => norm(r.key) === norm(overrideMatchValue))
         : undefined;
     let overrideUsed = false;
-    const consumeOverride = (): number | null => {
+    // model/minimum_fee opsional (data lama cuma {key,rate}) — reuse
+    // calcAreaRuleFee APA ADANYA (sama fungsi yang dipakai mesin asli), bukan
+    // reimplementasi, biar preview ini gak mungkin drift dari calcScheme.
+    const consumeOverride = (distanceKm: number): number | null => {
       if (!overrideHit || overrideUsed) return null;
       overrideUsed = true;
-      return parseRupiah(overrideHit.rate);
+      return calcAreaRuleFee(
+        {
+          model: overrideHit.model === "per_km" ? "per_km" : "flat",
+          rate: parseRupiah(overrideHit.rate),
+          minimum_fee: parseRupiah(overrideHit.minimum_fee ?? "0"),
+        },
+        distanceKm,
+      );
     };
 
     if (dims.distance) {
       const km = Number(inp.distance) || 0;
       const { fee: bandFee, band } = bandLookupFee(numericRows(p.delivery.distance.rows), km);
-      const overrideFee = consumeOverride();
+      const overrideFee = consumeOverride(km);
       let fee = overrideFee ?? bandFee;
       // Surcharge berat → Distance: berat (dari input Weight kalau dimensi itu
-      // aktif juga, atau dari input khusus di bawah kalau enggak) lewat batas
-      // → fee Distance ini dikali N. Sama kayak calcModularDeliveryComponent.
+      // aktif juga, atau dari input khusus di bawah kalau enggak) dikali
+      // KELIPATAN berat/threshold (weightSurchargeMultiplier, sama fungsi
+      // yang dipakai calcModularDeliveryComponent — bukan reimplementasi).
       const ws = p.delivery.weight_surcharge;
       const wKg = Number(inp.weight || inp.totalKg) || 0;
-      const surcharged = ws?.enabled && wKg >= (Number(ws.threshold_kg) || 0);
-      if (surcharged) fee *= Number(ws.multiplier) || 1;
+      const multiplier = ws?.enabled
+        ? weightSurchargeMultiplier(wKg, Number(ws.threshold_kg) || 0)
+        : 1;
+      const surcharged = multiplier > 1;
+      if (surcharged) fee *= multiplier;
       steps.push({
-        text: `Distance: ${km} km → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}${surcharged ? ` × ${ws!.multiplier} (berat ${wKg}kg ≥ ${ws!.threshold_kg}kg)` : ""}`,
+        text: `Distance: ${km} km → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}${surcharged ? ` × ${multiplier} (berat ${wKg}kg, batas ${ws!.threshold_kg}kg)` : ""}`,
         amount: fee,
       });
       total += fee;
@@ -190,7 +205,10 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
         total += fee;
       } else {
         const { fee: bandFee, band } = bandLookupFee(numericRows(p.delivery.weight.rows), kg);
-        const overrideFee = consumeOverride();
+        // Override per_km selalu pakai jarak (distance_km baris), bukan
+        // berat, sama persis kayak mesin asli (r.distance_km) — walau yang
+        // "nyerap" override ini kebetulan dimensi Weight, bukan Distance.
+        const overrideFee = consumeOverride(Number(inp.distance) || 0);
         const fee = overrideFee ?? bandFee;
         steps.push({
           text: `Weight: ${kg} kg → band ${band ? `[${band.from}-${band.to ?? "∞"}) (${band.type})` : "(tidak ada band cocok)"}${overrideFee != null ? ` (rate override: ${inp.area})` : ""}`,

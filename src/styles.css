@@ -109,10 +109,9 @@
   --chart-grad-from: oklch(0.62 0.22 290);
   --chart-grad-to: oklch(0.44 0.20 290);
   --brutal-accent: #f6c445;
-  /* Gradients are reserved for depth, never for data text. */
-  /* The workspace canvas stays quiet so dense operational information owns
-     the visual hierarchy. Neo-brutal character lives on the components. */
-  --page-gradient: var(--background);
+  /* Keep the app canvas warm and quiet. The lavender lift is deliberately
+     peripheral, so operational tables remain the focus. */
+  --page-gradient: linear-gradient(135deg, oklch(0.987 0.022 88) 0%, oklch(0.978 0.014 92) 48%, oklch(0.964 0.022 245) 100%);
   --surface-gradient: linear-gradient(150deg, oklch(0.998 0.006 88), oklch(0.976 0.014 245));
 }
 
@@ -163,7 +162,10 @@
   /* Distep ulang buat surface gelap (bukan dibalik otomatis) — lihat :root. */
   --chart-grad-from: oklch(0.72 0.20 290);
   --chart-grad-to: oklch(0.52 0.18 290);
-  --page-gradient: var(--background);
+  --page-gradient:
+    radial-gradient(ellipse 76% 46% at 92% -12%, color-mix(in oklch, var(--color-primary) 18%, transparent), transparent 70%),
+    radial-gradient(ellipse 52% 34% at -6% 106%, color-mix(in oklch, var(--color-success) 8%, transparent), transparent 74%),
+    var(--color-background);
   --surface-gradient: linear-gradient(145deg, color-mix(in oklch, var(--color-card) 92%, white), var(--color-card));
 }
 
@@ -227,14 +229,22 @@
     background: var(--page-gradient);
   }
 
-  /* Operational screens are dense by nature. Keep the neo-brutal character
-     in the ink borders, hard shadows and color hierarchy—not a decorative
-     wallpaper competing with tables, payroll and reconciliation data. */
+  /* The PULSE frame remains part of the product signature, but it sits behind
+     the work area at a restrained opacity—visible at the edges, never over data. */
   .admin-shell::before {
-    display: none;
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset: 3.5rem 0 0;
+    pointer-events: none;
+    opacity: .28;
+    background: url('/neobrutalism-frame-light.png') center center / cover no-repeat fixed;
+    mix-blend-mode: multiply;
   }
   .dark .admin-shell::before {
-    display: none;
+    opacity: .42;
+    background: url('/neobrutalism-frame-bg.jpg') center center / cover no-repeat fixed;
+    mix-blend-mode: normal;
   }
 
   .admin-shell h1,
@@ -427,7 +437,7 @@
 
   .admin-section-label { letter-spacing: .16em; opacity: 1; }
 
-  /* Nav item: flat by default, SOLID blocky fill + ink border + hard shadow when active. */
+  /* Keep navigation scannable: only the current section becomes a strong block. */
   .admin-nav-item {
     position: relative;
     border: 2px solid transparent;
@@ -464,10 +474,9 @@
     left: 0;
     right: 0;
     bottom: -2px;
-    height: 5px;
-    background: linear-gradient(90deg, var(--color-primary) 0 38%, #1d4ed8 38% 63%, var(--brutal-accent) 63% 82%, #ff6654 82% 100%);
-    border-top: 2px solid var(--color-border-strong);
-    border-bottom: 2px solid var(--color-border-strong);
+    height: 3px;
+    background: var(--color-primary);
+    border-top: 1px solid var(--color-border-strong);
     pointer-events: none;
   }
   .admin-header-context { color: var(--color-muted-foreground); font: 600 9px/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .14em; }

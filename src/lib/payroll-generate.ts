@@ -21,7 +21,12 @@ export interface PayrollRunLite {
 // (kewajiban rutin kecil), baru BPJS, baru cicilan-cicilan installmentable,
 // sewa molis kedua-terakhir, pinjaman kuota paling akhir.
 export const DEDUCTION_PRIORITY: Record<string, number> = {
-  ADM: 1, BPJS: 2, RUSAK: 3, KASBON: 4, SEWA: 5, KUOTA: 6,
+  ADM: 1,
+  BPJS: 2,
+  RUSAK: 3,
+  KASBON: 4,
+  SEWA: 5,
+  KUOTA: 6,
 };
 
 // Dipanggil dari publish() di admin.payroll.tsx per baris payroll_deductions
@@ -74,27 +79,44 @@ async function getCarriedArrears(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = [];
   if (installmentIds.length > 0) {
-    const { data } = await (client as any).from("payroll_deductions")
+    const { data } = await (client as any)
+      .from("payroll_deductions")
       .select("id, detail_id, installment_id, deduction_type_id, amount, paid_amount")
-      .in("installment_id", installmentIds).not("paid_amount", "is", null);
+      .in("installment_id", installmentIds)
+      .not("paid_amount", "is", null);
     rows.push(...(data ?? []));
   }
   if (autoTypeIds.length > 0) {
-    const { data } = await (client as any).from("payroll_deductions")
+    const { data } = await (client as any)
+      .from("payroll_deductions")
       .select("id, detail_id, installment_id, deduction_type_id, amount, paid_amount")
-      .in("deduction_type_id", autoTypeIds).is("installment_id", null).not("paid_amount", "is", null);
+      .in("deduction_type_id", autoTypeIds)
+      .is("installment_id", null)
+      .not("paid_amount", "is", null);
     rows.push(...(data ?? []));
   }
   if (rows.length === 0) return { byInstallment, byRiderType };
 
   const detailIds = [...new Set(rows.map((r) => r.detail_id))];
-  const { data: details } = await (client as any).from("payroll_details")
-    .select("id, run_id, rider_id, client_id").in("id", detailIds);
-  const detailInfo = new Map<string, { id: string; run_id: string; rider_id: string; client_id: string | null }>(
-    (details ?? []).map((d: { id: string; run_id: string; rider_id: string; client_id: string | null }) => [d.id, d]),
+  const { data: details } = await (client as any)
+    .from("payroll_details")
+    .select("id, run_id, rider_id, client_id")
+    .in("id", detailIds);
+  const detailInfo = new Map<
+    string,
+    { id: string; run_id: string; rider_id: string; client_id: string | null }
+  >(
+    (details ?? []).map(
+      (d: { id: string; run_id: string; rider_id: string; client_id: string | null }) => [d.id, d],
+    ),
   );
-  const runIds = [...new Set([...detailInfo.values()].map((d) => d.run_id))].filter((id) => id !== excludeRunId);
-  const { data: runs } = await (client as any).from("payroll_runs").select("id, period_end").in("id", runIds);
+  const runIds = [...new Set([...detailInfo.values()].map((d) => d.run_id))].filter(
+    (id) => id !== excludeRunId,
+  );
+  const { data: runs } = await (client as any)
+    .from("payroll_runs")
+    .select("id, period_end")
+    .in("id", runIds);
   const periodEndOfRun = new Map<string, string>(
     (runs ?? []).map((r: { id: string; period_end: string }) => [r.id, r.period_end]),
   );
@@ -109,7 +131,8 @@ async function getCarriedArrears(
     const unpaid = Math.max(0, Number(r.amount) - Number(r.paid_amount));
     if (r.installment_id) {
       const cur = latestByInstallment.get(r.installment_id);
-      if (!cur || periodEnd > cur.periodEnd) latestByInstallment.set(r.installment_id, { periodEnd, unpaid });
+      if (!cur || periodEnd > cur.periodEnd)
+        latestByInstallment.set(r.installment_id, { periodEnd, unpaid });
     } else {
       const key = `${info.rider_id}|${r.deduction_type_id}|${info.client_id ?? ""}`;
       const cur = latestByRiderType.get(key);
@@ -176,7 +199,11 @@ function monthlyDueDays(
 // (regresi: BPJS Alfagift kepotong 2x beda 7 hari pas periode mingguan
 // nabrak pergantian bulan). Karena thresholdnya cuma 4 hari (28-31) dan run
 // gak overlap, gak mungkin 2 run beda sekaligus "nutup" bulan yang sama.
-export function monthsClosedOutBy(periodStart: string, periodEnd: string, thresholdDay = 28): string[] {
+export function monthsClosedOutBy(
+  periodStart: string,
+  periodEnd: string,
+  thresholdDay = 28,
+): string[] {
   const start = new Date(`${periodStart}T00:00:00Z`);
   const end = new Date(`${periodEnd}T00:00:00Z`);
   const months = new Set<string>();
@@ -204,23 +231,37 @@ export async function generatePayrollDetails(
   // query dedup di bawah (BPJS bulanan, siklus sewa monthly) explicit exclude
   // run.id sendiri — dulu itu didapat gratis dari delete-di-awal ini.
   const [deliveries, attendance] = await Promise.all([
-    fetchAllRows<{ rider_id: string | null; driver_code: string | null; fee: number | null }>((sb, from, to) => {
-      // Cuma order status='COMPLETED' yang boleh masuk gaji — samain sama Hitung
-      // Fee (admin.calculate.tsx) yang emang cuma nge-zip baris COMPLETED.
-      // Tanpa ini, order FAILED/PENDING_PICKUP ikut ngisi delivery_count (dan
-      // fee-nya kalau suatu saat kebetulan udah keisi sebelum status final).
-      let q = sb.from("delivery_records").select("rider_id, driver_code, fee")
-        .eq("status", "COMPLETED")
-        .gte("delivery_date", run.period_start).lte("delivery_date", run.period_end);
-      if (run.client_id) q = q.eq("client_id", run.client_id);
-      return q.range(from, to);
-    }, 1000, client),
-    fetchAllRows<{ rider_id: string | null; driver_code: string | null; fee: number | null }>((sb, from, to) => {
-      let q = (sb as any).from("attendance_logs").select("rider_id, driver_code, fee")
-        .gte("log_date", run.period_start).lte("log_date", run.period_end);
-      if (run.client_id) q = q.eq("client_id", run.client_id);
-      return q.range(from, to);
-    }, 1000, client),
+    fetchAllRows<{ rider_id: string | null; driver_code: string | null; fee: number | null }>(
+      (sb, from, to) => {
+        // Cuma order status='COMPLETED' yang boleh masuk gaji — samain sama Hitung
+        // Fee (admin.calculate.tsx) yang emang cuma nge-zip baris COMPLETED.
+        // Tanpa ini, order FAILED/PENDING_PICKUP ikut ngisi delivery_count (dan
+        // fee-nya kalau suatu saat kebetulan udah keisi sebelum status final).
+        let q = sb
+          .from("delivery_records")
+          .select("rider_id, driver_code, fee")
+          .eq("status", "COMPLETED")
+          .gte("delivery_date", run.period_start)
+          .lte("delivery_date", run.period_end);
+        if (run.client_id) q = q.eq("client_id", run.client_id);
+        return q.range(from, to);
+      },
+      1000,
+      client,
+    ),
+    fetchAllRows<{ rider_id: string | null; driver_code: string | null; fee: number | null }>(
+      (sb, from, to) => {
+        let q = (sb as any)
+          .from("attendance_logs")
+          .select("rider_id, driver_code, fee")
+          .gte("log_date", run.period_start)
+          .lte("log_date", run.period_end);
+        if (run.client_id) q = q.eq("client_id", run.client_id);
+        return q.range(from, to);
+      },
+      1000,
+      client,
+    ),
   ]);
 
   const { resolvedIdOf } = await resolveRiderIdentities([...deliveries, ...attendance], client);
@@ -246,17 +287,20 @@ export async function generatePayrollDetails(
     .eq("mode", "monthly");
   const monthlyChargeRiderIds = new Set((monthlyInstallmentsRaw ?? []).map((r) => r.rider_id));
 
-  const riderIds = [...new Set([
-    ...deliveries.map(resolvedIdOf),
-    ...attendance.map(resolvedIdOf),
-    ...dailyChargeRiderIds,
-    ...monthlyChargeRiderIds,
-  ])].filter((id): id is string => !!id);
+  const riderIds = [
+    ...new Set([
+      ...deliveries.map(resolvedIdOf),
+      ...attendance.map(resolvedIdOf),
+      ...dailyChargeRiderIds,
+      ...monthlyChargeRiderIds,
+    ]),
+  ].filter((id): id is string => !!id);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let riders: any[] = [];
   if (riderIds.length > 0) {
-    const { data, error } = await client.from("riders")
+    const { data, error } = await client
+      .from("riders")
       .select("id, client_id, employee_id, full_name")
       .in("id", riderIds);
     if (error) throw error;
@@ -264,25 +308,39 @@ export async function generatePayrollDetails(
   }
 
   const [{ data: installments }, { data: autoTypes }] = await Promise.all([
-    client.from("rider_installments").select("*").eq("active", true)
+    client
+      .from("rider_installments")
+      .select("*")
+      .eq("active", true)
       .lte("next_deduction_date", run.period_end),
-    (client as any).from("deduction_types").select("id, name, recurring_amount, trigger_frequency, applies_to_all")
-      .eq("active", true).eq("auto_recurring", true),
+    (client as any)
+      .from("deduction_types")
+      .select("id, name, recurring_amount, trigger_frequency, applies_to_all")
+      .eq("active", true)
+      .eq("auto_recurring", true),
   ]);
 
   // applies_to_all=false (mis. BPJS yang cuma sebagian rider ikut) — cuma
   // rider yang terdaftar di deduction_type_riders yang kena, bukan semua
   // rider yang ada penghasilan kayak default-nya.
-  const restrictedTypeIds = ((autoTypes ?? []) as any[]).filter((t) => !t.applies_to_all).map((t) => t.id);
+  const restrictedTypeIds = ((autoTypes ?? []) as any[])
+    .filter((t) => !t.applies_to_all)
+    .map((t) => t.id);
   const enrolledSet = new Set<string>();
   // Client prioritas per enrollment (mis. BPJS JKK rider X ditanggung client A
   // spesifik) — null = fallback ke client rumah rider, sama kayak sebelum ada
   // kolom ini (lihat matchesClient di loop rider bawah).
   const enrolledClient = new Map<string, string | null>();
   if (restrictedTypeIds.length > 0) {
-    const { data: enrolled } = await (client as any).from("deduction_type_riders")
-      .select("deduction_type_id, rider_id, client_id").in("deduction_type_id", restrictedTypeIds);
-    for (const e of (enrolled ?? []) as { deduction_type_id: string; rider_id: string; client_id: string | null }[]) {
+    const { data: enrolled } = await (client as any)
+      .from("deduction_type_riders")
+      .select("deduction_type_id, rider_id, client_id")
+      .in("deduction_type_id", restrictedTypeIds);
+    for (const e of (enrolled ?? []) as {
+      deduction_type_id: string;
+      rider_id: string;
+      client_id: string | null;
+    }[]) {
       const key = `${e.deduction_type_id}|${e.rider_id}`;
       enrolledSet.add(key);
       enrolledClient.set(key, e.client_id);
@@ -291,12 +349,13 @@ export async function generatePayrollDetails(
 
   // Tunggakan yang belum lunas dari run sebelumnya (lihat getCarriedArrears) —
   // ditambahin ke tagihan periode ini biar otomatis ketagih lagi, bukan hilang.
-  const { byInstallment: arrearsByInstallment, byRiderType: arrearsByRiderType } = await getCarriedArrears(
-    (installments ?? []).map((i: { id: string }) => i.id),
-    ((autoTypes ?? []) as { id: string }[]).map((t) => t.id),
-    run.id,
-    client,
-  );
+  const { byInstallment: arrearsByInstallment, byRiderType: arrearsByRiderType } =
+    await getCarriedArrears(
+      (installments ?? []).map((i: { id: string }) => i.id),
+      ((autoTypes ?? []) as { id: string }[]).map((t) => t.id),
+      run.id,
+      client,
+    );
 
   // Auto-recurring "monthly_once" (mis. BPJS) cuma boleh kepotong SEKALI per
   // bulan kalender per rider, LINTAS CLIENT manapun dia digaji — beda dari
@@ -322,24 +381,39 @@ export async function generatePayrollDetails(
     // Kandidat run lain yang overlap rentang bulan ini — masih di-filter lagi
     // di bawah (recompute closedOutMonths run itu sendiri), overlap doang
     // belum tentu run itu yang BENERAN nutup bulannya.
-    const { data: candidateRuns } = await (client as any).from("payroll_runs")
+    const { data: candidateRuns } = await (client as any)
+      .from("payroll_runs")
       .select("id, period_start, period_end")
       .neq("id", run.id)
-      .lte("period_start", rangeHi).gte("period_end", rangeLo);
-    const runIdsThisMonth = ((candidateRuns ?? []) as { id: string; period_start: string; period_end: string }[])
-      .filter((r) => monthsClosedOutBy(r.period_start, r.period_end).some((m) => closedOutMonths.includes(m)))
+      .lte("period_start", rangeHi)
+      .gte("period_end", rangeLo);
+    const runIdsThisMonth = (
+      (candidateRuns ?? []) as { id: string; period_start: string; period_end: string }[]
+    )
+      .filter((r) =>
+        monthsClosedOutBy(r.period_start, r.period_end).some((m) => closedOutMonths.includes(m)),
+      )
       .map((r) => r.id);
     if (runIdsThisMonth.length > 0) {
-      const { data: detailsThisMonth } = await (client as any).from("payroll_details")
-        .select("id, rider_id").in("run_id", runIdsThisMonth).in("rider_id", riderIds);
+      const { data: detailsThisMonth } = await (client as any)
+        .from("payroll_details")
+        .select("id, rider_id")
+        .in("run_id", runIdsThisMonth)
+        .in("rider_id", riderIds);
       const detailIdToRider = new Map(
         (detailsThisMonth ?? []).map((d: { id: string; rider_id: string }) => [d.id, d.rider_id]),
       );
       const detailIds = [...detailIdToRider.keys()];
       if (detailIds.length > 0) {
-        const { data: dedsThisMonth } = await (client as any).from("payroll_deductions")
-          .select("detail_id, deduction_type_id").in("detail_id", detailIds).in("deduction_type_id", monthlyTypeIds);
-        for (const d of (dedsThisMonth ?? []) as { detail_id: string; deduction_type_id: string }[]) {
+        const { data: dedsThisMonth } = await (client as any)
+          .from("payroll_deductions")
+          .select("detail_id, deduction_type_id")
+          .in("detail_id", detailIds)
+          .in("deduction_type_id", monthlyTypeIds);
+        for (const d of (dedsThisMonth ?? []) as {
+          detail_id: string;
+          deduction_type_id: string;
+        }[]) {
           const rId = detailIdToRider.get(d.detail_id);
           if (rId) chargedThisMonth.add(`${rId}|${d.deduction_type_id}`);
         }
@@ -358,18 +432,24 @@ export async function generatePayrollDetails(
   const closedCyclesByInst = new Map<string, Set<string>>();
   if (monthlyInsts.length > 0) {
     const monthlyInstIds = monthlyInsts.map((i) => i.id);
-    const { data: priorDeds } = await (client as any).from("payroll_deductions")
-      .select("installment_id, detail_id").in("installment_id", monthlyInstIds);
+    const { data: priorDeds } = await (client as any)
+      .from("payroll_deductions")
+      .select("installment_id, detail_id")
+      .in("installment_id", monthlyInstIds);
     if (priorDeds?.length) {
       const detailIds = [...new Set((priorDeds as any[]).map((d) => d.detail_id))];
-      const { data: detailRuns } = await (client as any).from("payroll_details")
-        .select("id, run_id").in("id", detailIds);
+      const { data: detailRuns } = await (client as any)
+        .from("payroll_details")
+        .select("id, run_id")
+        .in("id", detailIds);
       const runIdOfDetail = new Map(
         (detailRuns ?? []).map((d: { id: string; run_id: string }) => [d.id, d.run_id]),
       );
       const runIds = [...new Set([...runIdOfDetail.values()])];
-      const { data: runsData } = await (client as any).from("payroll_runs")
-        .select("id, period_end").in("id", runIds);
+      const { data: runsData } = await (client as any)
+        .from("payroll_runs")
+        .select("id, period_end")
+        .in("id", runIds);
       const periodEndOfRun = new Map(
         (runsData ?? []).map((r: { id: string; period_end: string }) => [r.id, r.period_end]),
       );
@@ -380,7 +460,10 @@ export async function generatePayrollDetails(
         if (!periodEnd) continue;
         const inst = monthlyInsts.find((i) => i.id === d.installment_id);
         if (!inst) continue;
-        const closedEnd = cycleEndContaining(new Date(`${periodEnd}T00:00:00Z`), inst.cycle_start_day || 25);
+        const closedEnd = cycleEndContaining(
+          new Date(`${periodEnd}T00:00:00Z`),
+          inst.cycle_start_day || 25,
+        );
         const set = closedCyclesByInst.get(d.installment_id) ?? new Set<string>();
         set.add(closedEnd.toISOString().slice(0, 10));
         closedCyclesByInst.set(d.installment_id, set);
@@ -396,7 +479,8 @@ export async function generatePayrollDetails(
     ((installments ?? []) as any[]).filter((i: any) => i.mode === "daily").map((i: any) => i.id),
   );
   if (dailyChargeRiderIds.size > 0 && dailyInstIds.size > 0) {
-    const { data: overlapRuns } = await (client as any).from("payroll_runs")
+    const { data: overlapRuns } = await (client as any)
+      .from("payroll_runs")
       .select("id, period_start, period_end")
       .lte("period_start", run.period_end)
       .gte("period_end", run.period_start)
@@ -404,20 +488,29 @@ export async function generatePayrollDetails(
     if (overlapRuns?.length) {
       const runPeriod = new Map<string, { s: string; e: string }>();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const r of overlapRuns as any[]) runPeriod.set(r.id, { s: r.period_start, e: r.period_end });
-      const { data: oDetails } = await (client as any).from("payroll_details")
+      for (const r of overlapRuns as any[])
+        runPeriod.set(r.id, { s: r.period_start, e: r.period_end });
+      const { data: oDetails } = await (client as any)
+        .from("payroll_details")
         .select("id, run_id, rider_id")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .in("run_id", (overlapRuns as any[]).map((r) => r.id))
+        .in(
+          "run_id",
+          (overlapRuns as any[]).map((r) => r.id),
+        )
         .in("rider_id", [...dailyChargeRiderIds]);
       if (oDetails?.length) {
         const dMap = new Map<string, { runId: string; riderId: string }>();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const d of oDetails as any[]) dMap.set(d.id, { runId: d.run_id, riderId: d.rider_id });
-        const { data: oDeds } = await (client as any).from("payroll_deductions")
+        const { data: oDeds } = await (client as any)
+          .from("payroll_deductions")
           .select("detail_id, installment_id")
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .in("detail_id", (oDetails as any[]).map((d) => d.id))
+          .in(
+            "detail_id",
+            (oDetails as any[]).map((d) => d.id),
+          )
           .not("installment_id", "is", null);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const ded of (oDeds ?? []) as any[]) {
@@ -430,7 +523,11 @@ export async function generatePayrollDetails(
           if (!dailyChargedDates.has(key)) dailyChargedDates.set(key, new Set());
           const dates = dailyChargedDates.get(key)!;
           const end = new Date(`${p.e}T00:00:00Z`);
-          for (const dt = new Date(`${p.s}T00:00:00Z`); dt <= end; dt.setUTCDate(dt.getUTCDate() + 1)) {
+          for (
+            const dt = new Date(`${p.s}T00:00:00Z`);
+            dt <= end;
+            dt.setUTCDate(dt.getUTCDate() + 1)
+          ) {
             dates.add(dt.toISOString().slice(0, 10));
           }
         }
@@ -448,14 +545,20 @@ export async function generatePayrollDetails(
   // mana yang "cukup" nanggung potongannya (lihat ranking di loop rider).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const multiClientInsts = ((installments ?? []) as any[]).filter(
-    (i: any) => (i.mode === "fixed" || i.mode === "monthly") && Array.isArray(i.client_ids) && i.client_ids.length > 0,
+    (i: any) =>
+      (i.mode === "fixed" || i.mode === "monthly") &&
+      Array.isArray(i.client_ids) &&
+      i.client_ids.length > 0,
   );
   const alreadyChargedElsewhere = new Set<string>(); // key `${riderId}|${installmentId}`
   const siblingGrossByRiderClient = new Map<string, Map<string, number>>(); // riderId -> clientId -> gross_earning
   if (multiClientInsts.length > 0) {
     const multiClientInstIds = multiClientInsts.map((i) => i.id);
-    const allEligibleClientIds = [...new Set(multiClientInsts.flatMap((i: any) => i.client_ids as string[]))];
-    const { data: siblingRuns } = await (client as any).from("payroll_runs")
+    const allEligibleClientIds = [
+      ...new Set(multiClientInsts.flatMap((i: any) => i.client_ids as string[])),
+    ];
+    const { data: siblingRuns } = await (client as any)
+      .from("payroll_runs")
       .select("id, client_id")
       .eq("period_start", run.period_start)
       .eq("period_end", run.period_end)
@@ -466,7 +569,8 @@ export async function generatePayrollDetails(
       (siblingRuns ?? []).map((r: any) => [r.id as string, r.client_id as string]),
     );
     if (siblingRunIds.length > 0) {
-      const { data: siblingDetails } = await (client as any).from("payroll_details")
+      const { data: siblingDetails } = await (client as any)
+        .from("payroll_details")
         .select("id, run_id, rider_id, gross_earning")
         .in("run_id", siblingRunIds);
       const detailById = new Map((siblingDetails ?? []).map((d: any) => [d.id, d]));
@@ -479,7 +583,8 @@ export async function generatePayrollDetails(
       }
       const siblingDetailIds = [...detailById.keys()];
       if (siblingDetailIds.length > 0) {
-        const { data: siblingDeds } = await (client as any).from("payroll_deductions")
+        const { data: siblingDeds } = await (client as any)
+          .from("payroll_deductions")
           .select("detail_id, installment_id")
           .in("detail_id", siblingDetailIds)
           .in("installment_id", multiClientInstIds);
@@ -518,7 +623,8 @@ export async function generatePayrollDetails(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const matchesInstallmentClient = (i: any) => {
       if (run.client_id === null) return true;
-      if (Array.isArray(i.client_ids) && i.client_ids.length > 0) return i.client_ids.includes(run.client_id);
+      if (Array.isArray(i.client_ids) && i.client_ids.length > 0)
+        return i.client_ids.includes(run.client_id);
       return matchesClient(i.client_id);
     };
 
@@ -535,7 +641,11 @@ export async function generatePayrollDetails(
     const projectedGross = deliveryFee + attendanceFee;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rInstallForRun = rInstallMatched.filter((i: any) => {
-      if ((i.mode !== "fixed" && i.mode !== "monthly") || !Array.isArray(i.client_ids) || i.client_ids.length === 0)
+      if (
+        (i.mode !== "fixed" && i.mode !== "monthly") ||
+        !Array.isArray(i.client_ids) ||
+        i.client_ids.length === 0
+      )
         return true; // 'daily' displit per-tanggal (dailyChargedDates), fixed/monthly single-client gak butuh ranking
       const key = `${rider.id}|${i.id}`;
       if (alreadyChargedElsewhere.has(key)) return false; // udah kecharge di sibling run periode ini
@@ -583,7 +693,8 @@ export async function generatePayrollDetails(
     const hasMonthlyChargeDue = rInstallForRun.some(
       (i: any) => i.mode === "monthly" && monthlyDueDays(i, run.period_end, closedCyclesByInst) > 0,
     );
-    if (deliveryCount === 0 && attendanceFee === 0 && !hasDailyCharge && !hasMonthlyChargeDue) continue;
+    if (deliveryCount === 0 && attendanceFee === 0 && !hasDailyCharge && !hasMonthlyChargeDue)
+      continue;
 
     const incentiveTotal = 0;
     const penalty = 0;
@@ -601,7 +712,11 @@ export async function generatePayrollDetails(
         // udah kepotong run lain, lihat dailyChargedDates di atas).
         const chargedDates: string[] = [];
         const end = new Date(`${run.period_end}T00:00:00Z`);
-        for (const d = new Date(`${run.period_start}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+        for (
+          const d = new Date(`${run.period_start}T00:00:00Z`);
+          d <= end;
+          d.setUTCDate(d.getUTCDate() + 1)
+        ) {
           const iso = d.toISOString().slice(0, 10);
           if (!charged?.has(iso)) chargedDates.push(iso);
         }
@@ -610,16 +725,27 @@ export async function generatePayrollDetails(
       }
       if (i.mode === "monthly") {
         const days = monthlyDueDays(i, run.period_end, closedCyclesByInst);
-        return { amount: Number(i.daily_rate || 0) * days + arrears, days, arrears, chargedDates: [] as string[] };
+        return {
+          amount: Number(i.daily_rate || 0) * days + arrears,
+          days,
+          arrears,
+          chargedDates: [] as string[],
+        };
       }
-      return { amount: Number(i.per_period_amount || 0) + arrears, days: 0, arrears, chargedDates: [] as string[] };
+      return {
+        amount: Number(i.per_period_amount || 0) + arrears,
+        days: 0,
+        arrears,
+        chargedDates: [] as string[],
+      };
     });
     // charge_target='client_revenue' (mis. molis gratis buat rider, kita yang
     // nanggung sewanya) TIDAK ngurangin net_pay rider — biayanya kena di sisi
     // P&L client lewat molis-cost.ts, bukan di sini. Baris deduction tetap
     // dicatat di bawah (audit trail), cuma gak masuk ke installTotal.
     const installTotal = dedItems.reduce(
-      (s, d, idx) => s + ((rInstallForRun[idx] as any).charge_target === "client_revenue" ? 0 : d.amount),
+      (s, d, idx) =>
+        s + ((rInstallForRun[idx] as any).charge_target === "client_revenue" ? 0 : d.amount),
       0,
     );
 
@@ -637,8 +763,11 @@ export async function generatePayrollDetails(
       // closedOutMonths kosong = run ini gak nutup bulan manapun (numpang
       // lewat tengah bulan doang) — monthly_once nunggu run yang beneran
       // nutup bulannya, bukan asal kepotong di run pertama yang ketemu.
-      if (t.trigger_frequency === "monthly_once" &&
-        (closedOutMonths.length === 0 || chargedThisMonth.has(`${rider.id}|${t.id}`))) return false;
+      if (
+        t.trigger_frequency === "monthly_once" &&
+        (closedOutMonths.length === 0 || chargedThisMonth.has(`${rider.id}|${t.id}`))
+      )
+        return false;
       if (t.applies_to_all) return true;
       const key = `${t.id}|${rider.id}`;
       return enrolledSet.has(key) && matchesClient(enrolledClient.get(key));
@@ -661,10 +790,18 @@ export async function generatePayrollDetails(
     // periode ini) — fallback ke rider.client_id cuma buat run "Semua Client"
     // (run.client_id null) biar tetep ada label, bukan kosong.
     detailsToInsert.push({
-      id: detailId, run_id: run.id, rider_id: rider.id, client_id: run.client_id ?? rider.client_id,
-      delivery_count: deliveryCount, delivery_fee: deliveryFee,
-      attendance_fee: attendanceFee, incentive: incentiveTotal, penalty,
-      gross_earning: gross, total_deduction: totalDed, net_pay: net,
+      id: detailId,
+      run_id: run.id,
+      rider_id: rider.id,
+      client_id: run.client_id ?? rider.client_id,
+      delivery_count: deliveryCount,
+      delivery_fee: deliveryFee,
+      attendance_fee: attendanceFee,
+      incentive: incentiveTotal,
+      penalty,
+      gross_earning: gross,
+      total_deduction: totalDed,
+      net_pay: net,
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rInstallForRun.forEach((ins: any, idx: number) => {
@@ -672,9 +809,13 @@ export async function generatePayrollDetails(
       if (item.amount <= 0) return;
       const isClientRevenue =
         (ins.mode === "daily" || ins.mode === "monthly") && ins.charge_target === "client_revenue";
-      const revenueNote = isClientRevenue ? " (ditanggung revenue client, tidak potong net pay)" : "";
-      const cycleNote = ins.mode === "monthly" ? ` (potong per siklus tgl ${ins.cycle_start_day || 25})` : "";
-      const arrearsNote = item.arrears > 0 ? ` + tunggakan Rp${item.arrears.toLocaleString("id-ID")}` : "";
+      const revenueNote = isClientRevenue
+        ? " (ditanggung revenue client, tidak potong net pay)"
+        : "";
+      const cycleNote =
+        ins.mode === "monthly" ? ` (potong per siklus tgl ${ins.cycle_start_day || 25})` : "";
+      const arrearsNote =
+        item.arrears > 0 ? ` + tunggakan Rp${item.arrears.toLocaleString("id-ID")}` : "";
       // Tanggal PERSIS yang kepotong (mode daily) — bukan cuma rentang periode
       // run, biar keliatan kalau sebagian harinya udah kepotong run lain (lihat
       // dailyChargedDates) dan Recap/slip gak nunjukin rentang yang menyesatkan.
@@ -684,10 +825,15 @@ export async function generatePayrollDetails(
           : "";
       const description =
         ins.mode === "daily" || ins.mode === "monthly"
-          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` + datesNote + arrearsNote + cycleNote + revenueNote
+          ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` +
+            datesNote +
+            arrearsNote +
+            cycleNote +
+            revenueNote
           : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` + arrearsNote;
       deductionsToInsert.push({
-        detail_id: detailId, deduction_type_id: ins.deduction_type_id,
+        detail_id: detailId,
+        deduction_type_id: ins.deduction_type_id,
         installment_id: ins.id,
         kasbon_recipient_id: ins.kasbon_recipient_id ?? null,
         description,
@@ -697,10 +843,14 @@ export async function generatePayrollDetails(
     for (const x of autoItems) {
       const t = x.t;
       if (x.amount <= 0) continue;
-      const description = x.arrears > 0 ? `${t.name} + tunggakan Rp${x.arrears.toLocaleString("id-ID")}` : t.name;
+      const description =
+        x.arrears > 0 ? `${t.name} + tunggakan Rp${x.arrears.toLocaleString("id-ID")}` : t.name;
       deductionsToInsert.push({
-        detail_id: detailId, deduction_type_id: t.id,
-        installment_id: null, description, amount: x.amount,
+        detail_id: detailId,
+        deduction_type_id: t.id,
+        installment_id: null,
+        description,
+        amount: x.amount,
       });
     }
   }
@@ -733,8 +883,11 @@ export async function findOrCreatePayrollRun(
   },
   client: typeof supabase = supabase,
 ): Promise<PayrollRunLite> {
-  let q = (client as any).from("payroll_runs").select("id, client_id, period_start, period_end, status")
-    .eq("period_start", opts.periodStart).eq("period_end", opts.periodEnd)
+  let q = (client as any)
+    .from("payroll_runs")
+    .select("id, client_id, period_start, period_end, status")
+    .eq("period_start", opts.periodStart)
+    .eq("period_end", opts.periodEnd)
     .neq("status", "published");
   q = opts.clientId ? q.eq("client_id", opts.clientId) : q.is("client_id", null);
   const { data: existing, error: findErr } = await q.limit(1).maybeSingle();
@@ -742,9 +895,17 @@ export async function findOrCreatePayrollRun(
   if (existing) return existing;
 
   const name = `Payroll ${opts.clientName} periode ${opts.periodStart} → ${opts.periodEnd}`;
-  const { data: created, error: createErr } = await (client as any).from("payroll_runs")
-    .insert({ name, period_type: "weekly", period_start: opts.periodStart, period_end: opts.periodEnd, client_id: opts.clientId })
-    .select("id, client_id, period_start, period_end, status").single();
+  const { data: created, error: createErr } = await (client as any)
+    .from("payroll_runs")
+    .insert({
+      name,
+      period_type: "weekly",
+      period_start: opts.periodStart,
+      period_end: opts.periodEnd,
+      client_id: opts.clientId,
+    })
+    .select("id, client_id, period_start, period_end, status")
+    .single();
   if (createErr) throw createErr;
   return created;
 }

@@ -199,6 +199,11 @@ function PricingListPage() {
             📍 {s.city_scope.join(", ")}
           </span>
         ) : null}
+        {s.hub_scope?.length ? (
+          <span className="ml-1.5 inline-flex items-center rounded-md bg-violet-500/15 text-violet-700 dark:text-violet-300 px-2 py-0.5 text-[11px] font-medium">
+            🏭 {s.hub_scope.join(", ")}
+          </span>
+        ) : null}
       </td>
       <td className="px-4 py-3 text-xs text-muted-foreground">
         {formatTanggal(s.effective_from)}

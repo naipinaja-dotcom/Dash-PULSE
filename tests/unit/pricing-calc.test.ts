@@ -847,12 +847,11 @@ describe("calcScheme — modular_v2 rate_by=delivery_type + Distance & Weight ak
 });
 
 // ==================================================================
-// modular_v2 — weight_surcharge: berat lewat batas -> fee Distance dikali N
+// modular_v2 — weight_surcharge: fee Distance dikali KELIPATAN berat aktual
+// dibagi threshold (ceil, otomatis) — bukan lagi angka `multiplier` tetap.
 // ==================================================================
-describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau berat lewat batas)", () => {
-  const distanceOnlyEnv = (
-    weight_surcharge: { enabled: boolean; threshold_kg: number; multiplier: number } | null,
-  ) =>
+describe("calcScheme — modular_v2 weight_surcharge (Distance dikali kelipatan berat/threshold)", () => {
+  const distanceOnlyEnv = (weight_surcharge: { enabled: boolean; threshold_kg: number } | null) =>
     env({
       type: "modular_v2",
       config: {
@@ -871,26 +870,38 @@ describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau be
       } as never,
     });
 
-  it("berat di bawah batas: fee Distance normal, gak kena kali", () => {
-    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+  it("berat di bawah batas: kelipatan 1×, fee Distance normal", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20 });
     const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 15 })]);
     expect(res.perRow[0].fee).toBe(10000);
   });
 
-  it("berat PAS di batas (>=) ikut kena kali", () => {
-    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+  it("berat PAS di batas: TETAP 1× (belum lewat, belum masuk kelipatan ke-2)", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20 });
     const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 20 })]);
-    expect(res.perRow[0].fee).toBe(20000);
+    expect(res.perRow[0].fee).toBe(10000);
   });
 
-  it("berat lewat batas: fee Distance dikali multiplier", () => {
-    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20, multiplier: 2 });
+  it("berat 25kg (threshold 20kg): ceil(25/20)=2 -> ×2", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20 });
     const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 25 })]);
     expect(res.perRow[0].fee).toBe(20000);
   });
 
+  it("berat 45kg (threshold 20kg): ceil(45/20)=3 -> ×3 (kelipatan otomatis, bukan cuma 2x)", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 45 })]);
+    expect(res.perRow[0].fee).toBe(30000);
+  });
+
+  it("berat kosong/0 walau surcharge aktif: tetap 1× (gak pernah nol-in fee)", () => {
+    const e = distanceOnlyEnv({ enabled: true, threshold_kg: 20 });
+    const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: null })]);
+    expect(res.perRow[0].fee).toBe(10000);
+  });
+
   it("mati (enabled:false): berat berapapun gak ngaruh ke fee Distance", () => {
-    const e = distanceOnlyEnv({ enabled: false, threshold_kg: 20, multiplier: 2 });
+    const e = distanceOnlyEnv({ enabled: false, threshold_kg: 20 });
     const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 999 })]);
     expect(res.perRow[0].fee).toBe(10000);
   });
@@ -910,7 +921,7 @@ describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau be
         rates: [],
         unit_basis: "awb",
         default_rate: 0,
-        weight_surcharge: { enabled: true, threshold_kg: 20, multiplier: 2 },
+        weight_surcharge: { enabled: true, threshold_kg: 20 },
         distance: {
           enabled: true,
           accumulate: "per_order",
@@ -925,7 +936,7 @@ describe("calcScheme — modular_v2 weight_surcharge (Distance dikali N kalau be
       } as never,
     });
     const res = calcScheme(e, [row({ rider_id: "R1", distance_km: 3, weight_kg: 25 })]);
-    // distance 10000*2 (kena kali, berat lewat batas) + weight 5000 (normal, gak ikut kali)
+    // distance 10000*2 (ceil(25/20)=2, kena kali) + weight 5000 (normal, gak ikut kali)
     expect(res.perRow[0].fee).toBe(25000);
   });
 });

@@ -3,7 +3,7 @@
 // pricing-form/attendance-fields.tsx (kategori 2), kalkulator interaktif ke
 // pricing-form/interactive-calc.tsx.
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { usePostHog } from "@posthog/react";
 import { AdminLayout } from "@/components/admin-layout";
 import { ClientCombobox } from "@/components/client-combobox";
@@ -25,6 +25,7 @@ import {
   type MockClient,
 } from "@/lib/pricing-store";
 import { formatRupiah, parseRupiah } from "@/lib/format";
+import { resolveAreaPricingRule } from "@/lib/pricing-calc";
 import { useT } from "@/lib/i18n";
 import {
   ArrowLeft,
@@ -38,8 +39,8 @@ import {
   ChevronRight,
   SlidersHorizontal,
   Plus,
+  Pencil,
   Trash2,
-  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -75,55 +76,21 @@ import { loadDeliveryCompState } from "./pricing-form/attendance-delivery-comp";
 import {
   buildAreaCityConfig,
   validateAreaCityState,
+  loadAreaCityState,
   citiesFromRaw,
-  type AreaCityState,
   type AreaRuleState,
 } from "./pricing-form/area-city-fields";
+import { AreaRuleModal } from "./pricing-form/area-rule-modal";
+import {
+  DeliveryIncentiveFields,
+  emptyDeliveryIncentiveState,
+  buildDeliveryIncentives,
+  loadDeliveryIncentiveState,
+  validateDeliveryIncentiveState,
+  type DeliveryIncentiveRowState,
+} from "./pricing-form/delivery-incentive-fields";
 
 const CATEGORY_ICONS = { Truck, CalendarDays, Layers } as const;
-
-// SATU daftar "Area" (rail) buat 2 kebutuhan sekaligus, tiap baris pilih
-// sendiri lewat `kind`:
-//  - flat/per_km: rate-override BUAT SCHEME INI SENDIRI (disimpen ke
-//    area_city_pricing pas Save — persis mekanisme lama, cuma UI-nya digabung).
-//  - delivery_other/revenue_share/attendance: model/skema BEDA — gak bisa jadi
-//    rate-override di scheme yang sama, jadi baris ini cuma quick-add
-//    launcher ke /admin/pricing/new (lihat spawnsScheme), gak pernah disave
-//    ke scheme ini.
-const AREA_KIND_OPTIONS = [
-  { key: "flat", labelKey: "pfAreaCity.modelFlat", spawnsScheme: false },
-  { key: "per_km", labelKey: "pfAreaCity.modelPerKm", spawnsScheme: false },
-  {
-    key: "delivery_other",
-    labelKey: "pform.areaModelDelivery",
-    spawnsScheme: true,
-    category: "delivery" as const,
-    revenueShare: false,
-  },
-  {
-    key: "revenue_share",
-    labelKey: "pform.areaModelRevenueShare",
-    spawnsScheme: true,
-    category: "delivery" as const,
-    revenueShare: true,
-  },
-  {
-    key: "attendance",
-    labelKey: "pform.areaModelAttendance",
-    spawnsScheme: true,
-    category: "attendance" as const,
-    revenueShare: false,
-  },
-] as const;
-
-interface AreaLauncherRow {
-  id: string;
-  name: string;
-  citiesRaw: string;
-  kind: (typeof AREA_KIND_OPTIONS)[number]["key"];
-  rate: string;
-  minimumFee: string;
-}
 const DIMENSION_ICONS = { distance: Ruler, weight: Package } as const;
 
 // -------------------- Bentuk state form (semua string, di-parse saat simpan) --------------------
@@ -134,11 +101,17 @@ interface FormState {
   addKg: StepTierState;
   multiDropOn: boolean;
   multiDropFee: string;
+  // Insentif per rider per hari (uang bensin/makan dsb) — lihat
+  // delivery-incentive-fields.tsx & DeliveryIncentive di pricing-types.ts.
+  deliveryIncentiveOn: boolean;
+  deliveryIncentives: DeliveryIncentiveRowState[];
   // Scope SCHEME INI ke City tertentu — lihat city_scope di pricing-types.ts.
-  // Kosong = default. Rate-override per city & launcher skema lain buat
-  // model beda hidup di `areaRows` (state terpisah, lihat PricingFormInner),
-  // bukan di FormState — satu daftar "Area" gabungan buat keduanya.
+  // Kosong = default. Rate-override per city hidup di `areaCityRules` (state
+  // terpisah, lihat PricingFormInner) via AreaRuleModal — bukan di FormState.
   cityScopeRaw: string;
+  // Scope SCHEME INI ke Hub tertentu (sender_name) — paralel sama
+  // cityScopeRaw di atas, lihat hub_scope di pricing-types.ts.
+  hubScopeRaw: string;
   revenueShareOn: boolean;
   revenueSharePercent: string;
   billingOn: boolean;
@@ -160,7 +133,10 @@ function emptyForm(): FormState {
     addKg: emptyStepTier(),
     multiDropOn: false,
     multiDropFee: "3000",
+    deliveryIncentiveOn: false,
+    deliveryIncentives: emptyDeliveryIncentiveState(),
     cityScopeRaw: "",
+    hubScopeRaw: "",
     revenueShareOn: false,
     revenueSharePercent: "80",
     billingOn: false,
@@ -191,6 +167,9 @@ function buildEnvelope(
   // Rider. Dims/Add-KG/Multi-drop diabaikan total kalau mode ini aktif,
   // bukan ditumpuk di atasnya (fee-nya murni % revenue).
   const cityScope = category === "delivery" ? citiesFromRaw(f.cityScopeRaw) : [];
+  // Reuse citiesFromRaw apa adanya — parser CSV generik (trim+split koma),
+  // gak spesifik ke city walau namanya begitu.
+  const hubScope = category === "delivery" ? citiesFromRaw(f.hubScopeRaw) : [];
 
   if (category === "delivery" && schemeFor === "rider" && f.revenueShareOn) {
     return {
@@ -202,6 +181,7 @@ function buildEnvelope(
       billing_addons: null,
       area_city_pricing: null,
       city_scope: cityScope.length ? cityScope : null,
+      hub_scope: hubScope.length ? hubScope : null,
     };
   }
 
@@ -232,6 +212,13 @@ function buildEnvelope(
       category === "delivery" && f.multiDropOn
         ? { fee_per_extra_shipment: parseRupiah(f.multiDropFee) }
         : null,
+    // Insentif per rider per hari (uang bensin/makan dsb) — sama gating-nya
+    // kayak Add-KG/Multi-drop di atas (delivery-only, cair otomatis tiap
+    // rider-hari yang ada kiriman COMPLETED, lihat calcScheme).
+    delivery_incentives:
+      category === "delivery"
+        ? buildDeliveryIncentives(f.deliveryIncentives, f.deliveryIncentiveOn)
+        : null,
     // Area City Pricing — cuma masuk akal buat delivery (bukan revenue_share,
     // sudah di-gate di return awal fungsi ini). null kalau toggle mati, biar
     // resolveAreaPricingRule di pricing-calc.ts fallback ke default (identik
@@ -244,6 +231,7 @@ function buildEnvelope(
     // ini sendiri ke City tertentu, biar 1 client bisa punya beberapa scheme
     // delivery aktif sekaligus (lihat resolveSchemeForCity di pricing-calc.ts).
     city_scope: cityScope.length ? cityScope : null,
+    hub_scope: hubScope.length ? hubScope : null,
     billing_addons:
       schemeFor === "client" && f.billingOn
         ? {
@@ -266,10 +254,10 @@ function loadForm(scheme: PricingScheme | undefined): {
   category: PricingCategory;
   subtype: PricingSubtype;
   schemeFor: SchemeFor;
-  areaRows: AreaLauncherRow[];
+  areaRows: AreaRuleState[];
 } {
   const form = emptyForm();
-  let areaRows: AreaLauncherRow[] = [];
+  let areaRows: AreaRuleState[] = [];
   const rawCategory: PricingCategory = scheme?.category ?? "delivery";
   // "hybrid" gak ada tab/field-nya lagi di form ini (PRICING_CATEGORIES cuma
   // delivery/attendance) — dulu category state dibiarin "hybrid" walau
@@ -333,18 +321,18 @@ function loadForm(scheme: PricingScheme | undefined): {
     form.multiDropOn = true;
     form.multiDropFee = String(env.multi_drop.fee_per_extra_shipment ?? "");
   }
+  if (env.delivery_incentives?.length) {
+    form.deliveryIncentiveOn = true;
+    form.deliveryIncentives = loadDeliveryIncentiveState(env.delivery_incentives);
+  }
   if (env.area_city_pricing?.enabled) {
-    areaRows = env.area_city_pricing.rules.map((r) => ({
-      id: r.id,
-      name: r.name,
-      citiesRaw: r.cities.join(", "),
-      kind: r.model,
-      rate: String(r.rate ?? ""),
-      minimumFee: String(r.minimum_fee ?? ""),
-    }));
+    areaRows = loadAreaCityState(env.area_city_pricing).rules;
   }
   if (env.city_scope?.length) {
     form.cityScopeRaw = env.city_scope.join(", ");
+  }
+  if (env.hub_scope?.length) {
+    form.hubScopeRaw = env.hub_scope.join(", ");
   }
   if (env.billing_addons) {
     form.billingOn = true;
@@ -464,7 +452,7 @@ function PricingFormInner({
   // data awal (bukan reaktif ke f.*) — sekali user buka manual atau nutup lagi,
   // itu keputusan mereka, gak dipaksa balik oleh perubahan checkbox internal.
   const [modifiersOpen, setModifiersOpen] = useState(
-    loaded.form.addKgOn || loaded.form.multiDropOn,
+    loaded.form.addKgOn || loaded.form.multiDropOn || loaded.form.deliveryIncentiveOn,
   );
 
   useEffect(() => {
@@ -473,36 +461,45 @@ function PricingFormInner({
 
   const patch = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
 
-  // Daftar "Area" gabungan (rail) — baris kind flat/per_km jadi rate-override
-  // buat SCHEME INI SENDIRI (area_city_pricing, disave pas Save), baris kind
-  // delivery_other/revenue_share/attendance cuma launcher ke scheme LAIN
-  // (ephemeral, gak disave — hilang kalau form di-refresh, sengaja, lihat plan).
-  const [areaRows, setAreaRows] = useState<AreaLauncherRow[]>(loaded.areaRows);
-  const areaCityRules: AreaRuleState[] = areaRows
-    .filter((r) => r.kind === "flat" || r.kind === "per_km")
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      citiesRaw: r.citiesRaw,
-      model: r.kind as "flat" | "per_km",
-      rate: r.rate,
-      minimum_fee: r.minimumFee,
-    }));
-  const addAreaRow = () =>
-    setAreaRows((prev) => [
-      ...prev,
-      {
-        id: `area_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        name: "",
-        citiesRaw: "",
-        kind: "flat",
-        rate: "",
-        minimumFee: "",
-      },
-    ]);
-  const patchAreaRow = (id: string, p: Partial<AreaLauncherRow>) =>
-    setAreaRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...p } : r)));
-  const removeAreaRow = (id: string) => setAreaRows((prev) => prev.filter((r) => r.id !== id));
+  // Rate-override per City buat SCHEME INI SENDIRI (area_city_pricing,
+  // disave pas Save) — diedit lewat AreaRuleModal (popup), bukan inline di
+  // rail lagi (lihat riwayat: 1 dropdown campur "isi tarif" vs "buka skema
+  // baru" bikin admin bingung). "Buat Skema" (model/skema beda total) murni
+  // di dalam modal, ephemeral, gak pernah masuk state ini.
+  const [areaCityRules, setAreaCityRules] = useState<AreaRuleState[]>(loaded.areaRows);
+  const [areaModalOpen, setAreaModalOpen] = useState(false);
+  const [editingAreaRule, setEditingAreaRule] = useState<AreaRuleState | null>(null);
+  const openAddAreaRule = () => {
+    setEditingAreaRule(null);
+    setAreaModalOpen(true);
+  };
+  const openEditAreaRule = (rule: AreaRuleState) => {
+    setEditingAreaRule(rule);
+    setAreaModalOpen(true);
+  };
+  const saveAreaRule = (rule: AreaRuleState) =>
+    setAreaCityRules((prev) => {
+      const idx = prev.findIndex((r) => r.id === rule.id);
+      if (idx === -1) return [...prev, rule];
+      return prev.map((r, i) => (i === idx ? rule : r));
+    });
+  const removeAreaRule = (id: string) =>
+    setAreaCityRules((prev) => prev.filter((r) => r.id !== id));
+
+  // Cek cepat "kota X kena rule yang mana" — TEPAT di bawah daftar rule yang
+  // baru dibuat, biar gak perlu scroll ke kalkulator di bawah buat mastiin
+  // rule-nya ke-pasang bener. Reuse resolveAreaPricingRule/buildAreaCityConfig
+  // PERSIS dari pricing-calc.ts (mesin asli), bukan reimplementasi manual, biar
+  // hasil cek ini gak mungkin beda dari yang beneran dipakai pas payroll jalan.
+  const [citySimInput, setCitySimInput] = useState("");
+  const [citySimCustom, setCitySimCustom] = useState(false);
+  const citySimCities = useMemo(
+    () => [...new Set(areaCityRules.flatMap((r) => citiesFromRaw(r.citiesRaw)))],
+    [areaCityRules],
+  );
+  const citySimMatch = citySimInput.trim()
+    ? resolveAreaPricingRule(buildAreaCityConfig({ rules: areaCityRules }, true), citySimInput)
+    : null;
 
   const handleCategoryChange = (cat: PricingCategory) => {
     setCategory(cat);
@@ -518,6 +515,10 @@ function PricingFormInner({
     if (!effFrom) return toast.error(t("pform.effFromRequired"));
     if (category === "delivery" && areaCityRules.length > 0) {
       const err = validateAreaCityState({ rules: areaCityRules });
+      if (err) return toast.error(err);
+    }
+    if (category === "delivery" && f.deliveryIncentiveOn) {
+      const err = validateDeliveryIncentiveState(f.deliveryIncentives);
       if (err) return toast.error(err);
     }
     // Nama opsional — kalau dikosongin, dibikinin otomatis dari client + sisi + tipe.
@@ -620,7 +621,7 @@ function PricingFormInner({
                       ({t("pform.optional")})
                     </span>
                   </FieldLabel>
-                  <span className="text-[11px] text-muted-foreground leading-snug">
+                  <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
                     {t("pform.cityScopeHint")}
                   </span>
                   <TextInput
@@ -631,118 +632,154 @@ function PricingFormInner({
                   />
                 </div>
 
+                <div className="flex flex-col gap-1 border-t border-border pt-3">
+                  <FieldLabel>
+                    {t("pform.hubScopeLabel")}{" "}
+                    <span className="font-normal text-muted-foreground">
+                      ({t("pform.optional")})
+                    </span>
+                  </FieldLabel>
+                  <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
+                    {t("pform.hubScopeHint")}
+                  </span>
+                  <TextInput
+                    value={f.hubScopeRaw}
+                    placeholder={t("pfDelivery.columnSenderName")}
+                    onChange={(e) => patch({ hubScopeRaw: e.target.value })}
+                    className="mt-0.5"
+                  />
+                </div>
+
                 <div className="border-t border-border pt-3 flex flex-col gap-2">
                   <div className="flex flex-col gap-0.5">
                     <FieldLabel>{t("pform.areaLauncherLabel")}</FieldLabel>
-                    <span className="text-[11px] text-muted-foreground leading-snug">
+                    <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
                       {t("pform.areaLauncherHint")}
                     </span>
                   </div>
-                  {areaRows.map((row) => {
-                    const opt = AREA_KIND_OPTIONS.find((o) => o.key === row.kind)!;
-                    const cities = citiesFromRaw(row.citiesRaw);
+                  {areaCityRules.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{t("pfAreaCity.empty")}</p>
+                  )}
+                  {areaCityRules.map((rule) => {
+                    const cities = citiesFromRaw(rule.citiesRaw);
+                    const modelLabel =
+                      rule.model === "flat"
+                        ? t("pfAreaCity.modelFlat")
+                        : t("pfAreaCity.modelPerKm");
+                    const rateNum = Number(parseRupiah(rule.rate)) || 0;
+                    const rateLabel = `Rp${rateNum.toLocaleString("id-ID")}${rule.model === "flat" ? "/order" : "/km"}`;
                     return (
                       <div
-                        key={row.id}
-                        className="flex flex-col gap-1.5 rounded-md bg-muted/50 p-2.5"
+                        key={rule.id}
+                        className="flex items-center justify-between gap-2 rounded-md bg-muted/50 p-2.5"
                       >
-                        <div className="flex items-start gap-1.5">
-                          <TextInput
-                            value={row.name}
-                            placeholder={t("pfAreaCity.areaNamePlaceholder")}
-                            onChange={(e) => patchAreaRow(row.id, { name: e.target.value })}
-                            className="flex-1"
-                          />
+                        <div className="min-w-0 flex flex-col">
+                          <span className="text-xs font-medium truncate">
+                            {rule.name || cities.join(", ") || "—"}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground truncate">
+                            {cities.join(", ") || "—"} · {modelLabel} · {rateLabel}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             type="button"
-                            onClick={() => removeAreaRow(row.id)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-muted flex-shrink-0"
+                            onClick={() => openEditAreaRule(rule)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeAreaRule(rule.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-muted"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                        <TextInput
-                          value={row.citiesRaw}
-                          placeholder={t("pfAreaCity.citiesPlaceholder")}
-                          onChange={(e) => patchAreaRow(row.id, { citiesRaw: e.target.value })}
-                        />
-                        <select
-                          value={row.kind}
-                          onChange={(e) =>
-                            patchAreaRow(row.id, {
-                              kind: e.target.value as AreaLauncherRow["kind"],
-                            })
-                          }
-                          className="rounded-md border-2 border-border-strong bg-card px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
-                        >
-                          {AREA_KIND_OPTIONS.map((o) => (
-                            <option key={o.key} value={o.key}>
-                              {t(o.labelKey)}
-                            </option>
-                          ))}
-                        </select>
-
-                        {!opt.spawnsScheme ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className="flex-1">
-                              <RupiahInput
-                                value={row.rate}
-                                onChange={(v) => patchAreaRow(row.id, { rate: v })}
-                                placeholder={
-                                  row.kind === "flat"
-                                    ? t("pfAreaCity.rateFlat")
-                                    : t("pfAreaCity.ratePerKm")
-                                }
-                              />
-                            </div>
-                            {row.kind === "per_km" && (
-                              <div className="flex-1">
-                                <RupiahInput
-                                  value={row.minimumFee}
-                                  onChange={(v) => patchAreaRow(row.id, { minimumFee: v })}
-                                  placeholder={t("pfAreaCity.minimumFee")}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <Link
-                            to="/admin/pricing/new"
-                            search={{
-                              clientId: clientId || undefined,
-                              cityScope: cities.length ? cities.join(", ") : undefined,
-                              category: opt.category,
-                              revenueShare: opt.revenueShare || undefined,
-                            }}
-                            disabled={cities.length === 0}
-                            className={
-                              "inline-flex items-center justify-center gap-1 rounded-md border-2 border-border-strong px-2.5 py-1.5 text-xs font-medium " +
-                              (cities.length === 0
-                                ? "pointer-events-none opacity-50 bg-muted"
-                                : "bg-primary text-primary-foreground hover:opacity-90")
-                            }
-                          >
-                            {t("pform.createSchemeForArea")}{" "}
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                          </Link>
-                        )}
-                        {row.kind === "attendance" && (
-                          <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                            {t("pform.areaModelAttendanceWarning")}
-                          </p>
-                        )}
                       </div>
                     );
                   })}
                   <button
                     type="button"
-                    onClick={addAreaRow}
+                    onClick={openAddAreaRule}
                     className="w-full text-xs text-primary border border-dashed border-primary-border rounded-md px-3 py-1.5 hover:bg-primary-soft/50 inline-flex items-center justify-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" /> {t("pfAreaCity.addArea")}
                   </button>
+
+                  {areaCityRules.length > 0 && (
+                    <div className="flex flex-col gap-1 rounded-md border border-dashed border-border-strong p-2.5">
+                      <FieldLabel>{t("pfAreaCity.citySimLabel")}</FieldLabel>
+                      <select
+                        value={citySimCustom ? "__custom__" : citySimInput}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setCitySimCustom(true);
+                            setCitySimInput("");
+                          } else {
+                            setCitySimCustom(false);
+                            setCitySimInput(e.target.value);
+                          }
+                        }}
+                        className="w-full rounded-md border-2 border-border-strong bg-card px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="" disabled>
+                          {t("pfAreaCity.citySimPlaceholder")}
+                        </option>
+                        {citySimCities.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                        <option value="__custom__">{t("pfAreaCity.citySimCustomOption")}</option>
+                      </select>
+                      {/* Ketik bebas — buat tes City yang belum terdaftar (mastiin fallback-nya
+                          bener), gak cuma City yang udah ada di rule. */}
+                      {citySimCustom && (
+                        <TextInput
+                          value={citySimInput}
+                          placeholder={t("pfAreaCity.citiesPlaceholder")}
+                          onChange={(e) => setCitySimInput(e.target.value)}
+                          className="mt-0.5"
+                          autoFocus
+                        />
+                      )}
+                      {citySimInput.trim() && (
+                        <p className="text-[11px]">
+                          {citySimMatch ? (
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              {t("pfAreaCity.ruleMatched")}: <b>{citySimMatch.name}</b> (
+                              {citySimMatch.model === "flat"
+                                ? t("pfAreaCity.modelFlat")
+                                : t("pfAreaCity.modelPerKm")}
+                              , Rp{Number(citySimMatch.rate).toLocaleString("id-ID")}
+                              {citySimMatch.model === "flat" ? "/order" : "/km"})
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 dark:text-amber-400">
+                              {t("pfAreaCity.ruleFallback")}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
+
+            {areaModalOpen && (
+              <AreaRuleModal
+                editing={editingAreaRule}
+                existingRules={areaCityRules.filter((r) => r.id !== editingAreaRule?.id)}
+                clientId={clientId}
+                onClose={() => setAreaModalOpen(false)}
+                onSave={(rule) => {
+                  saveAreaRule(rule);
+                  setAreaModalOpen(false);
+                }}
+              />
             )}
 
             {/* Scheme for */}
@@ -1033,7 +1070,9 @@ function PricingFormInner({
             {category === "delivery" &&
               !f.revenueShareOn &&
               (() => {
-                const activeCount = [f.addKgOn, f.multiDropOn].filter(Boolean).length;
+                const activeCount = [f.addKgOn, f.multiDropOn, f.deliveryIncentiveOn].filter(
+                  Boolean,
+                ).length;
                 const hasActive = activeCount > 0;
                 return (
                   <div
@@ -1107,6 +1146,18 @@ function PricingFormInner({
                               onChange={(v) => patch({ multiDropFee: v })}
                             />
                           </div>
+                        </ToggleBlock>
+
+                        <ToggleBlock
+                          label={t("pform.deliveryIncentiveLabel")}
+                          hint={t("pform.deliveryIncentiveHint")}
+                          on={f.deliveryIncentiveOn}
+                          onToggle={(on) => patch({ deliveryIncentiveOn: on })}
+                        >
+                          <DeliveryIncentiveFields
+                            value={f.deliveryIncentives}
+                            onChange={(v) => patch({ deliveryIncentives: v })}
+                          />
                         </ToggleBlock>
                       </div>
                     )}

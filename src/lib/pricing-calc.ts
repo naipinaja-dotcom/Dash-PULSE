@@ -13,6 +13,7 @@ import type {
   ModularDeliveryConfig,
   AreaCityPricing,
   AreaPricingRule,
+  RateModel,
   PricingScheme,
 } from "./pricing-types";
 
@@ -32,6 +33,11 @@ export interface DeliveryRow {
   weight_kg?: number | null;
   destination_address?: string | null;
   service_type?: string | null;
+  // Nama pengirim (outlet/hub asal) — dasar match_column="Sender Name" (Hub),
+  // beda dari district/city yang berbasis TUJUAN. Reliable sebagai "Hub"
+  // cuma buat client model X_DOCK (nama hub tetap, mis. "Dash Hub Kemang");
+  // client model instant/multi-merchant isinya nama outlet random per order.
+  sender_name?: string | null;
   status?: string | null;
   delivery_type?: string | null; // "DELIVERY" | "RETURN" | null (belum ke-klasifikasi)
 }
@@ -43,12 +49,18 @@ export interface RowFee {
   base: number;
   add_kg: number;
   multi_drop: number;
-  fee: number; // base + add_kg + multi_drop
+  fee: number; // base + add_kg + multi_drop + incentive
   // Auditability Area City Pricing — cuma keisi kalau env.area_city_pricing
   // aktif. `area_rule` = nama rule yang kepilih, atau "default" kalau City
   // gak match rule manapun (fallback).
   city?: string | null;
   area_rule?: string | null;
+  // Insentif per rider per hari (uang bensin/makan dsb, lihat DeliveryIncentive
+  // di pricing-types.ts) — cuma keisi (>0) di baris PERTAMA tiap rider-hari,
+  // baris lain di hari yang sama 0 (sama pola kayak multi_drop, cair sekali
+  // per hari bukan per-order). Optional — engine lain (calcHybridScheme) yang
+  // gak pakai fitur ini gak perlu ngisi field ini sama sekali.
+  incentive?: number;
 }
 
 export interface RiderLine {
@@ -58,6 +70,7 @@ export interface RiderLine {
   add_kg: number;
   multi_drop: number;
   total: number;
+  incentive?: number;
 }
 
 export interface RowAnomaly {
@@ -201,6 +214,10 @@ function resolveField(row: DeliveryRow, columnName: string): string {
   if (c.includes("service") || c.includes("layanan")) return String(row.service_type ?? "");
   if (c.includes("return") || c.includes("delivery type") || c.includes("tipe kirim"))
     return String(row.delivery_type ?? "");
+  // "Sender Name (Hub)" — beda dari district/city (berbasis TUJUAN), ini
+  // berbasis ASAL (nama outlet/hub pengirim). Lihat comment DeliveryRow.sender_name.
+  if (c.includes("sender") || c.includes("hub") || c.includes("pengirim"))
+    return String(row.sender_name ?? "");
   return String(row.district ?? "");
 }
 
@@ -240,6 +257,15 @@ export function stepTierFee(tier: StepTier | null | undefined, value: number): n
     }
   }
   return fee;
+}
+
+/** Kelipatan pengali buat Surcharge Berat → Distance: berat aktual dibagi
+ * threshold, dibulatkan ke ATAS, minimal 1× (gak pernah NGURANGIN fee kalau
+ * berat kosong/di bawah threshold). Mis. threshold=20kg: berat 30kg -> 2×,
+ * 45kg -> 3×, tepat 20kg -> 1× (belum lewat, belum kena kelipatan ke-2). */
+export function weightSurchargeMultiplier(weightKg: number, thresholdKg: number): number {
+  if (!(thresholdKg > 0)) return 1;
+  return Math.max(1, Math.ceil((Number(weightKg) || 0) / thresholdKg));
 }
 
 function groupBy<T>(arr: T[], keyFn: (x: T) => string): Map<string, T[]> {
@@ -485,8 +511,10 @@ export function resolveAreaPricingRule(
 }
 
 /** Reuse bandLookupFee (band tunggal) — "flat" = base_fee polos, "per_km" =
- * tier per-km diklem ke minimum_fee. Bukan formula baru, cuma orkestrasi. */
-export function calcAreaRuleFee(rule: AreaPricingRule, distanceKm: number): number {
+ * tier per-km diklem ke minimum_fee. Bukan formula baru, cuma orkestrasi.
+ * Parameter cuma butuh RateModel (bukan AreaPricingRule utuh) — dipakai ulang
+ * buat tabel rate per-District/kolom di calcModularDeliveryComponent juga. */
+export function calcAreaRuleFee(rule: RateModel, distanceKm: number): number {
   if (rule.model === "flat") return Number(rule.rate) || 0;
   const row: RangeRow = {
     type: "tier",
@@ -541,10 +569,38 @@ export function resolveSchemeForCity(
   return sortSchemeCandidates(unscoped, clientId)[0];
 }
 
-// Dispatcher city-scoped buat scheme kategori "delivery" — group rows per
-// City (meta.city, sama field yang dipakai area_city_pricing), resolve
-// scheme pemenang tiap grup, jalanin calcScheme() per grup, gabung hasilnya
-// jadi SATU CalcResult. Billing add-ons (min_charge/admin_fee) SENGAJA
+// Perluasan resolveSchemeForCity buat skema yang JUGA di-scope per Hub
+// (sender_name, lihat DeliveryRow.sender_name) — bukan cuma City. Reuse
+// resolveSchemeForCity APA ADANYA (termasuk ambiguity guard prefix-match-nya)
+// dengan cara mempartisi candidates dulu: hub_scope yang match row ini vs
+// yang gak punya hub_scope sama sekali, baru tiap partisi diresolve city-nya
+// pakai fungsi lama. Partisi "hub match" dicoba duluan (lebih spesifik);
+// unscoped-hub jadi fallback (termasuk skema city_scope biasa yang emang
+// belum pernah pakai Hub sama sekali — 100% identik perilaku lama).
+export function resolveSchemeForCityHub(
+  candidates: PricingScheme[],
+  city: string | null | undefined,
+  hub: string | null | undefined,
+  clientId: string,
+): PricingScheme | undefined {
+  const nh = normalizeCity(hub);
+  const hubMatch = nh
+    ? candidates.filter((s) => s.hub_scope?.some((h) => normalizeCity(h) === nh))
+    : [];
+  if (hubMatch.length > 0) {
+    const r = resolveSchemeForCity(hubMatch, city, clientId);
+    if (r) return r;
+  }
+  const hubUnscoped = candidates.filter((s) => !s.hub_scope?.length);
+  return resolveSchemeForCity(hubUnscoped, city, clientId);
+}
+
+// Dispatcher city+hub-scoped buat scheme kategori "delivery" — group rows per
+// (City, Hub) pair (meta.city + sender_name), resolve scheme pemenang tiap
+// grup, jalanin calcScheme() per grup, gabung hasilnya jadi SATU CalcResult.
+// Beda dari rate_by=column (override 1 kolom di 1 skema) — di sini tiap grup
+// pakai SKEMA PENUH-nya sendiri (Distance/Weight/Add-KG/Multi-drop/Insentif
+// semua ikut beda), bukan cuma base rate. Billing add-ons (min_charge/admin_fee) SENGAJA
 // diterapkan SEKALI di akhir atas subtotal gabungan (pakai billing_addons
 // milik scheme default/unscoped) — bukan per grup, biar gak double-charge
 // kalau ada N city group. Cuma 1 candidate (kasus normal, belum pakai city
@@ -556,8 +612,14 @@ export function calcDeliveryFeeMultiCity(
   clientRevenueByRow?: number[],
 ): CalcResult {
   const completed = rows.filter(isCompleted);
-  const groups = groupBy(completed, (r) => normalizeCity(r.city));
-  const defaultScheme = candidates.find((s) => !s.city_scope?.length) ?? candidates[0];
+  // Grouping key gabungan City+Hub (bukan cuma City) — separator NUL biar gak
+  // pernah nabrak sama isi city/hub asli (keduanya teks bebas dari MGMT).
+  const groups = groupBy(
+    completed,
+    (r) => `${normalizeCity(r.city)}\u0000${normalizeCity(r.sender_name)}`,
+  );
+  const defaultScheme =
+    candidates.find((s) => !s.city_scope?.length && !s.hub_scope?.length) ?? candidates[0];
 
   const perRow: RowFee[] = [];
   let perRiderMap = new Map<string, RiderLine>();
@@ -579,12 +641,13 @@ export function calcDeliveryFeeMultiCity(
     completed.forEach((r, i) => revenueOf.set(r, clientRevenueByRow[i]));
   }
 
-  for (const [normCity, groupRows] of groups) {
+  for (const [, groupRows] of groups) {
     const rawCity = groupRows[0]?.city ?? null;
-    const scheme = resolveSchemeForCity(candidates, rawCity, clientId);
+    const rawHub = groupRows[0]?.sender_name ?? null;
+    const scheme = resolveSchemeForCityHub(candidates, rawCity, rawHub, clientId);
     if (!scheme) {
       warnings.push(
-        `${groupRows.length} delivery di city '${rawCity ?? "(kosong)"}' gak ketemu skema manapun (gak match rule manapun & gak ada skema default).`,
+        `${groupRows.length} delivery di city '${rawCity ?? "(kosong)"}' / hub '${rawHub ?? "(kosong)"}' gak ketemu skema manapun (gak match rule manapun & gak ada skema default).`,
       );
       continue;
     }
@@ -608,6 +671,7 @@ export function calcDeliveryFeeMultiCity(
               base: cur.base + line.base,
               add_kg: cur.add_kg + line.add_kg,
               multi_drop: cur.multi_drop + line.multi_drop,
+              incentive: (cur.incentive ?? 0) + (line.incentive ?? 0),
               total: cur.total + line.total,
             }
           : { ...line },
@@ -708,12 +772,24 @@ export function calcModularDeliveryComponent(
   // malah kena rumus per-km/per-kg delivery biasa. accumulate="daily" TETAP
   // gak kepake override-nya (nilai udah gabungan banyak baris, gak valid
   // dipaksa jadi 1 angka per baris).
+  // hit.model/minimum_fee OPTIONAL (data lama sebelum fitur "district bisa
+  // per_km" cuma punya {key,rate}) — gak ada = diperlakukan "flat", identik
+  // perilaku lama. calcAreaRuleFee di-reuse APA ADANYA (sama formula persis
+  // yang dipakai Area City Pricing), bukan reimplementasi.
   const rowOverride: (number | null)[] =
     rateSettings.rate_by === "flat"
       ? rows.map(() => null)
       : rows.map((r) => {
           const hit = resolveRateHit(r, rateSettings);
-          return hit ? Number(hit.rate) || 0 : null;
+          if (!hit) return null;
+          return calcAreaRuleFee(
+            {
+              model: hit.model === "per_km" ? "per_km" : "flat",
+              rate: Number(hit.rate) || 0,
+              minimum_fee: Number(hit.minimum_fee) || 0,
+            },
+            Number(r.distance_km) || 0,
+          );
         });
   const overrideUsed = new Array(rows.length).fill(false);
   const applyDim = (
@@ -736,13 +812,17 @@ export function calcModularDeliveryComponent(
   if (cfg.distance?.enabled) {
     const distanceOut = new Array(rows.length).fill(0);
     applyDim(cfg.distance, (r) => Number(r.distance_km) || 0, distanceOut);
-    // Berat lewat batas -> fee Distance baris itu dikali N (Weight, kalau
-    // aktif, tetap dihitung normal terpisah di bawah — berat di sini cuma
-    // pemicu, bukan komponen yang ikut kena kali).
+    // Berat lewat batas -> fee Distance baris itu dikali KELIPATAN berat aktual
+    // dibagi threshold (weightSurchargeMultiplier di atas) — otomatis, bukan
+    // angka tetap. Weight (kalau aktif) tetap dihitung normal terpisah di
+    // bawah — berat di sini cuma pemicu, bukan komponen yang ikut kena kali.
     const ws = cfg.weight_surcharge;
     if (ws?.enabled) {
       rows.forEach((r, i) => {
-        if ((Number(r.weight_kg) || 0) >= ws.threshold_kg) distanceOut[i] *= ws.multiplier;
+        distanceOut[i] *= weightSurchargeMultiplier(
+          Number(r.weight_kg) || 0,
+          Number(ws.threshold_kg) || 0,
+        );
       });
     }
     distanceOut.forEach((f, i) => (out[i] += f));
@@ -784,7 +864,14 @@ export function calcModularDeliveryComponent(
       const hit = resolveRateHit(r, rateSettings);
       const i = idxOf.get(r)!;
       if (hit) {
-        out[i] += Number(hit.rate) || 0;
+        out[i] += calcAreaRuleFee(
+          {
+            model: hit.model === "per_km" ? "per_km" : "flat",
+            rate: Number(hit.rate) || 0,
+            minimum_fee: Number(hit.minimum_fee) || 0,
+          },
+          Number(r.distance_km) || 0,
+        );
       } else {
         out[i] += defaultRate;
         if (stats) stats.unmatchedArea++;
@@ -882,6 +969,27 @@ export function calcScheme(
     }
   }
 
+  // Insentif per rider per hari (uang bensin/makan dsb) — cair SEKALI per
+  // rider-hari yang ada minimal 1 kiriman COMPLETED, nempel di baris PERTAMA
+  // hari itu (kebalikan multi_drop yang nempel di baris ke-2 dst, tapi
+  // grouping-nya sama persis). Gak relevan buat revenue_share (fee murni %
+  // revenue) atau attendance (calcScheme gak pernah beneran dipanggil buat
+  // attendance, tapi tetap di-exclude defensif sama kayak add_kg di atas).
+  const incByRow = new Array(completed.length).fill(0);
+  if (
+    env.delivery_incentives?.length &&
+    env.type !== "revenue_share" &&
+    env.type !== "attendance"
+  ) {
+    const total = env.delivery_incentives.reduce((s, inc) => s + (Number(inc.amount) || 0), 0);
+    for (const [, rrows] of byRider) {
+      const byDay = groupBy(rrows, (r) => r.delivery_date);
+      for (const [, drows] of byDay) {
+        incByRow[idxOf.get(drows[0])!] = total;
+      }
+    }
+  }
+
   // ---- rakit perRow + perRider ----
   const perRow: RowFee[] = completed.map((r, i) => ({
     id: r.id ?? null,
@@ -890,9 +998,10 @@ export function calcScheme(
     base: baseByRow[i],
     add_kg: addByRow[i],
     multi_drop: mdByRow[i],
-    fee: baseByRow[i] + addByRow[i] + mdByRow[i],
+    fee: baseByRow[i] + addByRow[i] + mdByRow[i] + incByRow[i],
     city: r.city ?? null,
     area_rule: areaRuleByRow[i],
+    incentive: incByRow[i],
   }));
 
   // ---- deteksi anomali sederhana — jangan gagalin komputasi, cuma diflag ----
@@ -965,11 +1074,13 @@ export function calcScheme(
       add_kg: 0,
       multi_drop: 0,
       total: 0,
+      incentive: 0,
     };
     line.units += 1;
     line.base += rf.base;
     line.add_kg += rf.add_kg;
     line.multi_drop += rf.multi_drop;
+    line.incentive = (line.incentive ?? 0) + (rf.incentive ?? 0);
     line.total += rf.fee;
     riderMap.set(rf.rider, line);
   });

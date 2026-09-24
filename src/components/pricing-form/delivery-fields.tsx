@@ -94,13 +94,14 @@ export type DeliveryState = ModularDeliveryState;
 // ini nama outlet/hub ASAL pengirim. Reliable cuma buat client model X_DOCK
 // (nama hub tetap, mis. "Dash Hub Kemang"); client instant/multi-merchant
 // isinya nama outlet random per order, jangan dipakai buat mereka.
-const MATCH_COLUMN_OPTIONS = ["Area", "Service Type", "Sender Name"] as const;
+const MATCH_COLUMN_OPTIONS = ["District", "Area", "Service Type", "Sender Name"] as const;
 function canonicalMatchColumn(raw: string): string {
   const c = String(raw ?? "")
     .trim()
     .toLowerCase();
   if (c.includes("service") || c.includes("layanan")) return "Service Type";
   if (c.includes("sender") || c.includes("hub") || c.includes("pengirim")) return "Sender Name";
+  if (c.includes("district") || c.includes("kabupaten")) return "District";
   return "Area";
 }
 
@@ -901,14 +902,21 @@ export function DeliveryFields({
                     >
                       {MATCH_COLUMN_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>
-                          {opt === "Area"
-                            ? t("pfDelivery.columnArea")
-                            : opt === "Service Type"
-                              ? t("pfDelivery.columnServiceType")
-                              : t("pfDelivery.columnSenderName")}
+                          {opt === "District"
+                            ? t("pfDelivery.columnDistrict")
+                            : opt === "Area"
+                              ? t("pfDelivery.columnArea")
+                              : opt === "Service Type"
+                                ? t("pfDelivery.columnServiceType")
+                                : t("pfDelivery.columnSenderName")}
                         </option>
                       ))}
                     </select>
+                    {value.match_column === "Area" && (
+                      <span className="text-[11px] text-muted-foreground leading-snug">
+                        {t("pfDelivery.columnAreaHint")}
+                      </span>
+                    )}
                     {value.match_column === "Sender Name" && (
                       <span className="text-[11px] text-muted-foreground leading-snug">
                         {t("pfDelivery.columnSenderNameHint")}

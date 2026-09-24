@@ -1464,7 +1464,12 @@ const T = {
   },
   "pfDelivery.rateByDeliveryType": { id: "Antar / Kembali", en: "Delivery / Return" },
   "pfDelivery.columnNameLabel": { id: "Nama Kolom", en: "Column Name" },
-  "pfDelivery.columnArea": { id: "Area / Kota (District)", en: "Area / City (District)" },
+  "pfDelivery.columnDistrict": { id: "District (Kota/Kabupaten)", en: "District (City/Regency)" },
+  "pfDelivery.columnArea": { id: "Area (Provinsi)", en: "Area (Province)" },
+  "pfDelivery.columnAreaHint": {
+    id: "Baca dari kolom City mentah (dari MGMT) — proxy provinsi paling deket yang ada, belum tentu selalu keisi. Kalau butuh granularitas kota/kabupaten yang lebih rapi, pakai District.",
+    en: "Reads the raw City column (from MGMT) — the closest available proxy for province, not always populated. For cleaner city/regency granularity, use District.",
+  },
   "pfDelivery.columnServiceType": { id: "Tipe Layanan (Service Type)", en: "Service Type" },
   "pfDelivery.colValueDeliveryType": {
     id: "Nilai (DELIVERY / RETURN)",

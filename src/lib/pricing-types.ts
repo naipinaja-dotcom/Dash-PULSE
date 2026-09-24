@@ -56,12 +56,16 @@ export interface RangeDimensionConfig {
   rows: RangeRow[];
 }
 
-/** Berat lewat batas -> fee Distance (bukan Weight) baris itu dikali N. Weight
- * (kalau aktif) tetap dihitung normal, gak ikut kali — cuma pemicu doang. */
+/** Berat lewat batas -> fee Distance (bukan Weight) baris itu dikali KELIPATAN
+ * berat aktual dibagi threshold_kg (dibulatkan ke atas, minimal 1×) — mis.
+ * threshold=20kg: 30kg jadi ×2, 45kg jadi ×3. Weight (kalau aktif) tetap
+ * dihitung normal, gak ikut kali — cuma pemicu doang. Gak ada field
+ * `multiplier` lagi (dulu angka tetap yang diisi manual) — kelipatannya
+ * SELALU dihitung otomatis dari berat aktual, lihat weightSurchargeMultiplier
+ * di pricing-calc.ts. */
 export interface WeightSurcharge {
   enabled: boolean;
   threshold_kg: number;
-  multiplier: number;
 }
 
 export interface ThresholdGroupConfig {
@@ -84,7 +88,11 @@ export interface ModularDeliveryConfig {
   // untuk dedup alamat & hitung stop count (multi-drop).
   rate_by: "flat" | "column" | "delivery_type";
   match_column: string;
-  rates: { key: string; rate: number }[];
+  // `model`/`minimum_fee` OPTIONAL — data lama (JSONB, sebelum fitur ini) cuma
+  // punya {key,rate}, gak ada key-nya sama sekali (bukan cuma undefined).
+  // Diperlakukan sebagai "flat" kalau gak ada (backward compatible, identik
+  // perilaku sebelum fitur ini) — lihat rateHitFee() di pricing-calc.ts.
+  rates: { key: string; rate: number; model?: "flat" | "per_km"; minimum_fee?: number }[];
   // Rate buat baris yang district/kolom-nya GAK ke-match satupun `rates` di
   // atas (format beda, atau area di luar cakupan skema) — hanya berlaku pas
   // Distance & Weight dua-duanya mati (rate_by="column" murni tanpa band).
@@ -244,18 +252,41 @@ export interface MultiDrop {
   fee_per_extra_shipment: number; // otomatis mulai kiriman ke-2 per rider per hari
 }
 
-// Area City Pricing — tarif delivery beda per City MGMT (meta.city mentah,
-// BUKAN district hasil enrichment alamat/ORS — lihat DeliveryRow.city di
-// pricing-calc.ts). Reuse primitif band existing (bandLookupFee): "flat" =
-// 1 band flat, "per_km" = 1 band tier (step=1, add_per_step=rate) + klem
-// minimum manual di calcAreaRuleFee — bukan formula baru, cuma orkestrasi.
-export interface AreaPricingRule {
-  id: string;
-  name: string;
-  cities: string[];
+// Insentif tambahan per rider PER HARI KERJA (mis. uang bensin, uang makan) —
+// BEDA dari IncentiveEditor (components/incentive-editor.tsx), yang manual
+// diketik admin per rider per run sekali jalan. Ini nempel ke SKEMA, jadi
+// otomatis kehitung ulang tiap payroll run tanpa admin input ulang. Cair
+// SEKALI per rider per delivery_date yang ada minimal 1 kiriman COMPLETED —
+// sama pola grouping-nya kayak MultiDrop (lihat calcScheme di pricing-calc.ts),
+// bukan per-order. `condition: "always"` = satu-satunya kondisi buat versi
+// awal ini (selalu cair kalau rider kerja hari itu) — beda dari incentives
+// attendance yang punya "ontime_only" (gak relevan di delivery, konsep
+// telat/ontime attendance-only).
+export interface DeliveryIncentive {
+  label: string; // mis. "Uang Bensin"
+  amount: number; // per rider per hari
+  condition: "always";
+}
+
+// Bentuk tarif "flat ATAU per_km" yang dipakai di 2 tempat (Area City Pricing
+// & tabel rate per-District/kolom di ModularDeliveryConfig di bawah) —
+// diekstrak biar calcAreaRuleFee (pricing-calc.ts) bisa dipakai ulang buat
+// keduanya, bukan duplikasi formula. Reuse primitif band existing
+// (bandLookupFee): "flat" = 1 band flat, "per_km" = 1 band tier (step=1,
+// add_per_step=rate) + klem minimum manual di calcAreaRuleFee.
+export interface RateModel {
   model: "flat" | "per_km";
   rate: number; // flat: rate per order; per_km: rate per km
   minimum_fee: number; // dipakai cuma kalau model === "per_km"; 0 = tanpa minimum
+}
+
+// Area City Pricing — tarif delivery beda per City MGMT (meta.city mentah,
+// BUKAN district hasil enrichment alamat/ORS — lihat DeliveryRow.city di
+// pricing-calc.ts).
+export interface AreaPricingRule extends RateModel {
+  id: string;
+  name: string;
+  cities: string[];
 }
 
 export interface AreaCityPricing {
@@ -293,6 +324,13 @@ export interface PricingEnvelope {
   config: Record<string, unknown>; // isi spesifik per tipe
   add_kg: AddKg | null;
   multi_drop: MultiDrop | null;
+  // Hanya relevan buat category "delivery" (bukan attendance/hybrid/revenue_share
+  // — lihat gate di calcScheme). undefined/null/[] = gak ada insentif tambahan.
+  // Optional (bukan required kayak add_kg/multi_drop) SENGAJA — field baru,
+  // scheme lama di DB (JSONB) gak punya key ini sama sekali (bukan cuma null),
+  // dan biar literal PricingEnvelope yang udah ada di test/script lain
+  // (pra-fitur ini) gak perlu diubah semua cuma buat lengkapin properti.
+  delivery_incentives?: DeliveryIncentive[] | null;
   billing_addons: BillingAddons | null; // hanya untuk scheme_for = 'client'
   // Hanya relevan untuk category "delivery" (bukan revenue_share/attendance).
   // null/enabled=false → pricing default scheme (perilaku identik sebelum fitur ini).
@@ -306,6 +344,15 @@ export interface PricingEnvelope {
   // pricing-calc.ts. Attendance/hybrid belum bisa di-scope (attendance_logs
   // gak punya kolom city sama sekali).
   city_scope: string[] | null;
+  // Scope scheme ke Hub (sender_name = titik asal/origin, lihat
+  // DeliveryRow.sender_name di pricing-calc.ts) — PARALEL sama city_scope di
+  // atas, bukan gantiin (bisa dipakai bareng: scheme cuma berlaku buat City X
+  // DAN Hub Y sekaligus). Optional (beda dari city_scope yang required)
+  // SENGAJA — field baru, biar gak perlu nyentuh literal PricingEnvelope lama
+  // di test/script (pola sama kayak delivery_incentives). undefined/null/[] =
+  // "berlaku semua hub". Resolusi gabungan city+hub ada di
+  // resolveSchemeForCityHub/calcDeliveryFeeMultiCity (pricing-calc.ts).
+  hub_scope?: string[] | null;
 }
 
 export interface PricingScheme {
@@ -323,4 +370,7 @@ export interface PricingScheme {
   // Diflatten dari params.city_scope saat normalize() — lihat komentar di
   // PricingEnvelope.city_scope di atas.
   city_scope: string[] | null;
+  // Diflatten dari params.hub_scope saat normalize() — lihat komentar di
+  // PricingEnvelope.hub_scope di atas. Optional, alasan sama.
+  hub_scope?: string[] | null;
 }

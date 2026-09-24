@@ -11,7 +11,19 @@ export type DelivDetail = {
   kg: number | null;
   type: string | null;
   district: string | null;
+  // Raw City MGMT (delivery_records.city) — TERPISAH dari district (lihat
+  // pricing-calc.ts). Ditampilin apa adanya biar admin bisa liat langsung
+  // kalau City-nya kosong (sering kejadian, tergantung sumber data), bukan
+  // cuma nebak dari kolom Rule Area di bawah.
+  city: string | null;
   fee: number;
+  // areaRule = di-replay dari config area_city_pricing skema delivery yang
+  // berlaku SEKARANG (sama pola kayak shiftLabel/base/overtime attendance di
+  // bawah) — nama rule yang kepilih (mis. "Bandung"), "default" kalau
+  // area_city_pricing aktif tapi City baris ini gak match rule manapun, atau
+  // null kalau client-nya sama sekali gak pakai Area City Pricing. Cuma buat
+  // transparansi tampilan, BUKAN sumber kebenaran duit (itu tetap `fee`).
+  areaRule: string | null;
 };
 
 // shiftLabel/base/overtime/incentiveAmt di-replay dari config skema attendance

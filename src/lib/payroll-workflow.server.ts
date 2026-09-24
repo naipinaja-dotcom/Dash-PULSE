@@ -221,7 +221,7 @@ async function autoComputeFee(
             sb
               .from("delivery_records")
               .select(
-                "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+                "id, rider_id, driver_code, delivery_date, awb, district, city, distance_km, weight_kg, destination_address, service_type, status, delivery_type, sender_name",
               )
               .eq("client_id", clientId)
               .gte("delivery_date", periodStart)

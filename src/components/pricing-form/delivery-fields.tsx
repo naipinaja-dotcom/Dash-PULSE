@@ -23,7 +23,20 @@ import type {
 } from "@/lib/pricing-types";
 import { parseRupiah } from "@/lib/format";
 import { bandFeeAt } from "@/lib/pricing-calc";
-import { AddRowBtn, FieldLabel, RupiahInput, Td, TableShell, TextInput, Th, RowDeleteBtn, ToggleBlock, RESOLVABLE_COLUMN_OPTIONS, resolvableColumnLabel, sanitizeDecimalInput } from "./shared";
+import {
+  AddRowBtn,
+  FieldLabel,
+  RupiahInput,
+  Td,
+  TableShell,
+  TextInput,
+  Th,
+  RowDeleteBtn,
+  ToggleBlock,
+  RESOLVABLE_COLUMN_OPTIONS,
+  resolvableColumnLabel,
+  sanitizeDecimalInput,
+} from "./shared";
 import { Plus, Ruler, Package, ChevronRight, SlidersHorizontal } from "lucide-react";
 
 // -------------------- State shapes (semua string, di-parse saat simpan) --------------------
@@ -57,7 +70,6 @@ export interface WeightRangeState extends RangeDimensionState {
 export interface WeightSurchargeState {
   enabled: boolean;
   threshold_kg: string;
-  multiplier: string;
 }
 
 export interface ModularDeliveryState {
@@ -65,7 +77,7 @@ export interface ModularDeliveryState {
   weight: WeightRangeState;
   rate_by: "flat" | "column" | "delivery_type";
   match_column: string;
-  rates: { key: string; rate: string }[];
+  rates: { key: string; rate: string; model: "flat" | "per_km"; minimum_fee: string }[];
   default_rate: string;
   unit_basis: "awb" | "unique_address";
   weight_surcharge: WeightSurchargeState;
@@ -74,18 +86,41 @@ export interface ModularDeliveryState {
 // Alias dipakai pricing-form.tsx (bentuk state delivery keseluruhan)
 export type DeliveryState = ModularDeliveryState;
 
-// Cuma 2 kolom yang beneran dikenali mesin hitung (lihat resolveField() di
+// Cuma 3 kolom yang beneran dikenali mesin hitung (lihat resolveField() di
 // pricing-calc.ts) — mode "column" gak butuh delivery_type karena itu udah
 // jadi rate_by pilihan sendiri. Dropdown, bukan free-text, biar gak ada admin
 // ngetik nama kolom yang salah lalu diam-diam dianggap "Area".
-const MATCH_COLUMN_OPTIONS = ["Area", "Service Type"] as const;
+// "Sender Name" (Hub) = beda basis dari "Area" (district, berbasis TUJUAN) —
+// ini nama outlet/hub ASAL pengirim. Reliable cuma buat client model X_DOCK
+// (nama hub tetap, mis. "Dash Hub Kemang"); client instant/multi-merchant
+// isinya nama outlet random per order, jangan dipakai buat mereka.
+const MATCH_COLUMN_OPTIONS = ["Area", "Service Type", "Sender Name"] as const;
 function canonicalMatchColumn(raw: string): string {
-  const c = String(raw ?? "").trim().toLowerCase();
-  return c.includes("service") || c.includes("layanan") ? "Service Type" : "Area";
+  const c = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (c.includes("service") || c.includes("layanan")) return "Service Type";
+  if (c.includes("sender") || c.includes("hub") || c.includes("pengirim")) return "Sender Name";
+  return "Area";
 }
 
 function emptyRangeRow(type: "flat" | "tier", from = "0"): RangeRowState {
   return { type, from, to: "", base_fee: "", step: type === "tier" ? "1" : "0", add_per_step: "0" };
+}
+
+// Konversi baca buat tabel rate per-District/kolom — dipakai 2 tempat
+// (modular_v2 & legacy flat_unit) di loadDeliveryState. model/minimum_fee
+// OPTIONAL di data (lihat ModularDeliveryConfig.rates di pricing-types.ts) —
+// gak ada = data lama sebelum fitur ini, default "flat" (identik perilaku
+// sebelumnya, bukan nebak-nebak).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function loadRateRows(rates: any[]): ModularDeliveryState["rates"] {
+  return (rates ?? []).map((r) => ({
+    key: r.key,
+    rate: String(r.rate),
+    model: r.model === "per_km" ? ("per_km" as const) : ("flat" as const),
+    minimum_fee: String(r.minimum_fee ?? ""),
+  }));
 }
 
 export function emptyDeliveryState(): ModularDeliveryState {
@@ -103,7 +138,7 @@ export function emptyDeliveryState(): ModularDeliveryState {
     rates: [],
     default_rate: "0",
     unit_basis: "awb",
-    weight_surcharge: { enabled: false, threshold_kg: "20", multiplier: "2" },
+    weight_surcharge: { enabled: false, threshold_kg: "20" },
   };
 }
 
@@ -131,13 +166,19 @@ export function deliveryEnvelopeType(_subtype: unknown, _d: DeliveryState): Pric
   return "modular_v2";
 }
 
-export function buildDeliveryConfig(subtype: unknown, d: ModularDeliveryState): ModularDeliveryConfig {
+export function buildDeliveryConfig(
+  subtype: unknown,
+  d: ModularDeliveryState,
+): ModularDeliveryConfig {
   // Sumber kebenaran "dimensi mana yang aktif" adalah checkbox Distance/Weight
   // (subtype) di pricing-form.tsx, BUKAN d.distance.enabled/d.weight.enabled —
   // dua field itu cuma keikut dari loadDeliveryState() pas buka skema lama,
   // gak pernah di-toggle checkbox-nya, jadi kalau dipakai balik di sini
   // hasilnya selalu null/default meski tabelnya udah diisi di layar.
-  const dims = (subtype as { distance?: boolean; weight?: boolean } | null) || { distance: false, weight: false };
+  const dims = (subtype as { distance?: boolean; weight?: boolean } | null) || {
+    distance: false,
+    weight: false,
+  };
   const weightDim = buildRangeDimension(!!dims.weight, d.weight);
   return {
     distance: dims.distance ? buildRangeDimension(true, d.distance) : null,
@@ -162,7 +203,12 @@ export function buildDeliveryConfig(subtype: unknown, d: ModularDeliveryState): 
       : null,
     rate_by: d.rate_by,
     match_column: d.match_column,
-    rates: d.rates.map((r) => ({ key: r.key, rate: parseRupiah(r.rate) })),
+    rates: d.rates.map((r) => ({
+      key: r.key,
+      rate: parseRupiah(r.rate),
+      model: r.model,
+      minimum_fee: r.model === "per_km" ? parseRupiah(r.minimum_fee) : 0,
+    })),
     default_rate: parseRupiah(d.default_rate),
     unit_basis: d.unit_basis,
     _dims: { distance: !!dims.distance, weight: !!dims.weight },
@@ -173,7 +219,6 @@ export function buildDeliveryConfig(subtype: unknown, d: ModularDeliveryState): 
         ? {
             enabled: true,
             threshold_kg: Number(d.weight_surcharge.threshold_kg) || 0,
-            multiplier: Number(d.weight_surcharge.multiplier) || 1,
           }
         : null,
   };
@@ -221,7 +266,11 @@ function stepTierToRangeRows(t: StepTier): RangeRowState[] {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType, c: any): ModularDeliveryState {
+export function loadDeliveryState(
+  _subtype: unknown,
+  legacyType: PricingCalcType,
+  c: any,
+): ModularDeliveryState {
   const state = emptyDeliveryState();
 
   if (legacyType === "modular_v2") {
@@ -255,15 +304,13 @@ export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType
     }
     state.rate_by = c.rate_by ?? "flat";
     state.match_column = canonicalMatchColumn(c.match_column ?? "Area");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    state.rates = (c.rates ?? []).map((r: any) => ({ key: r.key, rate: String(r.rate) }));
+    state.rates = loadRateRows(c.rates);
     state.default_rate = String(c.default_rate ?? "0");
     state.unit_basis = c.unit_basis ?? "awb";
     if (c.weight_surcharge) {
       state.weight_surcharge = {
         enabled: !!c.weight_surcharge.enabled,
         threshold_kg: String(c.weight_surcharge.threshold_kg ?? "20"),
-        multiplier: String(c.weight_surcharge.multiplier ?? "2"),
       };
     }
     return state;
@@ -287,8 +334,7 @@ export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType
     };
     state.rate_by = c.rate_by ?? "flat";
     state.match_column = canonicalMatchColumn(c.match_column ?? "Area");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    state.rates = (c.rates ?? []).map((r: any) => ({ key: r.key, rate: String(r.rate) }));
+    state.rates = loadRateRows(c.rates);
     state.unit_basis = c.unit === "unique_address" ? "unique_address" : "awb";
     return state;
   }
@@ -300,7 +346,13 @@ export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType
       state.distance = { enabled: true, accumulate, rows: stepTierToRangeRows(c.distance) };
     }
     if (c.weight) {
-      state.weight = { ...state.weight, enabled: true, accumulate, mode: "range", rows: stepTierToRangeRows(c.weight) };
+      state.weight = {
+        ...state.weight,
+        enabled: true,
+        accumulate,
+        mode: "range",
+        rows: stepTierToRangeRows(c.weight),
+      };
     }
     return state;
   }
@@ -317,7 +369,11 @@ export function loadDeliveryState(_subtype: unknown, legacyType: PricingCalcType
         default_threshold: String(c.default?.threshold ?? "10"),
         default_rate: String(c.default?.rate ?? "40000"),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rules: (c.rules ?? []).map((r: any) => ({ key: r.key, threshold: String(r.threshold), rate: String(r.rate) })),
+        rules: (c.rules ?? []).map((r: any) => ({
+          key: r.key,
+          threshold: String(r.threshold),
+          rate: String(r.rate),
+        })),
       },
     };
     return state;
@@ -381,10 +437,16 @@ function RangeTableEditor({
         <thead>
           <tr className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide bg-muted">
             <th className="px-3 py-2 text-left">{t("pfDelivery.colVariant")}</th>
-            <th className="px-3 py-2 text-left">{t("pfDelivery.colFrom")} ({unit})</th>
-            <th className="px-3 py-2 text-left">{t("pfDelivery.colTo")} ({unit})</th>
+            <th className="px-3 py-2 text-left">
+              {t("pfDelivery.colFrom")} ({unit})
+            </th>
+            <th className="px-3 py-2 text-left">
+              {t("pfDelivery.colTo")} ({unit})
+            </th>
             <th className="px-3 py-2 text-left">{t("pfDelivery.colBaseRp")}</th>
-            <th className="px-3 py-2 text-left">{t("pfDelivery.colStep")} ({unit})</th>
+            <th className="px-3 py-2 text-left">
+              {t("pfDelivery.colStep")} ({unit})
+            </th>
             <th className="px-3 py-2 text-left">{t("pfDelivery.colAddPerStep")}</th>
             <th className="px-3 py-2 w-10" />
           </tr>
@@ -403,14 +465,21 @@ function RangeTableEditor({
                   <span
                     className={
                       "inline-block text-[11px] font-medium px-2 py-0.5 rounded " +
-                      (r.type === "flat" ? "border-2 border-border-strong bg-primary text-primary-foreground" : "border-2 border-border-strong bg-warning text-warning-foreground")
+                      (r.type === "flat"
+                        ? "border-2 border-border-strong bg-primary text-primary-foreground"
+                        : "border-2 border-border-strong bg-warning text-warning-foreground")
                     }
                   >
                     {r.type === "flat" ? t("pfDelivery.typeFlat") : t("pfDelivery.typeTier")}
                   </span>
                 </td>
                 <td className="px-3 py-1.5">
-                  <input className={inputCls} value={r.from} inputMode="decimal" onChange={(e) => patchRow(i, { from: sanitizeDecimalInput(e.target.value) })} />
+                  <input
+                    className={inputCls}
+                    value={r.from}
+                    inputMode="decimal"
+                    onChange={(e) => patchRow(i, { from: sanitizeDecimalInput(e.target.value) })}
+                  />
                 </td>
                 <td className="px-3 py-1.5">
                   <input
@@ -424,7 +493,9 @@ function RangeTableEditor({
                 <td className="px-3 py-1.5">
                   <input
                     className={inputCls}
-                    value={r.base_fee ? Number(parseRupiah(r.base_fee)).toLocaleString("id-ID") : ""}
+                    value={
+                      r.base_fee ? Number(parseRupiah(r.base_fee)).toLocaleString("id-ID") : ""
+                    }
                     inputMode="numeric"
                     placeholder="0"
                     onChange={(e) => patchRow(i, { base_fee: String(parseRupiah(e.target.value)) })}
@@ -447,10 +518,16 @@ function RangeTableEditor({
                   {r.type === "tier" ? (
                     <input
                       className={inputCls}
-                      value={r.add_per_step ? Number(parseRupiah(r.add_per_step)).toLocaleString("id-ID") : ""}
+                      value={
+                        r.add_per_step
+                          ? Number(parseRupiah(r.add_per_step)).toLocaleString("id-ID")
+                          : ""
+                      }
                       inputMode="numeric"
                       placeholder="0"
-                      onChange={(e) => patchRow(i, { add_per_step: String(parseRupiah(e.target.value)) })}
+                      onChange={(e) =>
+                        patchRow(i, { add_per_step: String(parseRupiah(e.target.value)) })
+                      }
                     />
                   ) : (
                     <span className="text-muted-foreground text-center block">—</span>
@@ -485,7 +562,13 @@ function RangeTableEditor({
   );
 }
 
-function AccumulateToggle({ value, onChange }: { value: "per_order" | "daily"; onChange: (v: "per_order" | "daily") => void }) {
+function AccumulateToggle({
+  value,
+  onChange,
+}: {
+  value: "per_order" | "daily";
+  onChange: (v: "per_order" | "daily") => void;
+}) {
   const { t } = useT();
   const options = [
     { k: "per_order" as const, l: t("pfDelivery.perOrder") },
@@ -512,14 +595,18 @@ function AccumulateToggle({ value, onChange }: { value: "per_order" | "daily"; o
   );
 }
 
-function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState; onChange: (v: ThresholdGroupState) => void }) {
+function ThresholdGroupEditor({
+  value,
+  onChange,
+}: {
+  value: ThresholdGroupState;
+  onChange: (v: ThresholdGroupState) => void;
+}) {
   const { t } = useT();
   const patch = (p: Partial<ThresholdGroupState>) => onChange({ ...value, ...p });
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        {t("pfDelivery.thresholdGroupHint")}
-      </p>
+      <p className="text-xs text-muted-foreground">{t("pfDelivery.thresholdGroupHint")}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="flex flex-col gap-1.5">
           <FieldLabel>{t("pfDelivery.groupByColumn")}</FieldLabel>
@@ -529,7 +616,9 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
             className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
           >
             {RESOLVABLE_COLUMN_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{resolvableColumnLabel(opt)}</option>
+              <option key={opt} value={opt}>
+                {resolvableColumnLabel(opt)}
+              </option>
             ))}
           </select>
         </div>
@@ -546,18 +635,28 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
           <RupiahInput value={value.default_rate} onChange={(v) => patch({ default_rate: v })} />
         </div>
       </div>
-      <TableShell head={<>
-        <Th>{t("pfDelivery.colAreaStore")}</Th>
-        <Th className="w-32">{t("pfDelivery.colThresholdKg")}</Th>
-        <Th className="w-44">{t("pfDelivery.colRateRp")}</Th>
-        <Th className="w-10" />
-      </>}>
+      <TableShell
+        head={
+          <>
+            <Th>{t("pfDelivery.colAreaStore")}</Th>
+            <Th className="w-32">{t("pfDelivery.colThresholdKg")}</Th>
+            <Th className="w-44">{t("pfDelivery.colRateRp")}</Th>
+            <Th className="w-10" />
+          </>
+        }
+      >
         {value.rules.map((r, i) => (
           <tr key={i} className="border-t border-border/60">
             <Td>
               <TextInput
                 value={r.key}
-                onChange={(e) => patch({ rules: value.rules.map((x, idx) => (idx === i ? { ...x, key: e.target.value } : x)) })}
+                onChange={(e) =>
+                  patch({
+                    rules: value.rules.map((x, idx) =>
+                      idx === i ? { ...x, key: e.target.value } : x,
+                    ),
+                  })
+                }
               />
             </Td>
             <Td>
@@ -565,23 +664,33 @@ function ThresholdGroupEditor({ value, onChange }: { value: ThresholdGroupState;
                 value={r.threshold}
                 inputMode="decimal"
                 onChange={(e) =>
-                  patch({ rules: value.rules.map((x, idx) => (idx === i ? { ...x, threshold: sanitizeDecimalInput(e.target.value) } : x)) })
+                  patch({
+                    rules: value.rules.map((x, idx) =>
+                      idx === i ? { ...x, threshold: sanitizeDecimalInput(e.target.value) } : x,
+                    ),
+                  })
                 }
               />
             </Td>
             <Td>
               <RupiahInput
                 value={r.rate}
-                onChange={(v) => patch({ rules: value.rules.map((x, idx) => (idx === i ? { ...x, rate: v } : x)) })}
+                onChange={(v) =>
+                  patch({ rules: value.rules.map((x, idx) => (idx === i ? { ...x, rate: v } : x)) })
+                }
               />
             </Td>
             <Td className="text-center">
-              <RowDeleteBtn onClick={() => patch({ rules: value.rules.filter((_, idx) => idx !== i) })} />
+              <RowDeleteBtn
+                onClick={() => patch({ rules: value.rules.filter((_, idx) => idx !== i) })}
+              />
             </Td>
           </tr>
         ))}
       </TableShell>
-      <AddRowBtn onClick={() => patch({ rules: [...value.rules, { key: "", threshold: "", rate: "" }] })}>
+      <AddRowBtn
+        onClick={() => patch({ rules: [...value.rules, { key: "", threshold: "", rate: "" }] })}
+      >
         {t("pfDelivery.addStore")}
       </AddRowBtn>
     </div>
@@ -607,18 +716,16 @@ export function DeliveryFields({
   // (skema kayak gitu dulu jadi kekunci: rates keisi tapi gak pernah kepake).
   const [rateOpen, setRateOpen] = useState(noDims);
 
-  const patchDistance = (p: Partial<RangeDimensionState>) => onChange({ ...value, distance: { ...value.distance, ...p } });
-  const patchWeight = (p: Partial<WeightRangeState>) => onChange({ ...value, weight: { ...value.weight, ...p } });
+  const patchDistance = (p: Partial<RangeDimensionState>) =>
+    onChange({ ...value, distance: { ...value.distance, ...p } });
+  const patchWeight = (p: Partial<WeightRangeState>) =>
+    onChange({ ...value, weight: { ...value.weight, ...p } });
   const patchWeightSurcharge = (p: Partial<WeightSurchargeState>) =>
     onChange({ ...value, weight_surcharge: { ...value.weight_surcharge, ...p } });
 
   return (
     <div className="space-y-5">
-      {noDims && (
-        <p className="text-xs text-muted-foreground">
-          {t("pfDelivery.noDimsHint")}
-        </p>
-      )}
+      {noDims && <p className="text-xs text-muted-foreground">{t("pfDelivery.noDimsHint")}</p>}
       {dims.distance && (
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
@@ -626,14 +733,21 @@ export function DeliveryFields({
               <Ruler className="w-3.5 h-3.5 text-primary" />
               <span className="text-sm font-semibold">{t("pfDelivery.distanceLabel")}</span>
             </div>
-            <AccumulateToggle value={value.distance.accumulate} onChange={(v) => patchDistance({ accumulate: v })} />
+            <AccumulateToggle
+              value={value.distance.accumulate}
+              onChange={(v) => patchDistance({ accumulate: v })}
+            />
           </div>
           {value.distance.accumulate === "daily" && (
             <div className="rounded-md border-2 border-border-strong bg-warning text-warning-foreground px-3.5 py-2.5 text-xs">
               {t("pfDelivery.dailyHintDistance")}
             </div>
           )}
-          <RangeTableEditor rows={value.distance.rows} onChange={(rows) => patchDistance({ rows })} unit="km" />
+          <RangeTableEditor
+            rows={value.distance.rows}
+            onChange={(rows) => patchDistance({ rows })}
+            unit="km"
+          />
 
           <ToggleBlock
             label={t("pfDelivery.surchargeLabel")}
@@ -641,23 +755,18 @@ export function DeliveryFields({
             on={value.weight_surcharge.enabled}
             onToggle={(on) => patchWeightSurcharge({ enabled: on })}
           >
-            <div className="grid grid-cols-2 gap-3 max-w-sm">
-              <div className="flex flex-col gap-1.5">
-                <FieldLabel>{t("pfDelivery.weightLimitKg")}</FieldLabel>
-                <TextInput
-                  value={value.weight_surcharge.threshold_kg}
-                  inputMode="decimal"
-                  onChange={(e) => patchWeightSurcharge({ threshold_kg: sanitizeDecimalInput(e.target.value) })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <FieldLabel>{t("pfDelivery.multiplierHint")}</FieldLabel>
-                <TextInput
-                  value={value.weight_surcharge.multiplier}
-                  inputMode="decimal"
-                  onChange={(e) => patchWeightSurcharge({ multiplier: sanitizeDecimalInput(e.target.value) })}
-                />
-              </div>
+            <div className="max-w-xs flex flex-col gap-1.5">
+              <FieldLabel>{t("pfDelivery.weightLimitKg")}</FieldLabel>
+              <TextInput
+                value={value.weight_surcharge.threshold_kg}
+                inputMode="decimal"
+                onChange={(e) =>
+                  patchWeightSurcharge({ threshold_kg: sanitizeDecimalInput(e.target.value) })
+                }
+              />
+              <span className="text-[11px] text-muted-foreground leading-snug">
+                {t("pfDelivery.multiplierHint")}
+              </span>
             </div>
           </ToggleBlock>
         </div>
@@ -671,40 +780,51 @@ export function DeliveryFields({
               <span className="text-sm font-semibold">{t("pfDelivery.weightLabel")}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {([{ k: "range" as const, l: t("pfDelivery.modeRange") }, { k: "threshold_group" as const, l: t("pfDelivery.modeThresholdGroup") }]).map(
-                (opt) => (
-                  <button
-                    key={opt.k}
-                    type="button"
-                    onClick={() => patchWeight({ mode: opt.k })}
-                    className={
-                      "text-xs px-3 py-1.5 rounded-md border transition-colors " +
-                      (value.weight.mode === opt.k
-                        ? "bg-primary-soft text-primary-soft-foreground border-primary-border font-medium"
-                        : "bg-card border-border text-muted-foreground hover:bg-muted")
-                    }
-                  >
-                    {opt.l}
-                  </button>
-                ),
-              )}
+              {[
+                { k: "range" as const, l: t("pfDelivery.modeRange") },
+                { k: "threshold_group" as const, l: t("pfDelivery.modeThresholdGroup") },
+              ].map((opt) => (
+                <button
+                  key={opt.k}
+                  type="button"
+                  onClick={() => patchWeight({ mode: opt.k })}
+                  className={
+                    "text-xs px-3 py-1.5 rounded-md border transition-colors " +
+                    (value.weight.mode === opt.k
+                      ? "bg-primary-soft text-primary-soft-foreground border-primary-border font-medium"
+                      : "bg-card border-border text-muted-foreground hover:bg-muted")
+                  }
+                >
+                  {opt.l}
+                </button>
+              ))}
             </div>
           </div>
 
           {value.weight.mode === "range" ? (
             <>
               <div className="flex justify-end">
-                <AccumulateToggle value={value.weight.accumulate} onChange={(v) => patchWeight({ accumulate: v })} />
+                <AccumulateToggle
+                  value={value.weight.accumulate}
+                  onChange={(v) => patchWeight({ accumulate: v })}
+                />
               </div>
               {value.weight.accumulate === "daily" && (
                 <div className="rounded-md border-2 border-border-strong bg-warning text-warning-foreground px-3.5 py-2.5 text-xs">
                   {t("pfDelivery.dailyHintWeight")}
                 </div>
               )}
-              <RangeTableEditor rows={value.weight.rows} onChange={(rows) => patchWeight({ rows })} unit="kg" />
+              <RangeTableEditor
+                rows={value.weight.rows}
+                onChange={(rows) => patchWeight({ rows })}
+                unit="kg"
+              />
             </>
           ) : (
-            <ThresholdGroupEditor value={value.weight.threshold} onChange={(threshold) => patchWeight({ threshold })} />
+            <ThresholdGroupEditor
+              value={value.weight.threshold}
+              onChange={(threshold) => patchWeight({ threshold })}
+            />
           )}
         </div>
       )}
@@ -719,10 +839,19 @@ export function DeliveryFields({
           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
             <SlidersHorizontal className="w-3.5 h-3.5" />
           </span>
-          <ChevronRight className={"w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " + (rateOpen ? "rotate-90" : "")} />
+          <ChevronRight
+            className={
+              "w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " +
+              (rateOpen ? "rotate-90" : "")
+            }
+          />
           <span className="flex flex-col flex-1">
-            <span className="text-sm font-semibold leading-tight">{t("pfDelivery.otherSettingsToggle")}</span>
-            <span className="text-[11px] font-normal text-muted-foreground">{t("pfDelivery.otherSettingsSubtitle")}</span>
+            <span className="text-sm font-semibold leading-tight">
+              {t("pfDelivery.otherSettingsToggle")}
+            </span>
+            <span className="text-[11px] font-normal text-muted-foreground">
+              {t("pfDelivery.otherSettingsSubtitle")}
+            </span>
           </span>
         </button>
         {rateOpen && (
@@ -732,7 +861,9 @@ export function DeliveryFields({
                 <FieldLabel>{t("pfDelivery.unitBasisLabel")}</FieldLabel>
                 <select
                   value={value.unit_basis}
-                  onChange={(e) => onChange({ ...value, unit_basis: e.target.value as "awb" | "unique_address" })}
+                  onChange={(e) =>
+                    onChange({ ...value, unit_basis: e.target.value as "awb" | "unique_address" })
+                  }
                   className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                 >
                   <option value="awb">{t("pfDelivery.unitAwb")}</option>
@@ -743,7 +874,12 @@ export function DeliveryFields({
                 <FieldLabel>{t("pfDelivery.rateByLabel")}</FieldLabel>
                 <select
                   value={value.rate_by}
-                  onChange={(e) => onChange({ ...value, rate_by: e.target.value as "flat" | "column" | "delivery_type" })}
+                  onChange={(e) =>
+                    onChange({
+                      ...value,
+                      rate_by: e.target.value as "flat" | "column" | "delivery_type",
+                    })
+                  }
                   className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                 >
                   <option value="flat">{t("pfDelivery.rateByFlat")}</option>
@@ -764,41 +900,101 @@ export function DeliveryFields({
                       className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                     >
                       {MATCH_COLUMN_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt === "Area" ? t("pfDelivery.columnArea") : t("pfDelivery.columnServiceType")}</option>
+                        <option key={opt} value={opt}>
+                          {opt === "Area"
+                            ? t("pfDelivery.columnArea")
+                            : opt === "Service Type"
+                              ? t("pfDelivery.columnServiceType")
+                              : t("pfDelivery.columnSenderName")}
+                        </option>
                       ))}
                     </select>
+                    {value.match_column === "Sender Name" && (
+                      <span className="text-[11px] text-muted-foreground leading-snug">
+                        {t("pfDelivery.columnSenderNameHint")}
+                      </span>
+                    )}
                   </div>
                 )}
-                <TableShell head={<>
-                  <Th>{value.rate_by === "delivery_type" ? t("pfDelivery.colValueDeliveryType") : t("pfDelivery.colValueColumn")}</Th>
-                  <Th className="w-44">{t("pfDelivery.colTarifRp")}</Th>
-                  <Th className="w-10" />
-                </>}>
-                  {value.rates.map((r, i) => (
-                    <tr key={i} className="border-t border-border/60">
-                      <Td>
-                        <TextInput
-                          value={r.key}
-                          onChange={(e) =>
-                            onChange({ ...value, rates: value.rates.map((x, idx) => (idx === i ? { ...x, key: e.target.value } : x)) })
-                          }
-                        />
-                      </Td>
-                      <Td>
-                        <RupiahInput
-                          value={r.rate}
-                          onChange={(v) =>
-                            onChange({ ...value, rates: value.rates.map((x, idx) => (idx === i ? { ...x, rate: v } : x)) })
-                          }
-                        />
-                      </Td>
-                      <Td className="text-center">
-                        <RowDeleteBtn onClick={() => onChange({ ...value, rates: value.rates.filter((_, idx) => idx !== i) })} />
-                      </Td>
-                    </tr>
-                  ))}
+                <TableShell
+                  head={
+                    <>
+                      <Th>
+                        {value.rate_by === "delivery_type"
+                          ? t("pfDelivery.colValueDeliveryType")
+                          : t("pfDelivery.colValueColumn")}
+                      </Th>
+                      <Th className="w-28">{t("pfDelivery.colModel")}</Th>
+                      <Th className="w-36">{t("pfDelivery.colTarifRp")}</Th>
+                      <Th className="w-36">{t("pfDelivery.colMinimumRp")}</Th>
+                      <Th className="w-10" />
+                    </>
+                  }
+                >
+                  {value.rates.map((r, i) => {
+                    const setRateRow = (patch: Partial<(typeof value.rates)[number]>) =>
+                      onChange({
+                        ...value,
+                        rates: value.rates.map((x, idx) => (idx === i ? { ...x, ...patch } : x)),
+                      });
+                    return (
+                      <tr key={i} className="border-t border-border/60">
+                        <Td>
+                          <TextInput
+                            value={r.key}
+                            onChange={(e) => setRateRow({ key: e.target.value })}
+                          />
+                        </Td>
+                        <Td>
+                          <select
+                            value={r.model}
+                            onChange={(e) =>
+                              setRateRow({ model: e.target.value as "flat" | "per_km" })
+                            }
+                            className="w-full text-sm rounded-md border border-border bg-card px-2 py-1.5"
+                          >
+                            <option value="flat">{t("pfDelivery.rateModelFlat")}</option>
+                            <option value="per_km">{t("pfDelivery.rateModelPerKm")}</option>
+                          </select>
+                        </Td>
+                        <Td>
+                          <RupiahInput value={r.rate} onChange={(v) => setRateRow({ rate: v })} />
+                        </Td>
+                        <Td>
+                          {r.model === "per_km" ? (
+                            <RupiahInput
+                              value={r.minimum_fee}
+                              onChange={(v) => setRateRow({ minimum_fee: v })}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </Td>
+                        <Td className="text-center">
+                          <RowDeleteBtn
+                            onClick={() =>
+                              onChange({
+                                ...value,
+                                rates: value.rates.filter((_, idx) => idx !== i),
+                              })
+                            }
+                          />
+                        </Td>
+                      </tr>
+                    );
+                  })}
                 </TableShell>
-                <AddRowBtn onClick={() => onChange({ ...value, rates: [...value.rates, { key: "", rate: "" }] })}>
+                <AddRowBtn
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      rates: [
+                        ...value.rates,
+                        { key: "", rate: "", model: "flat", minimum_fee: "" },
+                      ],
+                    })
+                  }
+                >
                   {t("pfDelivery.addRateRow")}
                 </AddRowBtn>
                 {noDims && (

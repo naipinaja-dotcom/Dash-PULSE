@@ -1007,6 +1007,7 @@ export type Database = {
           client_id: string | null
           created_at: string
           finalized_at: string | null
+          finalized_by: string | null
           id: string
           name: string
           period_end: string
@@ -1019,6 +1020,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           finalized_at?: string | null
+          finalized_by?: string | null
           id?: string
           name: string
           period_end: string
@@ -1031,6 +1033,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           finalized_at?: string | null
+          finalized_by?: string | null
           id?: string
           name?: string
           period_end?: string

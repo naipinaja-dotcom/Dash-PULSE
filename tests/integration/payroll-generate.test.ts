@@ -306,17 +306,23 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
         recurring_amount: 16800,
         active: true,
         auto_recurring: true,
-        trigger_frequency: "monthly_once", applies_to_all: true,
+        trigger_frequency: "monthly_once",
+        applies_to_all: true,
       },
     ];
     // Udah pernah kepotong BPJS bulan ini (Juli 2026) di run LAIN (client-9,
     // siklus bulanan penuh — period-nya juga nyampe tgl>=28, jadi beneran
     // "nutup" Juli yang sama).
-    mock.tables.payroll_runs = [{ id: "old-run", period_start: "2026-07-01", period_end: "2026-07-31" }];
+    mock.tables.payroll_runs = [
+      { id: "old-run", period_start: "2026-07-01", period_end: "2026-07-31" },
+    ];
     mock.tables.payroll_details = [{ id: "old-detail", run_id: "old-run", rider_id: "r1" }];
     mock.tables.payroll_deductions = [{ detail_id: "old-detail", deduction_type_id: "bpjs" }];
 
-    return generatePayrollDetails(run({ period_start: "2026-07-24", period_end: "2026-07-30" }), mock.client as any).then(() => {
+    return generatePayrollDetails(
+      run({ period_start: "2026-07-24", period_end: "2026-07-30" }),
+      mock.client as any,
+    ).then(() => {
       const deds = mock.inserted.payroll_deductions ?? [];
       expect(deds.find((d) => d.deduction_type_id === "bpjs")).toBeUndefined();
     });
@@ -345,11 +351,14 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
         recurring_amount: 16800,
         active: true,
         auto_recurring: true,
-        trigger_frequency: "monthly_once", applies_to_all: true,
+        trigger_frequency: "monthly_once",
+        applies_to_all: true,
       },
     ];
     // Run minggu sebelumnya (24-30 Agu) udah nutup Agustus & udah kepotong BPJS.
-    mock.tables.payroll_runs = [{ id: "old-run", period_start: "2026-08-24", period_end: "2026-08-30" }];
+    mock.tables.payroll_runs = [
+      { id: "old-run", period_start: "2026-08-24", period_end: "2026-08-30" },
+    ];
     mock.tables.payroll_details = [{ id: "old-detail", run_id: "old-run", rider_id: "r1" }];
     mock.tables.payroll_deductions = [{ detail_id: "old-detail", deduction_type_id: "bpjs" }];
 
@@ -357,7 +366,10 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     // LAMA bakal keitung "September" (bulan baru, belum pernah kepotong) dan
     // kena BPJS lagi. Di bawah logic BARU, run ini nutup Agustus (ngelewatin
     // tgl 31), yang udah kepotong duluan sama old-run -> harus di-skip.
-    return generatePayrollDetails(run({ period_start: "2026-08-31", period_end: "2026-09-06" }), mock.client as any).then(() => {
+    return generatePayrollDetails(
+      run({ period_start: "2026-08-31", period_end: "2026-09-06" }),
+      mock.client as any,
+    ).then(() => {
       const deds = mock.inserted.payroll_deductions ?? [];
       expect(deds.find((d) => d.deduction_type_id === "bpjs")).toBeUndefined();
     });
@@ -390,14 +402,18 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
         recurring_amount: 16800,
         active: true,
         auto_recurring: true,
-        trigger_frequency: "monthly_once", applies_to_all: true,
+        trigger_frequency: "monthly_once",
+        applies_to_all: true,
       },
     ];
     mock.tables.payroll_runs = [];
     mock.tables.payroll_details = [];
     mock.tables.payroll_deductions = [];
 
-    return generatePayrollDetails(run({ period_start: "2026-07-24", period_end: "2026-07-30" }), mock.client as any).then(() => {
+    return generatePayrollDetails(
+      run({ period_start: "2026-07-24", period_end: "2026-07-30" }),
+      mock.client as any,
+    ).then(() => {
       const ded = mock.inserted.payroll_deductions.find((d: any) => d.deduction_type_id === "bpjs");
       expect(ded?.amount).toBe(16800);
     });
@@ -426,7 +442,8 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
         recurring_amount: 2500,
         active: true,
         auto_recurring: true,
-        trigger_frequency: "every_payroll_run", applies_to_all: true,
+        trigger_frequency: "every_payroll_run",
+        applies_to_all: true,
       },
     ];
     // Walau udah kepotong ADM di run lain bulan ini, every_payroll_run tetap kepotong lagi.
@@ -467,7 +484,8 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
         recurring_amount: 2500,
         active: true,
         auto_recurring: true,
-        trigger_frequency: "every_payroll_run", applies_to_all: true,
+        trigger_frequency: "every_payroll_run",
+        applies_to_all: true,
       },
     ];
     mock.tables.payroll_runs = [];

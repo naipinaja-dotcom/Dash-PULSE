@@ -69,6 +69,8 @@ type Run = {
   period_end: string;
   status: string;
   client_id: string | null;
+  finalized_by: string | null;
+  finalized_at: string | null;
 };
 type Client = { id: string; name: string };
 type FeeAuditEntry = {
@@ -164,6 +166,8 @@ type SpendControlPushResult = {
   workflowConfigured?: boolean;
   workflowMissingReason?: string;
   error?: string;
+  pushedBy?: string | null;
+  pushedAt?: string | null;
 };
 
 // Kasbon dengan penerima pihak ke-3 (kasbon_recipients, lihat add-tab.tsx)
@@ -208,6 +212,25 @@ function PayrollPage() {
   // buat warna beda di list History/Aktif, terpisah dari status draft/
   // finalized/published.
   const [pushedRunIds, setPushedRunIds] = useState<Set<string>>(new Set());
+  // Resolve UUID (finalized_by/pushed_by) -> nama buat ditampilin ("Difinalisasi
+  // oleh X", "oleh X" di dialog Spend Control) — bukan nampilin UUID mentah.
+  // Cache per-id, di-augment tiap kali nemu id baru yang belum diresolve.
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
+  const resolveProfileNames = async (ids: (string | null | undefined)[]) => {
+    const unresolved = [...new Set(ids.filter((id): id is string => !!id))].filter(
+      (id) => !(id in profileNames),
+    );
+    if (unresolved.length === 0) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", unresolved);
+    setProfileNames((prev) => {
+      const next = { ...prev };
+      for (const p of data ?? []) next[p.id] = p.full_name || p.email || p.id;
+      return next;
+    });
+  };
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [details, setDetails] = useState<Detail[]>([]);
   const [paymentHolds, setPaymentHolds] = useState<Record<string, PaymentHold>>({});
@@ -298,6 +321,7 @@ function PayrollPage() {
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);
     else setRuns(data ?? []);
+    resolveProfileNames((data ?? []).map((r: Run) => r.finalized_by));
 
     const runIds = (data ?? []).map((r: Run) => r.id);
     if (runIds.length > 0) {
@@ -805,6 +829,28 @@ function PayrollPage() {
   // generatePayrollDetails() yang sama).
   const generate = async () => {
     if (!activeRun) return;
+    // Run yang udah difinalisasi ORANG LAIN (bukan yang lagi generate ulang
+    // sekarang) — badge "Difinalisasi oleh X" bakal tetep nempel ke angka
+    // approval LAMA walau detailnya diitung ulang sekarang, jadi bisa
+    // menyesatkan (keliatan udah di-approve padahal angkanya berubah).
+    // Confirm eksplisit dulu, sama pola kayak isRepush di Spend Control —
+    // biar gak diam-diam nimpa approval orang lain.
+    if (
+      activeRun.status !== "draft" &&
+      activeRun.finalized_by &&
+      activeRun.finalized_by !== user?.id
+    ) {
+      const finalizerName = profileNames[activeRun.finalized_by] ?? "admin lain";
+      if (
+        !(await confirmDialog({
+          title: "Run ini difinalisasi orang lain",
+          description: `Run ini sudah difinalisasi oleh ${finalizerName}, bukan kamu. Generate ulang bakal mengubah angka yang sudah di-approve mereka. Lanjut cuma kalau kamu memang perlu koreksi run ini.`,
+          confirmText: "Ya, generate ulang",
+          danger: true,
+        }))
+      )
+        return;
+    }
     // Run yang udah "published" berarti slip gaji UDAH dikirim dan paid_amount
     // per potongan UDAH tercatat (dipakai buat ngitung tunggakan periode
     // berikutnya, lihat getCarriedArrears di payroll-generate.ts). Generate
@@ -852,14 +898,23 @@ function PayrollPage() {
   const finalize = async () => {
     if (!activeRun) return;
     setFinalizing(true);
-    const { error } = await supabase
+    const finalizedAt = new Date().toISOString();
+    const { error } = await (supabase as any)
       .from("payroll_runs")
-      .update({ status: "finalized", finalized_at: new Date().toISOString() })
+      .update({ status: "finalized", finalized_at: finalizedAt, finalized_by: user?.id ?? null })
       .eq("id", activeRun.id);
     setFinalizing(false);
     if (error) return toast.error(error.message);
+    if (user?.id) resolveProfileNames([user.id]);
     setActiveRun((current) =>
-      current?.id === activeRun.id ? { ...current, status: "finalized" } : current,
+      current?.id === activeRun.id
+        ? {
+            ...current,
+            status: "finalized",
+            finalized_by: user?.id ?? null,
+            finalized_at: finalizedAt,
+          }
+        : current,
     );
     posthog.capture("payroll_run_finalized", {
       run_id: activeRun.id,
@@ -1224,7 +1279,9 @@ function PayrollPage() {
           .in("id", clientIds),
         (supabase as any)
           .from("spend_control_pushes")
-          .select("client_id, request_code, workflow_configured, workflow_missing_reason, attempt")
+          .select(
+            "client_id, request_code, workflow_configured, workflow_missing_reason, attempt, pushed_by, pushed_at",
+          )
           .eq("payroll_run_id", activeRun.id)
           .order("attempt", { ascending: false }),
         supabase.auth.getSession(),
@@ -1241,11 +1298,14 @@ function PayrollPage() {
               requestCode: p.request_code ?? undefined,
               workflowConfigured: p.workflow_configured,
               workflowMissingReason: p.workflow_missing_reason ?? undefined,
+              pushedBy: p.pushed_by ?? null,
+              pushedAt: p.pushed_at ?? null,
             };
           }
           return latest;
         }, {}),
       );
+      resolveProfileNames((pushRows ?? []).map((p: any) => p.pushed_by));
 
       try {
         const token = sess.data.session?.access_token;
@@ -1351,11 +1411,14 @@ function PayrollPage() {
         },
       });
       if (isRepush) setSelectedSpendControlRepushes(new Set());
+      const pushedNowAt = new Date().toISOString();
       setSpendControlResults((prev) => {
         const next = { ...prev };
-        for (const r of results) next[r.clientId] = r;
+        for (const r of results)
+          next[r.clientId] = { ...r, pushedBy: user?.id ?? null, pushedAt: pushedNowAt };
         return next;
       });
+      if (user?.id) resolveProfileNames([user.id]);
       // Refresh pushedRunIds (badge ijo di list run) — tanpa ini, badge cuma
       // ke-update kalau halaman di-reload manual, padahal push barusan
       // sukses di run yang lagi dibuka sekarang juga.
@@ -1759,6 +1822,13 @@ function PayrollPage() {
                     <div className="text-[12px] text-muted-foreground mt-0.5">
                       {activeRun.period_start} → {activeRun.period_end}
                     </div>
+                    {activeRun.finalized_by && (
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        Difinalisasi oleh {profileNames[activeRun.finalized_by] ?? "..."}
+                        {activeRun.finalized_at &&
+                          ` · ${new Date(activeRun.finalized_at).toLocaleString("id-ID")}`}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {/* Step 2: Cek Data link — bawa periode run aktif biar auto-jalan, gak perlu pilih ulang */}
@@ -2609,6 +2679,13 @@ function PayrollPage() {
                                 <span className="rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-success text-[11px]">
                                   {result.requestCode ?? "Terkirim"}
                                 </span>
+                              )}
+                              {result?.ok && result.pushedBy && (
+                                <div className="text-[11px] text-muted-foreground mt-0.5">
+                                  oleh {profileNames[result.pushedBy] ?? "..."}
+                                  {result.pushedAt &&
+                                    ` · ${new Date(result.pushedAt).toLocaleString("id-ID")}`}
+                                </div>
                               )}
                               {result?.ok && r.valid && (
                                 <label className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">

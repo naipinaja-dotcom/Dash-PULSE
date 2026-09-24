@@ -44,6 +44,7 @@ export function normalize(r: any): PricingScheme {
     params: r.params,
     created_at: r.created_at ?? "",
     city_scope: r.params?.city_scope?.length ? r.params.city_scope : null,
+    hub_scope: r.params?.hub_scope?.length ? r.params.hub_scope : null,
   };
 }
 

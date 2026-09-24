@@ -1202,8 +1202,8 @@ const T = {
     en: "Delivery Incentive (gas/meal money, etc.)",
   },
   "pform.deliveryIncentiveHint": {
-    id: "Nominal tetap yang cair otomatis 1x per rider per hari kerja (ada minimal 1 kiriman selesai) — bukan per-order. Bisa lebih dari 1 item (mis. bensin + makan sekaligus).",
-    en: "A fixed amount paid automatically once per rider per working day (at least 1 completed delivery) — not per order. Can have more than 1 item (e.g. gas + meal at once).",
+    id: "Nominal tetap yang cair otomatis 1x per rider per periode (hari/minggu/bulan, pilih di tiap item) — asal ada minimal 1 kiriman selesai di periode itu, bukan per-order. Bisa lebih dari 1 item (mis. bensin harian + insentif project mingguan sekaligus).",
+    en: "A fixed amount paid automatically once per rider per period (day/week/month, pick per item) — as long as there's at least 1 completed delivery in that period, not per order. Can have more than 1 item (e.g. daily gas money + weekly project incentive at once).",
   },
   "pform.modifiersToggle": { id: "Modifier Tambahan", en: "Additional Modifiers" },
   "pform.modifiersSubtitle": {
@@ -1277,6 +1277,9 @@ const T = {
     en: 'No incentives yet — click "+ Add incentive" below.',
   },
   "pfIncentive.labelPlaceholder": { id: "mis. Uang Bensin", en: "e.g. Gas Money" },
+  "pfIncentive.periodDaily": { id: "Per Hari", en: "Per Day" },
+  "pfIncentive.periodWeekly": { id: "Per Minggu", en: "Per Week" },
+  "pfIncentive.periodMonthly": { id: "Per Bulan", en: "Per Month" },
   "pfIncentive.addItem": { id: "+ Tambah insentif", en: "+ Add incentive" },
   "pfAreaCity.addHeading": { id: "Tambah Kota", en: "Add City" },
   "pfAreaCity.editHeading": { id: "Edit Tarif Kota", en: "Edit City Rate" },

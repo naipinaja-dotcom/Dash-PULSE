@@ -8,7 +8,9 @@ import { useT } from "@/lib/i18n";
 
 export interface DrilldownRow {
   date: string;
-  district?: string | null; // Area yang dipakai buat rate_by="column" match_column="Area"
+  district?: string | null; // match_column="District" — kota/kabupaten TUJUAN, hampir selalu keisi
+  area?: string | null; // match_column="Area" — provinsi TUJUAN (proxy: kolom city), sering kosong
+  hub?: string | null; // match_column="Sender Name" (Hub) — titik ASAL, beda dari district/area
   km?: number | null;
   kg?: number | null;
   note?: string;
@@ -20,11 +22,19 @@ export function RiderFeeDrilldown({ rows }: { rows: DrilldownRow[] }) {
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
   const subtotal = sorted.reduce((s, r) => s + r.fee, 0);
   const hasDistrict = sorted.some((r) => r.district !== undefined);
+  const hasArea = sorted.some((r) => r.area !== undefined);
+  const hasHub = sorted.some((r) => r.hub !== undefined);
   const hasKm = sorted.some((r) => r.km !== undefined);
   const hasKg = sorted.some((r) => r.kg !== undefined);
   const hasNote = sorted.some((r) => r.note !== undefined);
   const leadingCols =
-    1 + (hasDistrict ? 1 : 0) + (hasKm ? 1 : 0) + (hasKg ? 1 : 0) + (hasNote ? 1 : 0);
+    1 +
+    (hasDistrict ? 1 : 0) +
+    (hasArea ? 1 : 0) +
+    (hasHub ? 1 : 0) +
+    (hasKm ? 1 : 0) +
+    (hasKg ? 1 : 0) +
+    (hasNote ? 1 : 0);
 
   if (sorted.length === 0) {
     return <p className="text-xs text-muted-foreground px-1">{t("feeDrilldown.empty")}</p>;
@@ -37,6 +47,8 @@ export function RiderFeeDrilldown({ rows }: { rows: DrilldownRow[] }) {
           <tr>
             <th className="px-3 py-1.5">{t("feeDrilldown.date")}</th>
             {hasDistrict && <th className="px-3">{t("feeDrilldown.district")}</th>}
+            {hasArea && <th className="px-3">{t("feeDrilldown.area")}</th>}
+            {hasHub && <th className="px-3">{t("feeDrilldown.hub")}</th>}
             {hasKm && <th className="text-right px-3">{t("feeDrilldown.km")}</th>}
             {hasKg && <th className="text-right px-3">{t("feeDrilldown.kg")}</th>}
             {hasNote && <th className="px-3">{t("feeDrilldown.status")}</th>}
@@ -48,6 +60,8 @@ export function RiderFeeDrilldown({ rows }: { rows: DrilldownRow[] }) {
             <tr key={i} className="border-t border-border">
               <td className="px-3 py-1.5">{r.date}</td>
               {hasDistrict && <td className="px-3">{r.district ?? "—"}</td>}
+              {hasArea && <td className="px-3">{r.area ?? "—"}</td>}
+              {hasHub && <td className="px-3">{r.hub ?? "—"}</td>}
               {hasKm && <td className="text-right px-3 tabular-nums">{r.km ?? "—"}</td>}
               {hasKg && <td className="text-right px-3 tabular-nums">{r.kg ?? "—"}</td>}
               {hasNote && <td className="px-3">{r.note ?? "—"}</td>}

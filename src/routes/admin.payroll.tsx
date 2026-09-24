@@ -1864,19 +1864,28 @@ function PayrollPage() {
                     </div>
                     {activeRun.finalized_by && (
                       <div className="text-[11px] text-muted-foreground mt-0.5">
-                        Difinalisasi oleh {profileNames[activeRun.finalized_by] ?? "..."}
+                        Difinalisasi oleh{" "}
+                        <span className="text-primary font-medium">
+                          {profileNames[activeRun.finalized_by] ?? "..."}
+                        </span>
                         {activeRun.finalized_at &&
                           ` · ${new Date(activeRun.finalized_at).toLocaleString("id-ID")}`}
                       </div>
                     )}
                     {activeRun.published_by && (
                       <div className="text-[11px] text-muted-foreground mt-0.5">
-                        Dipublish oleh {profileNames[activeRun.published_by] ?? "..."}
+                        Dipublish oleh{" "}
+                        <span className="text-primary font-medium">
+                          {profileNames[activeRun.published_by] ?? "..."}
+                        </span>
                       </div>
                     )}
                     {runLatestPush && (
                       <div className="text-[11px] text-muted-foreground mt-0.5">
-                        Push Spend Control oleh {profileNames[runLatestPush.pushedBy] ?? "..."}
+                        Push Spend Control oleh{" "}
+                        <span className="text-primary font-medium">
+                          {profileNames[runLatestPush.pushedBy] ?? "..."}
+                        </span>
                         {` · ${new Date(runLatestPush.pushedAt).toLocaleString("id-ID")}`}
                       </div>
                     )}
@@ -2733,7 +2742,10 @@ function PayrollPage() {
                               )}
                               {result?.ok && result.pushedBy && (
                                 <div className="text-[11px] text-muted-foreground mt-0.5">
-                                  oleh {profileNames[result.pushedBy] ?? "..."}
+                                  oleh{" "}
+                                  <span className="text-primary font-medium">
+                                    {profileNames[result.pushedBy] ?? "..."}
+                                  </span>
                                   {result.pushedAt &&
                                     ` · ${new Date(result.pushedAt).toLocaleString("id-ID")}`}
                                 </div>

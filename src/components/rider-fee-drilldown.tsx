@@ -21,9 +21,9 @@ export function RiderFeeDrilldown({ rows }: { rows: DrilldownRow[] }) {
   const { t } = useT();
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
   const subtotal = sorted.reduce((s, r) => s + r.fee, 0);
-  const hasDistrict = sorted.some((r) => r.district !== undefined);
-  const hasArea = sorted.some((r) => r.area !== undefined);
-  const hasHub = sorted.some((r) => r.hub !== undefined);
+  const hasDistrict = sorted.some((r) => !!r.district);
+  const hasArea = sorted.some((r) => !!r.area);
+  const hasHub = sorted.some((r) => !!r.hub);
   const hasKm = sorted.some((r) => r.km !== undefined);
   const hasKg = sorted.some((r) => r.kg !== undefined);
   const hasNote = sorted.some((r) => r.note !== undefined);

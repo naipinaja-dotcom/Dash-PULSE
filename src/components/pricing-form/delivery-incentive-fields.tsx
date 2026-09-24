@@ -17,6 +17,7 @@ export interface DeliveryIncentiveRowState {
   id: string;
   label: string;
   amount: string; // di-parse (parseRupiah) saat build
+  period: "daily" | "weekly" | "monthly";
 }
 
 export function emptyDeliveryIncentiveState(): DeliveryIncentiveRowState[] {
@@ -35,6 +36,7 @@ export function loadDeliveryIncentiveState(
     id: newRowId(),
     label: inc.label,
     amount: String(inc.amount ?? ""),
+    period: inc.period ?? "daily",
   }));
 }
 
@@ -50,7 +52,12 @@ export function buildDeliveryIncentives(
   if (!enabled) return null;
   const built: DeliveryIncentive[] = rows
     .filter((r) => r.label.trim() && parseRupiah(r.amount) > 0)
-    .map((r) => ({ label: r.label.trim(), amount: parseRupiah(r.amount), condition: "always" }));
+    .map((r) => ({
+      label: r.label.trim(),
+      amount: parseRupiah(r.amount),
+      condition: "always",
+      period: r.period,
+    }));
   return built.length > 0 ? built : null;
 }
 
@@ -77,7 +84,8 @@ export function DeliveryIncentiveFields({
   const { t } = useT();
   const setRow = (i: number, patch: Partial<DeliveryIncentiveRowState>) =>
     onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const addRow = () => onChange([...value, { id: newRowId(), label: "", amount: "" }]);
+  const addRow = () =>
+    onChange([...value, { id: newRowId(), label: "", amount: "", period: "daily" }]);
   const delRow = (i: number) => onChange(value.filter((_, idx) => idx !== i));
 
   return (
@@ -96,6 +104,19 @@ export function DeliveryIncentiveFields({
           </div>
           <div className="w-32 flex-shrink-0">
             <RupiahInput value={r.amount} onChange={(v) => setRow(i, { amount: v })} />
+          </div>
+          <div className="w-32 flex-shrink-0">
+            <select
+              value={r.period}
+              onChange={(e) =>
+                setRow(i, { period: e.target.value as "daily" | "weekly" | "monthly" })
+              }
+              className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
+            >
+              <option value="daily">{t("pfIncentive.periodDaily")}</option>
+              <option value="weekly">{t("pfIncentive.periodWeekly")}</option>
+              <option value="monthly">{t("pfIncentive.periodMonthly")}</option>
+            </select>
           </div>
           <button
             type="button"

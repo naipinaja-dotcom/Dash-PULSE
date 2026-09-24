@@ -264,8 +264,15 @@ export interface MultiDrop {
 // telat/ontime attendance-only).
 export interface DeliveryIncentive {
   label: string; // mis. "Uang Bensin"
-  amount: number; // per rider per hari
+  amount: number; // per rider per PERIOD (lihat `period` di bawah)
   condition: "always";
+  // Seberapa sering insentif ini cair per rider: sekali per hari kerja (lama,
+  // default), sekali per minggu, atau sekali per bulan — walau rider kerja
+  // lebih dari 1 hari dalam periode itu. Optional (beda dari label/amount
+  // yang required) SENGAJA — item lama (sebelum fitur ini) gak punya field
+  // ini sama sekali, diperlakukan "daily" biar perilakunya identik kayak
+  // sebelumnya. Lihat groupingnya di calcScheme (pricing-calc.ts).
+  period?: "daily" | "weekly" | "monthly";
 }
 
 // Bentuk tarif "flat ATAU per_km" yang dipakai di 2 tempat (Area City Pricing

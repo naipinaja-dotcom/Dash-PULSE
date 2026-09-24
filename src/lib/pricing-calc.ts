@@ -279,6 +279,24 @@ function groupBy<T>(arr: T[], keyFn: (x: T) => string): Map<string, T[]> {
   return m;
 }
 
+// Kunci grouping "minggu" buat DeliveryIncentive.period="weekly" — Senin
+// dari minggu yang ngandung tanggal itu (ISO-ish, Senin=awal minggu). Dua
+// tanggal beda hari tapi Senin-nya sama = 1 minggu yang sama, insentif cair
+// sekali doang buat keduanya.
+function weekKeyOf(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const day = d.getUTCDay(); // 0=Minggu..6=Sabtu
+  const diffToMonday = (day + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - diffToMonday);
+  return d.toISOString().slice(0, 10);
+}
+
+// Kunci grouping "bulan" buat DeliveryIncentive.period="monthly" — YYYY-MM.
+function monthKeyOf(dateStr: string): string {
+  return dateStr.slice(0, 7);
+}
+
 // Bagi `total` (rupiah bulat) ke beberapa baris sesuai bobot, hasilnya PAS
 // (jumlah alokasi == total). Sisa recehan ditaruh ke baris berbobot terbesar.
 function allocInt(total: number, weights: number[]): number[] {
@@ -969,23 +987,36 @@ export function calcScheme(
     }
   }
 
-  // Insentif per rider per hari (uang bensin/makan dsb) — cair SEKALI per
-  // rider-hari yang ada minimal 1 kiriman COMPLETED, nempel di baris PERTAMA
-  // hari itu (kebalikan multi_drop yang nempel di baris ke-2 dst, tapi
-  // grouping-nya sama persis). Gak relevan buat revenue_share (fee murni %
-  // revenue) atau attendance (calcScheme gak pernah beneran dipanggil buat
-  // attendance, tapi tetap di-exclude defensif sama kayak add_kg di atas).
+  // Insentif per rider per PERIODE (uang bensin/makan dsb) — cair SEKALI per
+  // rider per periode (hari/minggu/bulan, lihat DeliveryIncentive.period)
+  // yang ada minimal 1 kiriman COMPLETED, nempel di baris PERTAMA periode itu
+  // (kebalikan multi_drop yang nempel di baris ke-2 dst, tapi grouping-nya
+  // sama pola). Tiap insentif dihitung TERPISAH (bukan digabung jadi 1 total)
+  // karena periode-nya bisa beda-beda per item (mis. Uang Bensin per hari,
+  // Insentif Project per minggu) — kalau digabung, insentif per-minggu bakal
+  // ke-cover pola grouping harian yang salah. Gak relevan buat revenue_share
+  // (fee murni % revenue) atau attendance (calcScheme gak pernah beneran
+  // dipanggil buat attendance, tapi tetap di-exclude defensif sama kayak
+  // add_kg di atas).
   const incByRow = new Array(completed.length).fill(0);
   if (
     env.delivery_incentives?.length &&
     env.type !== "revenue_share" &&
     env.type !== "attendance"
   ) {
-    const total = env.delivery_incentives.reduce((s, inc) => s + (Number(inc.amount) || 0), 0);
-    for (const [, rrows] of byRider) {
-      const byDay = groupBy(rrows, (r) => r.delivery_date);
-      for (const [, drows] of byDay) {
-        incByRow[idxOf.get(drows[0])!] = total;
+    for (const inc of env.delivery_incentives) {
+      const amount = Number(inc.amount) || 0;
+      const keyFn =
+        inc.period === "weekly"
+          ? weekKeyOf
+          : inc.period === "monthly"
+            ? monthKeyOf
+            : (d: string) => d;
+      for (const [, rrows] of byRider) {
+        const byPeriod = groupBy(rrows, (r) => keyFn(r.delivery_date));
+        for (const [, prows] of byPeriod) {
+          incByRow[idxOf.get(prows[0])!] += amount;
+        }
       }
     }
   }

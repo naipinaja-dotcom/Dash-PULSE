@@ -577,6 +577,9 @@ function PricingFormInner({
           dipindah posisi. */}
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 mb-4 items-start">
           <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+              {t("pform.sectionBasicInfo")}
+            </p>
             <div className="flex flex-col gap-1.5">
               <FieldLabel>
                 {t("pform.schemeName")}{" "}
@@ -613,44 +616,132 @@ function PricingFormInner({
             </div>
 
             {category === "delivery" && (
-              <div className="flex flex-col gap-3 rounded-md border border-dashed border-border-strong p-3">
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>
-                    {t("pform.cityScopeLabel")}{" "}
-                    <span className="font-normal text-muted-foreground">
-                      ({t("pform.optional")})
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+                  {t("pform.sectionSchemeScope")}
+                </p>
+                <div className="flex flex-col gap-3 rounded-md border border-dashed border-border-strong p-3">
+                  {/* Scope SKEMA ini (siapa/kemana yang dipakein skema ini) —
+                  dipisah fisik dari "Beda per Area" di bawah (sekarang malah
+                  dipindah ke bawah Pilih Kategori, box terpisah), itu fitur
+                  BEDA (override rate di dalam 1 skema), biar gak keliatan
+                  nyatu jadi 1 alur yang sama. */}
+                  <div className="flex flex-col gap-1">
+                    <FieldLabel>
+                      {t("pform.cityScopeLabel")}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        ({t("pform.optional")})
+                      </span>
+                    </FieldLabel>
+                    <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
+                      {t("pform.cityScopeHint")}
                     </span>
-                  </FieldLabel>
-                  <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
-                    {t("pform.cityScopeHint")}
-                  </span>
-                  <TextInput
-                    value={f.cityScopeRaw}
-                    placeholder={t("pfAreaCity.citiesPlaceholder")}
-                    onChange={(e) => patch({ cityScopeRaw: e.target.value })}
-                    className="mt-0.5"
-                  />
-                </div>
+                    <TextInput
+                      value={f.cityScopeRaw}
+                      placeholder={t("pfAreaCity.citiesPlaceholder")}
+                      onChange={(e) => patch({ cityScopeRaw: e.target.value })}
+                      className="mt-0.5"
+                    />
+                  </div>
 
-                <div className="flex flex-col gap-1 border-t border-border pt-3">
-                  <FieldLabel>
-                    {t("pform.hubScopeLabel")}{" "}
-                    <span className="font-normal text-muted-foreground">
-                      ({t("pform.optional")})
+                  <div className="flex flex-col gap-1 border-t border-border pt-3">
+                    <FieldLabel>
+                      {t("pform.hubScopeLabel")}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        ({t("pform.optional")})
+                      </span>
+                    </FieldLabel>
+                    <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
+                      {t("pform.hubScopeHint")}
                     </span>
-                  </FieldLabel>
-                  <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
-                    {t("pform.hubScopeHint")}
-                  </span>
-                  <TextInput
-                    value={f.hubScopeRaw}
-                    placeholder={t("pfDelivery.columnSenderName")}
-                    onChange={(e) => patch({ hubScopeRaw: e.target.value })}
-                    className="mt-0.5"
-                  />
+                    <TextInput
+                      value={f.hubScopeRaw}
+                      placeholder={t("pfDelivery.columnSenderName")}
+                      onChange={(e) => patch({ hubScopeRaw: e.target.value })}
+                      className="mt-0.5"
+                    />
+                  </div>
                 </div>
+              </div>
+            )}
 
-                <div className="border-t border-border pt-3 flex flex-col gap-2">
+            {/* Scheme for */}
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+                {t("pform.sectionSchemeType")}
+              </p>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                {t("pform.schemeForLabel")}
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {(["rider", "client"] as SchemeFor[]).map((sf) => (
+                  <button
+                    key={sf}
+                    data-pricing-side={sf}
+                    type="button"
+                    onClick={() => setSchemeFor(sf)}
+                    className={
+                      "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
+                      (schemeFor === sf
+                        ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                        : "bg-card text-foreground hover:bg-muted")
+                    }
+                  >
+                    <span className="text-xs font-medium block">
+                      {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {sf === "rider" ? t("pform.riderCostDesc") : t("pform.clientRevenueDesc")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+                {t("pform.selectCategory")}
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {PRICING_CATEGORIES.map((cat) => {
+                  const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
+                  const active = category === cat.key;
+                  return (
+                    <button
+                      key={cat.key}
+                      data-pricing-category={cat.key}
+                      type="button"
+                      onClick={() => handleCategoryChange(cat.key)}
+                      className={
+                        "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
+                        (active
+                          ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                          : "bg-card text-foreground hover:bg-muted")
+                      }
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="w-4 h-4" />
+                        <span className="text-xs font-medium leading-tight">{cat.name}</span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground leading-snug">
+                        {cat.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Rate override per Area (Area City Pricing launcher) — dipindah
+              ke bawah sini (setelah Pilih Kategori), FISIK terpisah dari
+              section "Scope Skema" di atas. Ini fitur BEDA: override rate DI
+              DALAM 1 skema, bukan scope skema-nya sendiri. */}
+            {category === "delivery" && (
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+                  {t("pform.sectionAreaRateOverride")}
+                </p>
+                <div className="flex flex-col gap-2 rounded-md border border-dashed border-border-strong p-3">
                   <div className="flex flex-col gap-0.5">
                     <FieldLabel>{t("pform.areaLauncherLabel")}</FieldLabel>
                     <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
@@ -735,7 +826,7 @@ function PricingFormInner({
                         <option value="__custom__">{t("pfAreaCity.citySimCustomOption")}</option>
                       </select>
                       {/* Ketik bebas — buat tes City yang belum terdaftar (mastiin fallback-nya
-                          bener), gak cuma City yang udah ada di rule. */}
+                            bener), gak cuma City yang udah ada di rule. */}
                       {citySimCustom && (
                         <TextInput
                           value={citySimInput}
@@ -781,70 +872,6 @@ function PricingFormInner({
                 }}
               />
             )}
-
-            {/* Scheme for */}
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                {t("pform.schemeForLabel")}
-              </p>
-              <div className="grid grid-cols-1 gap-2">
-                {(["rider", "client"] as SchemeFor[]).map((sf) => (
-                  <button
-                    key={sf}
-                    data-pricing-side={sf}
-                    type="button"
-                    onClick={() => setSchemeFor(sf)}
-                    className={
-                      "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
-                      (schemeFor === sf
-                        ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
-                        : "bg-card text-foreground hover:bg-muted")
-                    }
-                  >
-                    <span className="text-xs font-medium block">
-                      {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {sf === "rider" ? t("pform.riderCostDesc") : t("pform.clientRevenueDesc")}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-                {t("pform.selectCategory")}
-              </p>
-              <div className="grid grid-cols-1 gap-2">
-                {PRICING_CATEGORIES.map((cat) => {
-                  const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
-                  const active = category === cat.key;
-                  return (
-                    <button
-                      key={cat.key}
-                      data-pricing-category={cat.key}
-                      type="button"
-                      onClick={() => handleCategoryChange(cat.key)}
-                      className={
-                        "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
-                        (active
-                          ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
-                          : "bg-card text-foreground hover:bg-muted")
-                      }
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-4 h-4" />
-                        <span className="text-xs font-medium leading-tight">{cat.name}</span>
-                      </div>
-                      <span className="text-[11px] text-muted-foreground leading-snug">
-                        {cat.desc}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Revenue Share — fee rider = % dari revenue client per AWB (bukan
               dari dimensi Distance/Weight). Cuma masuk akal buat sisi Rider:

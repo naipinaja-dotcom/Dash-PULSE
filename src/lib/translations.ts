@@ -1238,6 +1238,13 @@ const T = {
     id: 'Kosongin = skema ini jadi skema utama, berlaku buat semua kota. Isi (mis. "Bali") = skema ini CUMA berlaku buat kota itu — kota lain otomatis pakai skema lain.',
     en: 'Leave empty = this scheme is the main one, applies to every city. Fill in (e.g. "Bali") = this scheme ONLY applies to that city — other cities automatically use a different scheme.',
   },
+  "pform.sectionBasicInfo": { id: "Info Dasar", en: "Basic Info" },
+  "pform.sectionSchemeScope": { id: "Scope Skema", en: "Scheme Scope" },
+  "pform.sectionSchemeType": { id: "Tipe Skema", en: "Scheme Type" },
+  "pform.sectionAreaRateOverride": {
+    id: "Rate Override per Area (opsional)",
+    en: "Rate Override per Area (optional)",
+  },
   "pform.hubScopeLabel": { id: "Scope ke Hub", en: "Scope to Hub" },
   "pform.hubScopeHint": {
     id: 'Kosongin = skema ini berlaku semua hub. Isi (mis. "Jakarta Hub 1") = skema ini CUMA berlaku buat hub itu (bisa dikombinasi sama Scope ke City di atas — kalau dua-duanya diisi, skema ini cuma jalan buat kombinasi City+Hub itu persis).',

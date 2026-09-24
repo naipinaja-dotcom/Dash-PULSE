@@ -71,6 +71,7 @@ type Run = {
   client_id: string | null;
   finalized_by: string | null;
   finalized_at: string | null;
+  published_by: string | null;
 };
 type Client = { id: string; name: string };
 type FeeAuditEntry = {
@@ -232,6 +233,14 @@ function PayrollPage() {
     });
   };
   const [activeRun, setActiveRun] = useState<Run | null>(null);
+  // Push Spend Control TERAKHIR buat run yang lagi dibuka — biar keliatan di
+  // card Run info TANPA perlu buka dialog Push (beda dari spendControlResults
+  // yang per-client, cuma keisi pas dialog dibuka). Run bisa punya banyak
+  // client/push, jadi ini cuma nampilin yang paling baru sebagai ringkasan.
+  const [runLatestPush, setRunLatestPush] = useState<{
+    pushedBy: string;
+    pushedAt: string;
+  } | null>(null);
   const [details, setDetails] = useState<Detail[]>([]);
   const [paymentHolds, setPaymentHolds] = useState<Record<string, PaymentHold>>({});
   const [paymentHoldBusyId, setPaymentHoldBusyId] = useState<string | null>(null);
@@ -322,6 +331,7 @@ function PayrollPage() {
     if (error) toast.error(error.message);
     else setRuns(data ?? []);
     resolveProfileNames((data ?? []).map((r: Run) => r.finalized_by));
+    resolveProfileNames((data ?? []).map((r: Run) => r.published_by));
 
     const runIds = (data ?? []).map((r: Run) => r.id);
     if (runIds.length > 0) {
@@ -334,6 +344,25 @@ function PayrollPage() {
       setPushedRunIds(new Set());
     }
     setLoading(false);
+  };
+
+  // Push Spend Control paling baru buat 1 run (lintas client) — cuma buat
+  // ringkasan di card Run info, gak perlu detail per-client (itu ada di
+  // spendControlResults, keisi pas dialog Push dibuka).
+  const loadLatestPush = async (runId: string) => {
+    const { data } = await (supabase as any)
+      .from("spend_control_pushes")
+      .select("pushed_by, pushed_at")
+      .eq("payroll_run_id", runId)
+      .order("pushed_at", { ascending: false })
+      .limit(1);
+    const row = data?.[0];
+    if (row) {
+      setRunLatestPush({ pushedBy: row.pushed_by, pushedAt: row.pushed_at });
+      resolveProfileNames([row.pushed_by]);
+    } else {
+      setRunLatestPush(null);
+    }
   };
 
   useEffect(() => {
@@ -473,6 +502,9 @@ function PayrollPage() {
     if (activeRun) {
       loadDetails(activeRun.id);
       loadFeeAuditLog(activeRun);
+      loadLatestPush(activeRun.id);
+    } else {
+      setRunLatestPush(null);
     }
   }, [activeRun]);
 
@@ -992,13 +1024,20 @@ function PayrollPage() {
           await supabase.from("rider_installments").update(advance).eq("id", ins.id);
         }
       }
-      const { error: e2 } = await supabase
+      const { error: e2 } = await (supabase as any)
         .from("payroll_runs")
-        .update({ status: "published", published_at: new Date().toISOString() })
+        .update({
+          status: "published",
+          published_at: new Date().toISOString(),
+          published_by: user?.id ?? null,
+        })
         .eq("id", activeRun.id);
       if (e2) return toast.error(e2.message);
+      if (user?.id) resolveProfileNames([user.id]);
       setActiveRun((current) =>
-        current?.id === activeRun.id ? { ...current, status: "published" } : current,
+        current?.id === activeRun.id
+          ? { ...current, status: "published", published_by: user?.id ?? null }
+          : current,
       );
       posthog.capture("payroll_run_published", {
         run_id: activeRun.id,
@@ -1419,6 +1458,7 @@ function PayrollPage() {
         return next;
       });
       if (user?.id) resolveProfileNames([user.id]);
+      setRunLatestPush({ pushedBy: user?.id ?? "", pushedAt: pushedNowAt });
       // Refresh pushedRunIds (badge ijo di list run) — tanpa ini, badge cuma
       // ke-update kalau halaman di-reload manual, padahal push barusan
       // sukses di run yang lagi dibuka sekarang juga.
@@ -1827,6 +1867,17 @@ function PayrollPage() {
                         Difinalisasi oleh {profileNames[activeRun.finalized_by] ?? "..."}
                         {activeRun.finalized_at &&
                           ` · ${new Date(activeRun.finalized_at).toLocaleString("id-ID")}`}
+                      </div>
+                    )}
+                    {activeRun.published_by && (
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        Dipublish oleh {profileNames[activeRun.published_by] ?? "..."}
+                      </div>
+                    )}
+                    {runLatestPush && (
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        Push Spend Control oleh {profileNames[runLatestPush.pushedBy] ?? "..."}
+                        {` · ${new Date(runLatestPush.pushedAt).toLocaleString("id-ID")}`}
                       </div>
                     )}
                   </div>

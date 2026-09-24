@@ -1014,6 +1014,7 @@ export type Database = {
           period_start: string
           period_type: string
           published_at: string | null
+          published_by: string | null
           status: string
         }
         Insert: {
@@ -1027,6 +1028,7 @@ export type Database = {
           period_start: string
           period_type?: string
           published_at?: string | null
+          published_by?: string | null
           status?: string
         }
         Update: {
@@ -1040,6 +1042,7 @@ export type Database = {
           period_start?: string
           period_type?: string
           published_at?: string | null
+          published_by?: string | null
           status?: string
         }
         Relationships: [

@@ -36,7 +36,7 @@ export function RiderFeeDrilldown({ rows }: { rows: DrilldownRow[] }) {
         <thead className="bg-muted text-left">
           <tr>
             <th className="px-3 py-1.5">{t("feeDrilldown.date")}</th>
-            {hasDistrict && <th className="px-3">{t("feeDrilldown.area")}</th>}
+            {hasDistrict && <th className="px-3">{t("feeDrilldown.district")}</th>}
             {hasKm && <th className="text-right px-3">{t("feeDrilldown.km")}</th>}
             {hasKg && <th className="text-right px-3">{t("feeDrilldown.kg")}</th>}
             {hasNote && <th className="px-3">{t("feeDrilldown.status")}</th>}

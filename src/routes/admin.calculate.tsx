@@ -18,6 +18,7 @@ import {
   type AttendanceCalcResult,
   calcHybridScheme,
   type CombinedCalcResult,
+  calcDeliveryFeeMultiCity,
   isCompleted,
 } from "@/lib/pricing-calc";
 import { formatRupiah } from "@/lib/format";
@@ -385,7 +386,27 @@ function CalculatePage() {
           clientRevenueByRow = clientRes.perRow.map((r) => r.fee);
         }
 
-        const res = calcScheme(scheme.params, rows, clientRevenueByRow);
+        // Sibling scheme yang sama scheme_for/category/client (termasuk yang
+        // di-scope city_scope/hub_scope) buat client + periode ini — sama
+        // persis pola pickPricingSchemeCandidates di pnl-engine.ts, biar
+        // Hitung Fee manual ini auto-resolve skema per City/Hub kayak Payroll
+        // Run, bukan cuma pakai 1 skema yang dipilih di dropdown doang.
+        const effectiveClientId = scheme.client_id ?? clientId ?? "";
+        const deliveryCandidates = schemes.filter(
+          (s) =>
+            s.scheme_for === scheme.scheme_for &&
+            s.category === "delivery" &&
+            s.params?.version === 1 &&
+            (s.client_id === effectiveClientId || s.client_id === null) &&
+            s.effective_from <= to &&
+            (!s.effective_to || s.effective_to >= from),
+        );
+        const res = calcDeliveryFeeMultiCity(
+          deliveryCandidates.length ? deliveryCandidates : [scheme],
+          rows,
+          effectiveClientId,
+          clientRevenueByRow,
+        );
         setResult(res);
         setRanScheme(scheme);
 

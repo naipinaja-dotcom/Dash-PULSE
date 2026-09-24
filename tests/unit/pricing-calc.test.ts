@@ -473,7 +473,7 @@ describe("calcScheme / anomalies", () => {
         distance: null,
         weight: null,
         rate_by: "column",
-        match_column: "Area",
+        match_column: "District",
         rates: [{ key: "Jakarta Barat", rate: 14000 }],
         default_rate: 0,
         unit_basis: "unique_address",
@@ -735,8 +735,8 @@ describe("calcScheme — modular_v2 rate_by tanpa dimensi", () => {
     expect(res.perRow[1].fee).toBe(15000); // RETURN -> match delivery_type langsung
   });
 
-  it("column: rate per Area walau Distance/Weight off", () => {
-    const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "Area");
+  it("column: rate per District walau Distance/Weight off", () => {
+    const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "District");
     const res = calcScheme(e, [row({ rider_id: "R1", district: "Jakarta Pusat" })]);
     expect(res.perRow[0].fee).toBe(12000);
   });
@@ -752,7 +752,7 @@ describe("calcScheme — modular_v2 rate_by tanpa dimensi", () => {
   // rate table manapun (isinya nama Jabodetabek) → dulu diam-diam Rp0 tanpa
   // jejak. Sekarang jatuh ke default_rate + kewarning di calcScheme.warnings.
   it("column: district gak match rate manapun jatuh ke default_rate, bukan diam-diam 0", () => {
-    const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "Area");
+    const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "District");
     (e.config as { default_rate: number }).default_rate = 8000;
     const res = calcScheme(e, [row({ rider_id: "R1", district: "Bandung" })]);
     expect(res.perRow[0].fee).toBe(8000);
@@ -760,7 +760,7 @@ describe("calcScheme — modular_v2 rate_by tanpa dimensi", () => {
   });
 
   it("column: default_rate 0/gak diisi tetap 0 buat district gak match (gak ubah perilaku lama kalau emang gak dipakai)", () => {
-    const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "Area");
+    const e = modularEnv("column", [{ key: "Jakarta Pusat", rate: 12000 }], "District");
     const res = calcScheme(e, [row({ rider_id: "R1", district: "Bandung" })]);
     expect(res.perRow[0].fee).toBe(0);
     expect(res.warnings.some((w) => w.includes("gak ke-match"))).toBe(true);

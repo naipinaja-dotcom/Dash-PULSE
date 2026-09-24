@@ -218,6 +218,18 @@ function resolveField(row: DeliveryRow, columnName: string): string {
   // berbasis ASAL (nama outlet/hub pengirim). Lihat comment DeliveryRow.sender_name.
   if (c.includes("sender") || c.includes("hub") || c.includes("pengirim"))
     return String(row.sender_name ?? "");
+  // District = kota/kabupaten TUJUAN, hasil deteksi teks alamat/PostGIS
+  // (destination_address) — granularitas paling detail & paling lengkap
+  // (~99.9% keisi). Area = provinsi TUJUAN — belum ada kolom provinsi asli,
+  // dipetakan ke `city` (meta.city mentah dari MGMT, lebih kasar, ~39%
+  // keisi) sebagai proxy paling deket yang ada. Dulu "Area" nyambung ke
+  // district (salah kaprah, ketuker sama District) — sengaja dipisah biar
+  // sesuai makna literalnya. Skema LAMA yang match_column="Area" tapi
+  // rates-nya key district (mis. "KOTA JAKARTA BARAT") HARUS dimigrasi ke
+  // match_column="District" biar behavior-nya gak berubah — lihat migrasi
+  // yang nyertain perubahan ini.
+  if (c.includes("district") || c.includes("kabupaten")) return String(row.district ?? "");
+  if (c.includes("area") || c.includes("provinsi")) return String(row.city ?? "");
   return String(row.district ?? "");
 }
 

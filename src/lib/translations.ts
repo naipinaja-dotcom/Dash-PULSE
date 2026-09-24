@@ -1603,6 +1603,7 @@ const T = {
     en: "No line items for this rider yet.",
   },
   "feeDrilldown.date": { id: "Tanggal", en: "Date" },
+  "feeDrilldown.area": { id: "Area", en: "Area" },
   "feeDrilldown.km": { id: "Jarak (km)", en: "Distance (km)" },
   "feeDrilldown.kg": { id: "Berat (kg)", en: "Weight (kg)" },
   "feeDrilldown.status": { id: "Status", en: "Status" },

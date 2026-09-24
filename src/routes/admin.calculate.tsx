@@ -243,6 +243,7 @@ function CalculatePage() {
           if (!rf) return;
           (ddHybrid[key] ??= []).push({
             date: r.delivery_date,
+            district: r.district,
             km: r.distance_km,
             kg: r.weight_kg,
             fee: rf.fee,
@@ -396,6 +397,7 @@ function CalculatePage() {
           if (!rf) return;
           (ddDeliv[key] ??= []).push({
             date: r.delivery_date,
+            district: r.district,
             km: r.distance_km,
             kg: r.weight_kg,
             fee: rf.fee,

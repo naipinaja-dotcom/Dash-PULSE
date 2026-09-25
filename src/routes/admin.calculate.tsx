@@ -18,6 +18,7 @@ import {
   type AttendanceCalcResult,
   calcHybridScheme,
   type CombinedCalcResult,
+  calcDeliveryFeeMultiCity,
   isCompleted,
 } from "@/lib/pricing-calc";
 import { formatRupiah } from "@/lib/format";
@@ -164,6 +165,28 @@ function CalculatePage() {
     () => schemes.filter((s) => !clientId || s.client_id === clientId || s.client_id === null),
     [schemes, clientId],
   );
+
+  // Dropdown "Skema" — untuk kategori delivery, sibling yang di-scope
+  // city_scope/hub_scope (mis. Kalimantan) DIKUMPULIN jadi 1 opsi per
+  // scheme_for (Rider/Client), bukan 1 baris per skema — run() di bawah
+  // udah auto-gabung semua sibling itu lewat calcDeliveryFeeMultiCity, jadi
+  // gak perlu lagi milih satu-satu per city/hub secara manual di sini.
+  // Attendance/hybrid TETAP ditampilin per skema (belum ada mesin auto-
+  // resolve multi-scheme buat kategori itu).
+  const schemeDropdownOptions = useMemo(() => {
+    const delivery = matchingSchemes.filter((s) => s.category === "delivery");
+    const others = matchingSchemes.filter((s) => s.category !== "delivery");
+    const byFor = new Map<string, PricingScheme[]>();
+    for (const s of delivery) {
+      const arr = byFor.get(s.scheme_for) ?? [];
+      arr.push(s);
+      byFor.set(s.scheme_for, arr);
+    }
+    const representatives = [...byFor.values()].map(
+      (group) => group.find((s) => !s.city_scope?.length && !s.hub_scope?.length) ?? group[0],
+    );
+    return [...representatives, ...others];
+  }, [matchingSchemes]);
 
   const run = async () => {
     const scheme = schemes.find((s) => s.id === schemeId);
@@ -385,7 +408,27 @@ function CalculatePage() {
           clientRevenueByRow = clientRes.perRow.map((r) => r.fee);
         }
 
-        const res = calcScheme(scheme.params, rows, clientRevenueByRow);
+        // Sibling scheme yang sama scheme_for/category/client (termasuk yang
+        // di-scope city_scope/hub_scope) buat client + periode ini — sama
+        // persis pola pickPricingSchemeCandidates di pnl-engine.ts, biar
+        // Hitung Fee manual ini auto-resolve skema per City/Hub kayak Payroll
+        // Run, bukan cuma pakai 1 skema yang dipilih di dropdown doang.
+        const effectiveClientId = scheme.client_id ?? clientId ?? "";
+        const deliveryCandidates = schemes.filter(
+          (s) =>
+            s.scheme_for === scheme.scheme_for &&
+            s.category === "delivery" &&
+            s.params?.version === 1 &&
+            (s.client_id === effectiveClientId || s.client_id === null) &&
+            s.effective_from <= to &&
+            (!s.effective_to || s.effective_to >= from),
+        );
+        const res = calcDeliveryFeeMultiCity(
+          deliveryCandidates.length ? deliveryCandidates : [scheme],
+          rows,
+          effectiveClientId,
+          clientRevenueByRow,
+        );
         setResult(res);
         setRanScheme(scheme);
 
@@ -796,7 +839,7 @@ function CalculatePage() {
             searchPlaceholder="Cari skema..."
             emptyText="Skema tidak ditemukan"
             itemLabel="skema"
-            options={matchingSchemes.map((s) => ({
+            options={schemeDropdownOptions.map((s) => ({
               value: s.id,
               label: `${s.name} · ${s.scheme_for === "client" ? "Client" : "Rider"} · ${pricingLabel(s.category, s.subtype)}`,
             }))}

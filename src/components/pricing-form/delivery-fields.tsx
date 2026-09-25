@@ -13,6 +13,7 @@
 // buat konversi baca, `buildModularDeliveryConfig` buat konversi tulis).
 import { useState } from "react";
 import { useT } from "@/lib/i18n";
+import { toast } from "sonner";
 import type {
   DeliveryDimensions,
   PricingCalcType,
@@ -23,6 +24,7 @@ import type {
 } from "@/lib/pricing-types";
 import { parseRupiah } from "@/lib/format";
 import { bandFeeAt } from "@/lib/pricing-calc";
+import { supabase } from "@/integrations/supabase/client";
 import {
   AddRowBtn,
   FieldLabel,
@@ -37,7 +39,15 @@ import {
   resolvableColumnLabel,
   sanitizeDecimalInput,
 } from "./shared";
-import { Plus, Ruler, Package, ChevronRight, SlidersHorizontal } from "lucide-react";
+import {
+  Plus,
+  Ruler,
+  Package,
+  ChevronRight,
+  SlidersHorizontal,
+  MapPin,
+  Loader2,
+} from "lucide-react";
 
 // -------------------- State shapes (semua string, di-parse saat simpan) --------------------
 export interface RangeRowState {
@@ -86,23 +96,18 @@ export interface ModularDeliveryState {
 // Alias dipakai pricing-form.tsx (bentuk state delivery keseluruhan)
 export type DeliveryState = ModularDeliveryState;
 
-// Cuma 3 kolom yang beneran dikenali mesin hitung (lihat resolveField() di
-// pricing-calc.ts) — mode "column" gak butuh delivery_type karena itu udah
-// jadi rate_by pilihan sendiri. Dropdown, bukan free-text, biar gak ada admin
-// ngetik nama kolom yang salah lalu diam-diam dianggap "Area".
-// "Sender Name" (Hub) = beda basis dari "Area" (district, berbasis TUJUAN) —
-// ini nama outlet/hub ASAL pengirim. Reliable cuma buat client model X_DOCK
-// (nama hub tetap, mis. "Dash Hub Kemang"); client instant/multi-merchant
-// isinya nama outlet random per order, jangan dipakai buat mereka.
-const MATCH_COLUMN_OPTIONS = ["District", "Area", "Service Type", "Sender Name"] as const;
+// Kolom yang dikenali mesin hitung (lihat resolveField() di pricing-calc.ts).
+// Hub scope sekarang ditangani di level skema (ScopeDropdown di pricing-form),
+// jadi rate table cuma butuh District & Service Type.
+const MATCH_COLUMN_OPTIONS = ["District", "Service Type"] as const;
 function canonicalMatchColumn(raw: string): string {
   const c = String(raw ?? "")
     .trim()
     .toLowerCase();
   if (c.includes("service") || c.includes("layanan")) return "Service Type";
-  if (c.includes("sender") || c.includes("hub") || c.includes("pengirim")) return "Sender Name";
-  if (c.includes("district") || c.includes("kabupaten")) return "District";
-  return "Area";
+  if (c.includes("district") || c.includes("kabupaten") || c.includes("area")) return "District";
+  if (c.includes("sender") || c.includes("hub") || c.includes("pengirim")) return "District";
+  return "District";
 }
 
 function emptyRangeRow(type: "flat" | "tier", from = "0"): RangeRowState {
@@ -135,7 +140,7 @@ export function emptyDeliveryState(): ModularDeliveryState {
       threshold: { group_by: "Area", default_threshold: "10", default_rate: "40000", rules: [] },
     },
     rate_by: "flat",
-    match_column: "Area",
+    match_column: "District",
     rates: [],
     default_rate: "0",
     unit_basis: "awb",
@@ -703,10 +708,12 @@ export function DeliveryFields({
   subtype,
   value,
   onChange,
+  clientId,
 }: {
   subtype: DeliveryDimensions | null;
   value: ModularDeliveryState;
   onChange: (v: ModularDeliveryState) => void;
+  clientId?: string | null;
 }) {
   const { t } = useT();
   const dims = subtype || { distance: false, weight: false };
@@ -716,6 +723,66 @@ export function DeliveryFields({
   // kolom/delivery-type) — buka otomatis, bukan disembunyiin kayak sebelumnya
   // (skema kayak gitu dulu jadi kekunci: rates keisi tapi gak pernah kepake).
   const [rateOpen, setRateOpen] = useState(noDims);
+  const [areaLoading, setAreaLoading] = useState(false);
+  // Checkbox "auto-isi dari data" — toggle rate_by="column", lalu fetch
+  // nilai unik dari kolom yang dipilih (District/Hub/ServiceType) di
+  // delivery_records client ini. Baris baru ditambahin, yang udah ada gak
+  // ditimpa.
+  const areaOn = value.rate_by === "column";
+  const dbColumnFor = (mc: string): string => {
+    const c = canonicalMatchColumn(mc);
+    if (c === "Sender Name") return "sender_name";
+    if (c === "Service Type") return "service_type";
+    return "district";
+  };
+  const fetchColumnValues = async (matchCol?: string) => {
+    if (!clientId) {
+      toast.error("Pilih client dulu biar data bisa ditarik otomatis.");
+      return;
+    }
+    const col = dbColumnFor(matchCol ?? value.match_column);
+    setAreaLoading(true);
+    try {
+      const { data } = await supabase
+        .from("delivery_records")
+        .select(col)
+        .eq("client_id", clientId)
+        .not(col, "is", null)
+        .limit(5000);
+      const rows = (data ?? []) as unknown as Record<string, string | null>[];
+      const unique = [...new Set(rows.map((r) => (r[col] ?? "").trim()).filter(Boolean))].sort();
+      const existingKeys = new Set(value.rates.map((r) => r.key.trim().toLowerCase()));
+      const newRows = unique
+        .filter((d) => !existingKeys.has(d.toLowerCase()))
+        .map((d) => ({ key: d, rate: "", model: "flat" as const, minimum_fee: "" }));
+      if (newRows.length) {
+        onChange({
+          ...value,
+          rate_by: "column",
+          match_column: matchCol ?? value.match_column,
+          rates: [...value.rates, ...newRows],
+        });
+        toast.success(`${newRows.length} nilai ditambahin dari data pengiriman — isi tarifnya`);
+      } else if (!unique.length) {
+        toast.error(
+          `Gak ada data "${col}" di pengiriman client ini — coba kolom lain atau isi manual.`,
+        );
+      } else {
+        toast.message("Semua nilai dari data pengiriman client ini udah ada di tabel.");
+      }
+    } finally {
+      setAreaLoading(false);
+    }
+  };
+  const toggleAreaBreakdown = async (checked: boolean) => {
+    if (!checked) {
+      onChange({ ...value, rate_by: "flat" });
+      return;
+    }
+    const col = value.match_column || "District";
+    onChange({ ...value, rate_by: "column", match_column: col });
+    await fetchColumnValues(col);
+  };
 
   const patchDistance = (p: Partial<RangeDimensionState>) =>
     onChange({ ...value, distance: { ...value.distance, ...p } });
@@ -857,6 +924,52 @@ export function DeliveryFields({
         </button>
         {rateOpen && (
           <div className="px-3.5 pb-3.5 space-y-3">
+            <label
+              data-pricing-dimension="area"
+              className={
+                "text-left rounded-md px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border-2 border-border-strong cursor-pointer " +
+                (areaOn
+                  ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                  : "bg-card text-foreground hover:bg-muted")
+              }
+            >
+              <input
+                type="checkbox"
+                checked={areaOn}
+                onChange={(e) => toggleAreaBreakdown(e.target.checked)}
+                className="w-4 h-4 mt-0.5 flex-shrink-0"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5">
+                  {areaLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
+                  ) : (
+                    <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                  )}
+                  <span className="text-xs font-medium leading-tight">
+                    {t("pfDelivery.areaBreakdownLabel")}
+                  </span>
+                </div>
+                <span className="text-[11px] leading-snug block mt-0.5 opacity-90">
+                  {t("pfDelivery.areaBreakdownDesc")}
+                </span>
+              </div>
+            </label>
+            {areaOn && (
+              <button
+                type="button"
+                disabled={areaLoading}
+                onClick={() => fetchColumnValues()}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                {areaLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <MapPin className="w-3 h-3" />
+                )}
+                Tarik ulang dari data
+              </button>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <FieldLabel>{t("pfDelivery.unitBasisLabel")}</FieldLabel>
@@ -897,31 +1010,21 @@ export function DeliveryFields({
                     <FieldLabel>{t("pfDelivery.columnNameLabel")}</FieldLabel>
                     <select
                       value={value.match_column}
-                      onChange={(e) => onChange({ ...value, match_column: e.target.value })}
+                      onChange={(e) => {
+                        const col = e.target.value;
+                        onChange({ ...value, match_column: col });
+                        if (clientId && !value.rates.length) fetchColumnValues(col);
+                      }}
                       className="w-full text-sm rounded-md border border-border bg-card px-2.5 py-1.5"
                     >
                       {MATCH_COLUMN_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>
                           {opt === "District"
                             ? t("pfDelivery.columnDistrict")
-                            : opt === "Area"
-                              ? t("pfDelivery.columnArea")
-                              : opt === "Service Type"
-                                ? t("pfDelivery.columnServiceType")
-                                : t("pfDelivery.columnSenderName")}
+                            : t("pfDelivery.columnServiceType")}
                         </option>
                       ))}
                     </select>
-                    {value.match_column === "Area" && (
-                      <span className="text-[11px] text-muted-foreground leading-snug">
-                        {t("pfDelivery.columnAreaHint")}
-                      </span>
-                    )}
-                    {value.match_column === "Sender Name" && (
-                      <span className="text-[11px] text-muted-foreground leading-snug">
-                        {t("pfDelivery.columnSenderNameHint")}
-                      </span>
-                    )}
                   </div>
                 )}
                 <TableShell

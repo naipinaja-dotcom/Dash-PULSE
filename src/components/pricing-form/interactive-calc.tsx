@@ -14,7 +14,6 @@ import type {
 import {
   calcAttendanceScheme,
   bandLookupFee,
-  resolveAreaPricingRule,
   calcAreaRuleFee,
   weightSurchargeMultiplier,
 } from "@/lib/pricing-calc";
@@ -23,7 +22,6 @@ import { type DeliveryState, type RangeRowState } from "./delivery-fields";
 import type { RangeRow } from "@/lib/pricing-types";
 import { type AttendanceState, buildAttendanceConfig } from "./attendance-fields";
 import { type ExStep } from "./shared";
-import { type AreaCityState, buildAreaCityConfig, citiesFromRaw } from "./area-city-fields";
 
 const norm = (s: unknown) =>
   String(s ?? "")
@@ -56,7 +54,6 @@ export interface CalcInputs {
   totalKg: string;
   hours: string;
   isLate: boolean;
-  city: string;
 }
 
 export interface InteractiveCalcProps {
@@ -68,8 +65,6 @@ export interface InteractiveCalcProps {
   addKgOn: boolean;
   multiDropOn: boolean;
   multiDropFee: string;
-  areaCityOn: boolean;
-  areaCity: AreaCityState;
   billingOn: boolean;
 }
 
@@ -84,7 +79,6 @@ export function defaultCalcInputs(p: InteractiveCalcProps): CalcInputs {
     totalKg: String((Number(p.delivery.weight.threshold.default_threshold) || 10) * 2 + 1),
     hours: p.attendance.standard_hours || "8",
     isLate: false,
-    city: p.areaCity.rules[0]?.citiesRaw.split(",")[0]?.trim() ?? "",
   };
 }
 
@@ -100,33 +94,6 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
       );
     if (p.schemeFor === "client" && p.billingOn)
       notes.push("Billing add-ons belum termasuk di sini (min charge / admin fee / PPN).");
-  };
-
-  // Area City Pricing — reuse resolveAreaPricingRule/calcAreaRuleFee PERSIS
-  // dari pricing-calc.ts (bukan reimplementasi manual) biar preview ini gak
-  // bisa drift dari mesin hitung asli (lihat riwayat bug rate override di
-  // atas — preview & mesin asli pernah beda hasil karena reimplementasi).
-  // Override GANTI total (bukan ditambah) — sama seperti calcScheme.
-  const applyAreaCityOverride = (
-    steps: ExStep[],
-    currentTotal: number,
-    distanceKm: number,
-  ): number => {
-    if (!p.areaCityOn) return currentTotal;
-    const acp = buildAreaCityConfig(p.areaCity, true);
-    const rule = resolveAreaPricingRule(acp, inp.city);
-    if (!rule) {
-      notes.push(
-        `Area City Pricing aktif tapi City "${inp.city || "(kosong)"}" tidak cocok rule manapun — tarif dasar di atas tetap dipakai (fallback).`,
-      );
-      return currentTotal;
-    }
-    const areaFee = calcAreaRuleFee(rule, distanceKm);
-    steps.push({
-      text: `Area City Pricing: City "${inp.city}" → rule "${rule.name}" (${rule.model === "flat" ? "Flat per order" : `Per KM${Number(rule.minimum_fee) > 0 ? `, min ${formatRupiah(rule.minimum_fee)}` : ""}`}) — GANTI total di atas`,
-      amount: areaFee,
-    });
-    return areaFee;
   };
 
   if (p.category === "delivery" && (dims.distance || dims.weight)) {
@@ -222,7 +189,6 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
       notes.push(
         "Distance + Weight dijumlah (kecuali salah satunya kena rate override — itu gantiin totalnya, gak ditambah).",
       );
-    total = applyAreaCityOverride(steps, total, Number(inp.distance) || 0);
     modNotes();
     return { steps, total: { label: "Total", amount: total }, notes };
   }
@@ -252,7 +218,6 @@ export function computeInteractive(p: InteractiveCalcProps, inp: CalcInputs): Wo
         amount: 0,
       });
     }
-    total = applyAreaCityOverride(steps, total, Number(inp.distance) || 0);
     modNotes();
     return { steps, total: { label: "Total", amount: total }, notes };
   }
@@ -320,48 +285,8 @@ export function DeliveryCalcInputs({
     distance: false,
     weight: false,
   };
-  // Rule "Per KM" butuh input jarak buat dihitung, walau dimensi Distance
-  // skema dasarnya mati — tampilkan input jarak juga di kasus itu.
-  const needsDistanceForAreaRule =
-    props.areaCityOn && props.areaCity.rules.some((r) => r.model === "per_km");
   return (
     <div className="flex flex-wrap gap-3">
-      {props.category === "delivery" && props.areaCityOn && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{t("pfAreaCity.citySimLabel")}</span>
-          <input
-            type="text"
-            list="area-city-sim-options"
-            value={inp.city}
-            placeholder={t("pfAreaCity.citySimPlaceholder")}
-            onChange={(e) => onChange({ city: e.target.value })}
-            className="w-32 text-xs rounded border border-border bg-card px-2 py-1.5"
-          />
-          {/* Saran dari City yang udah diisi di rule — tetap boleh ketik bebas
-              (buat tes fallback City yang gak terdaftar), datalist cuma nawarin
-              shortcut biar gak perlu ngetik ulang nama yang udah ada. */}
-          <datalist id="area-city-sim-options">
-            {[...new Set(props.areaCity.rules.flatMap((r) => citiesFromRaw(r.citiesRaw)))].map(
-              (c) => (
-                <option key={c} value={c} />
-              ),
-            )}
-          </datalist>
-        </div>
-      )}
-      {!dims.distance && needsDistanceForAreaRule && (
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">{t("pfCalc.distanceKm")}</span>
-          <input
-            type="number"
-            min="0"
-            step="0.1"
-            value={inp.distance}
-            onChange={(e) => onChange({ distance: e.target.value })}
-            className="w-24 text-xs rounded border border-border bg-card px-2 py-1.5"
-          />
-        </div>
-      )}
       {dims.distance && (
         <div className="flex flex-col gap-1">
           <span className="text-[11px] text-muted-foreground">

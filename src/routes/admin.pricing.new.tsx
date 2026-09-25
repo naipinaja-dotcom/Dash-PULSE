@@ -9,6 +9,7 @@ export interface PricingNewSearch {
   cityScope?: string; // comma-separated, langsung ngisi cityScopeRaw
   category?: "delivery" | "attendance";
   revenueShare?: boolean;
+  schemeFor?: "rider" | "client";
 }
 
 export const Route = createFileRoute("/admin/pricing/new")({
@@ -21,5 +22,7 @@ export const Route = createFileRoute("/admin/pricing/new")({
         ? search.category
         : undefined,
     revenueShare: typeof search.revenueShare === "boolean" ? search.revenueShare : undefined,
+    schemeFor:
+      search.schemeFor === "rider" || search.schemeFor === "client" ? search.schemeFor : undefined,
   }),
 });

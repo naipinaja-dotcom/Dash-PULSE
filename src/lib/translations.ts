@@ -1211,67 +1211,13 @@ const T = {
     en: "Add-KG, Multi-Drop, Delivery Incentive — optional, click to view/configure",
   },
   "pform.modifiersActiveSuffix": { id: "aktif", en: "active" },
-  "pform.areaLauncherLabel": {
-    id: "Beda per Area?",
-    en: "Different per Area?",
-  },
-  "pform.areaLauncherHint": {
-    id: "Kota yang tarif/skemanya beda dari di atas. Klik tombol di bawah buat nambah satu per satu.",
-    en: "Cities whose rate/scheme differs from above. Click the button below to add one at a time.",
-  },
-  "pform.areaModelDelivery": {
-    id: "Skema Delivery lain (Tier/Modular/dll)",
-    en: "Other Delivery model (Tier/Modular/etc)",
-  },
-  "pform.areaModelRevenueShare": {
-    id: "Revenue Share (% dari Client)",
-    en: "Revenue Share (% of Client)",
-  },
-  "pform.areaModelAttendance": { id: "Per Kehadiran / Attendance", en: "Attendance" },
-  "pform.areaModelAttendanceWarning": {
-    id: "Attendance belum bisa dipisah per City (data attendance belum ada kolom City) — scheme ini akan tetap jadi satu-satunya scheme Attendance aktif buat client ini, City yang diisi di sini gak beneran membatasinya.",
-    en: "Attendance can't actually be split by City yet (attendance data has no City column) — this scheme will still be the client's only active Attendance scheme; the City entered here doesn't really restrict it.",
-  },
-  "pform.createSchemeForArea": { id: "Buat Skema", en: "Create Scheme" },
-  "pform.cityScopeLabel": { id: "Scope ke City", en: "Scope to City" },
-  "pform.cityScopeHint": {
-    id: 'Kosongin = skema ini jadi skema utama, berlaku buat semua kota. Isi (mis. "Bali") = skema ini CUMA berlaku buat kota itu — kota lain otomatis pakai skema lain.',
-    en: 'Leave empty = this scheme is the main one, applies to every city. Fill in (e.g. "Bali") = this scheme ONLY applies to that city — other cities automatically use a different scheme.',
-  },
   "pform.sectionBasicInfo": { id: "Info Dasar", en: "Basic Info" },
   "pform.sectionSchemeScope": { id: "Scope Skema", en: "Scheme Scope" },
   "pform.sectionSchemeType": { id: "Tipe Skema", en: "Scheme Type" },
-  "pform.sectionAreaRateOverride": {
-    id: "Rate Override per Area (opsional)",
-    en: "Rate Override per Area (optional)",
+  "pform.newScopedSchemeLink": {
+    id: "+ Buat skema baru buat City/Hub lain (model beda total)",
+    en: "+ Create a new scheme for another City/Hub (fully different model)",
   },
-  "pform.hubScopeLabel": { id: "Scope ke Hub", en: "Scope to Hub" },
-  "pform.hubScopeHint": {
-    id: 'Kosongin = skema ini berlaku semua hub. Isi (mis. "Jakarta Hub 1") = skema ini CUMA berlaku buat hub itu (bisa dikombinasi sama Scope ke City di atas — kalau dua-duanya diisi, skema ini cuma jalan buat kombinasi City+Hub itu persis).',
-    en: 'Leave empty = this scheme applies to every hub. Fill in (e.g. "Jakarta Hub 1") = this scheme ONLY applies to that hub (can combine with Scope to City above — if both are filled, this scheme only runs for that exact City+Hub combination).',
-  },
-  "pfAreaCity.empty": {
-    id: 'Belum ada kota yang beda tarif — klik "Tambah kota" di bawah.',
-    en: 'No cities with a different rate yet — click "Add city" below.',
-  },
-  "pfAreaCity.areaName": { id: "Nama Area", en: "Area Name" },
-  "pfAreaCity.areaNamePlaceholder": { id: "mis. Jabodetabek", en: "e.g. Jabodetabek" },
-  "pfAreaCity.cities": { id: "Daftar City", en: "City List" },
-  "pfAreaCity.citiesHint": {
-    id: 'Gak perlu sama persis — besar/kecil huruf, spasi, dan awalan "Kota"/"Kabupaten" diabaikan otomatis saat dicocokkan ke data MGMT. Pisahkan pakai koma kalau lebih dari satu.',
-    en: 'Doesn\'t need to match exactly — case, whitespace, and a "Kota"/"Kabupaten" prefix are ignored automatically when matched against MGMT data. Separate with commas for more than one.',
-  },
-  "pfAreaCity.citiesPlaceholder": {
-    id: "mis. Jakarta, Bogor, Depok, Tangerang, Bekasi",
-    en: "e.g. Jakarta, Bogor, Depok, Tangerang, Bekasi",
-  },
-  "pfAreaCity.model": { id: "Model Harga", en: "Pricing Model" },
-  "pfAreaCity.modelFlat": { id: "Flat per order", en: "Flat per order" },
-  "pfAreaCity.modelPerKm": { id: "Per KM", en: "Per KM" },
-  "pfAreaCity.rateFlat": { id: "Tarif (Rp/order)", en: "Rate (Rp/order)" },
-  "pfAreaCity.ratePerKm": { id: "Tarif (Rp/km)", en: "Rate (Rp/km)" },
-  "pfAreaCity.minimumFee": { id: "Minimum (Rp)", en: "Minimum (Rp)" },
-  "pfAreaCity.addArea": { id: "+ Tambah kota", en: "+ Add city" },
   "pfIncentive.empty": {
     id: 'Belum ada insentif — klik "+ Tambah insentif" di bawah.',
     en: 'No incentives yet — click "+ Add incentive" below.',
@@ -1281,27 +1227,6 @@ const T = {
   "pfIncentive.periodWeekly": { id: "Per Minggu", en: "Per Week" },
   "pfIncentive.periodMonthly": { id: "Per Bulan", en: "Per Month" },
   "pfIncentive.addItem": { id: "+ Tambah insentif", en: "+ Add incentive" },
-  "pfAreaCity.addHeading": { id: "Tambah Kota", en: "Add City" },
-  "pfAreaCity.editHeading": { id: "Edit Tarif Kota", en: "Edit City Rate" },
-  "pfAreaCity.schemeKindLabel": {
-    id: "Jenis skema buat kota ini",
-    en: "Scheme type for this city",
-  },
-  "pfAreaCity.schemeKindDeliveryHint": {
-    id: "Form berikutnya = builder skema Delivery penuh: Jarak (km)/Berat, surcharge, threshold, Return, sampai tarif per-District/Area — semua fitur yang ada di skema biasa.",
-    en: "The next form is the full Delivery scheme builder: Distance (km)/Weight, surcharge, threshold, Return, down to per-District/Area rates — every feature a regular scheme has.",
-  },
-  "pfAreaCity.citySimLabel": { id: "Simulasi City", en: "Simulate City" },
-  "pfAreaCity.citySimPlaceholder": { id: "Pilih City…", en: "Pick a City…" },
-  "pfAreaCity.citySimCustomOption": {
-    id: "Kota lain (ketik manual)…",
-    en: "Other city (type manually)…",
-  },
-  "pfAreaCity.ruleMatched": { id: "Rule kepilih", en: "Matched rule" },
-  "pfAreaCity.ruleFallback": {
-    id: "fallback ke tarif dasar (City kosong/tidak cocok)",
-    en: "fallback to base rate (City empty/unmatched)",
-  },
   "pform.cancel": { id: "Batal", en: "Cancel" },
   "pform.saving": { id: "Menyimpan…", en: "Saving…" },
   "pform.saveScheme": { id: "Simpan Skema", en: "Save Plan" },
@@ -1443,6 +1368,14 @@ const T = {
     en: "Unit basis, rate by Area/Service Type — click to view/configure",
   },
   "pfDelivery.close": { id: "Tutup ▲", en: "Close ▲" },
+  "pfDelivery.areaBreakdownLabel": {
+    id: "District/Area (auto-isi dari data)",
+    en: "District/Area (auto-fill from data)",
+  },
+  "pfDelivery.areaBreakdownDesc": {
+    id: "Tarik semua district yang pernah muncul di data pengiriman client ini jadi baris rate — tinggal isi tarifnya.",
+    en: "Pull every district that has appeared in this client's delivery data as rate rows — just fill in the rates.",
+  },
   "pfDelivery.open": { id: "Buka ▼", en: "Open ▼" },
   "pfDelivery.unitBasisLabel": {
     id: "Unit dihitung (dedup & stop count)",
@@ -1465,11 +1398,6 @@ const T = {
   "pfDelivery.rateByDeliveryType": { id: "Antar / Kembali", en: "Delivery / Return" },
   "pfDelivery.columnNameLabel": { id: "Nama Kolom", en: "Column Name" },
   "pfDelivery.columnDistrict": { id: "District (Kota/Kabupaten)", en: "District (City/Regency)" },
-  "pfDelivery.columnArea": { id: "Area (Provinsi)", en: "Area (Province)" },
-  "pfDelivery.columnAreaHint": {
-    id: "Baca dari kolom City mentah (dari MGMT) — proxy provinsi paling deket yang ada, belum tentu selalu keisi. Kalau butuh granularitas kota/kabupaten yang lebih rapi, pakai District.",
-    en: "Reads the raw City column (from MGMT) — the closest available proxy for province, not always populated. For cleaner city/regency granularity, use District.",
-  },
   "pfDelivery.columnServiceType": { id: "Tipe Layanan (Service Type)", en: "Service Type" },
   "pfDelivery.colValueDeliveryType": {
     id: "Nilai (DELIVERY / RETURN)",
@@ -1479,14 +1407,9 @@ const T = {
     id: "Nilai Kolom (cth: Jakarta Pusat)",
     en: "Column Value (e.g. Central Jakarta)",
   },
-  "pfDelivery.columnSenderName": { id: "Nama Pengirim (Hub)", en: "Sender Name (Hub)" },
-  "pfDelivery.columnSenderNameHint": {
-    id: "Hanya terisi akurat untuk client X-DOCK (kolom sender_name = titik asal/hub). Untuk client Scheduled Instant, kolom ini bisa kosong.",
-    en: "Only reliably populated for X-DOCK clients (sender_name = origin/hub). May be empty for Scheduled Instant clients.",
-  },
   "pfDelivery.colModel": { id: "Model", en: "Model" },
   "pfDelivery.colTarifRp": { id: "Tarif (Rp)", en: "Rate (Rp)" },
-  "pfDelivery.colMinimumRp": { id: "Minimum (Rp)", en: "Minimum (Rp)" },
+  "pfDelivery.colMinimumRp": { id: "Base Rate (Rp)", en: "Base Rate (Rp)" },
   "pfDelivery.rateModelFlat": { id: "Flat", en: "Flat" },
   "pfDelivery.rateModelPerKm": { id: "Per KM", en: "Per KM" },
   "pfDelivery.addRateRow": { id: "Tambah Baris", en: "Add Row" },

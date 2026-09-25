@@ -2,9 +2,10 @@
 // kategori dipecah ke pricing-form/delivery-fields.tsx (kategori 1),
 // pricing-form/attendance-fields.tsx (kategori 2), kalkulator interaktif ke
 // pricing-form/interactive-calc.tsx.
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { usePostHog } from "@posthog/react";
+import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin-layout";
 import { ClientCombobox } from "@/components/client-combobox";
 import { DatePicker } from "@/components/date-picker";
@@ -25,7 +26,6 @@ import {
   type MockClient,
 } from "@/lib/pricing-store";
 import { formatRupiah, parseRupiah } from "@/lib/format";
-import { resolveAreaPricingRule } from "@/lib/pricing-calc";
 import { useT } from "@/lib/i18n";
 import {
   ArrowLeft,
@@ -36,11 +36,10 @@ import {
   CalendarDays,
   Save,
   Layers,
+  ChevronDown,
   ChevronRight,
   SlidersHorizontal,
-  Plus,
-  Pencil,
-  Trash2,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -73,14 +72,7 @@ import {
 import { InteractiveCalc } from "./pricing-form/interactive-calc";
 import { RevenueShareCalc } from "./pricing-form/revenue-share-calc";
 import { loadDeliveryCompState } from "./pricing-form/attendance-delivery-comp";
-import {
-  buildAreaCityConfig,
-  validateAreaCityState,
-  loadAreaCityState,
-  citiesFromRaw,
-  type AreaRuleState,
-} from "./pricing-form/area-city-fields";
-import { AreaRuleModal } from "./pricing-form/area-rule-modal";
+import { citiesFromRaw } from "./pricing-form/area-city-fields";
 import {
   DeliveryIncentiveFields,
   emptyDeliveryIncentiveState,
@@ -156,11 +148,6 @@ function buildEnvelope(
   subtype: PricingSubtype,
   schemeFor: SchemeFor,
   f: FormState,
-  // Baris "Area" (rail) yang kind-nya flat/per_km — rate-override buat scheme
-  // ini sendiri. Baris kind revenue_share/attendance TIDAK pernah sampai
-  // sini (itu launcher ke scheme LAIN, difilter di caller sebelum manggil
-  // fungsi ini — lihat handleSave).
-  areaCityRules: AreaRuleState[],
 ): PricingEnvelope {
   // Revenue Share ganti total cara hitung base fee (persen dari revenue
   // client, bukan dari dimensi Distance/Weight) — cuma masuk akal buat sisi
@@ -219,14 +206,11 @@ function buildEnvelope(
       category === "delivery"
         ? buildDeliveryIncentives(f.deliveryIncentives, f.deliveryIncentiveOn)
         : null,
-    // Area City Pricing — cuma masuk akal buat delivery (bukan revenue_share,
-    // sudah di-gate di return awal fungsi ini). null kalau toggle mati, biar
-    // resolveAreaPricingRule di pricing-calc.ts fallback ke default (identik
-    // perilaku sebelum fitur ini, lihat prioritas #1 di PRD).
-    area_city_pricing:
-      category === "delivery" && areaCityRules.length > 0
-        ? buildAreaCityConfig({ rules: areaCityRules }, true)
-        : null,
+    // Area City Pricing (rate override per city, terpisah dari scope skema
+    // di bawah) — fitur ini udah dipensiunkan, digantiin auto-breakdown
+    // District di rate_by="column" (delivery-fields.tsx) yang lebih reliable
+    // & gak bikin admin bingung dulu isi tarif di sini atau di rate table.
+    area_city_pricing: null,
     // Beda dari area_city_pricing di atas (override RATE) — ini scope SCHEME
     // ini sendiri ke City tertentu, biar 1 client bisa punya beberapa scheme
     // delivery aktif sekaligus (lihat resolveSchemeForCity di pricing-calc.ts).
@@ -254,10 +238,8 @@ function loadForm(scheme: PricingScheme | undefined): {
   category: PricingCategory;
   subtype: PricingSubtype;
   schemeFor: SchemeFor;
-  areaRows: AreaRuleState[];
 } {
   const form = emptyForm();
-  let areaRows: AreaRuleState[] = [];
   const rawCategory: PricingCategory = scheme?.category ?? "delivery";
   // "hybrid" gak ada tab/field-nya lagi di form ini (PRICING_CATEGORIES cuma
   // delivery/attendance) — dulu category state dibiarin "hybrid" walau
@@ -271,7 +253,7 @@ function loadForm(scheme: PricingScheme | undefined): {
     scheme?.subtype ?? (category === "delivery" ? { distance: true, weight: false } : null);
 
   if (!scheme || !scheme.params || scheme.params.version !== 1) {
-    return { form, category, subtype, schemeFor: scheme?.scheme_for ?? "rider", areaRows };
+    return { form, category, subtype, schemeFor: scheme?.scheme_for ?? "rider" };
   }
 
   const env = scheme.params;
@@ -325,9 +307,6 @@ function loadForm(scheme: PricingScheme | undefined): {
     form.deliveryIncentiveOn = true;
     form.deliveryIncentives = loadDeliveryIncentiveState(env.delivery_incentives);
   }
-  if (env.area_city_pricing?.enabled) {
-    areaRows = loadAreaCityState(env.area_city_pricing).rules;
-  }
   if (env.city_scope?.length) {
     form.cityScopeRaw = env.city_scope.join(", ");
   }
@@ -346,7 +325,7 @@ function loadForm(scheme: PricingScheme | undefined): {
     };
   }
 
-  return { form, category, subtype, schemeFor: scheme.scheme_for ?? "rider", areaRows };
+  return { form, category, subtype, schemeFor: scheme.scheme_for ?? "rider" };
 }
 
 // -------------------- Main form --------------------
@@ -362,6 +341,7 @@ export interface PricingFormInitial {
   cityScope?: string;
   category?: PricingCategory;
   revenueShare?: boolean;
+  schemeFor?: SchemeFor;
 }
 
 export function PricingForm({
@@ -406,6 +386,126 @@ export function PricingForm({
   );
 }
 
+function ScopeDropdown({
+  label,
+  options,
+  selected,
+  onToggle,
+  emptyText,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onToggle: (item: string) => void;
+  emptyText: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const tags = [...selected].sort();
+
+  return (
+    <div ref={ref} className="relative flex-1 min-w-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={
+          "w-full flex items-center gap-1.5 flex-wrap min-h-[36px] px-2.5 py-1 rounded-md border-2 bg-background text-left transition-colors " +
+          (open ? "border-primary" : "border-border-strong hover:border-muted-foreground/40")
+        }
+      >
+        {tags.length ? (
+          <>
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground px-2 py-0.5 text-[10px] font-medium max-w-[120px] truncate"
+              >
+                <span className="truncate">{t}</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle(t);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.stopPropagation();
+                      onToggle(t);
+                    }
+                  }}
+                  className="opacity-70 hover:opacity-100 cursor-pointer flex-shrink-0"
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+            <span className="rounded-full bg-primary-soft text-primary px-1.5 py-0.5 text-[10px] font-semibold flex-shrink-0">
+              {tags.length}
+            </span>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">{label}</span>
+        )}
+        <ChevronDown
+          className={
+            "w-3.5 h-3.5 ml-auto flex-shrink-0 text-muted-foreground transition-transform " +
+            (open ? "rotate-180" : "")
+          }
+        />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-md border-2 border-border-strong bg-card shadow-md max-h-44 overflow-y-auto">
+          {options.length ? (
+            options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => onToggle(opt)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+              >
+                <span
+                  className={
+                    "w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors " +
+                    (selected.has(opt)
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-border-strong")
+                  }
+                >
+                  {selected.has(opt) && (
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 10 8" fill="none">
+                      <path
+                        d="M1 4l2.5 2.5L9 1"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </span>
+                {opt}
+              </button>
+            ))
+          ) : (
+            <p className="px-3 py-2 text-xs text-muted-foreground">{emptyText}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PricingFormInner({
   mode,
   existing,
@@ -424,7 +524,7 @@ function PricingFormInner({
 
   const [name, setName] = useState(existing?.name ?? "");
   const [clientId, setClientId] = useState(existing?.client_id ?? initial?.clientId ?? "");
-  const [schemeFor, setSchemeFor] = useState<SchemeFor>(loaded.schemeFor);
+  const [schemeFor, setSchemeFor] = useState<SchemeFor>(initial?.schemeFor ?? loaded.schemeFor);
   const [effFrom, setEffFrom] = useState(
     existing?.effective_from ?? new Date().toISOString().slice(0, 10),
   );
@@ -455,51 +555,30 @@ function PricingFormInner({
     loaded.form.addKgOn || loaded.form.multiDropOn || loaded.form.deliveryIncentiveOn,
   );
 
+  const [scopeAreas, setScopeAreas] = useState<string[]>([]);
+  const [scopeHubs, setScopeHubs] = useState<string[]>([]);
+
   useEffect(() => {
     listClients().then(setClients);
   }, []);
 
+  useEffect(() => {
+    if (!clientId || category !== "delivery") return;
+    const fetchScope = async (col: string) => {
+      const { data } = await supabase
+        .from("delivery_records")
+        .select(col)
+        .eq("client_id", clientId)
+        .not(col, "is", null)
+        .limit(5000);
+      const rows = (data ?? []) as unknown as Record<string, string | null>[];
+      return [...new Set(rows.map((r) => (r[col] ?? "").trim()).filter(Boolean))].sort();
+    };
+    fetchScope("city").then(setScopeAreas);
+    fetchScope("sender_name").then(setScopeHubs);
+  }, [clientId, category]);
+
   const patch = (p: Partial<FormState>) => setF((prev) => ({ ...prev, ...p }));
-
-  // Rate-override per City buat SCHEME INI SENDIRI (area_city_pricing,
-  // disave pas Save) — diedit lewat AreaRuleModal (popup), bukan inline di
-  // rail lagi (lihat riwayat: 1 dropdown campur "isi tarif" vs "buka skema
-  // baru" bikin admin bingung). "Buat Skema" (model/skema beda total) murni
-  // di dalam modal, ephemeral, gak pernah masuk state ini.
-  const [areaCityRules, setAreaCityRules] = useState<AreaRuleState[]>(loaded.areaRows);
-  const [areaModalOpen, setAreaModalOpen] = useState(false);
-  const [editingAreaRule, setEditingAreaRule] = useState<AreaRuleState | null>(null);
-  const openAddAreaRule = () => {
-    setEditingAreaRule(null);
-    setAreaModalOpen(true);
-  };
-  const openEditAreaRule = (rule: AreaRuleState) => {
-    setEditingAreaRule(rule);
-    setAreaModalOpen(true);
-  };
-  const saveAreaRule = (rule: AreaRuleState) =>
-    setAreaCityRules((prev) => {
-      const idx = prev.findIndex((r) => r.id === rule.id);
-      if (idx === -1) return [...prev, rule];
-      return prev.map((r, i) => (i === idx ? rule : r));
-    });
-  const removeAreaRule = (id: string) =>
-    setAreaCityRules((prev) => prev.filter((r) => r.id !== id));
-
-  // Cek cepat "kota X kena rule yang mana" — TEPAT di bawah daftar rule yang
-  // baru dibuat, biar gak perlu scroll ke kalkulator di bawah buat mastiin
-  // rule-nya ke-pasang bener. Reuse resolveAreaPricingRule/buildAreaCityConfig
-  // PERSIS dari pricing-calc.ts (mesin asli), bukan reimplementasi manual, biar
-  // hasil cek ini gak mungkin beda dari yang beneran dipakai pas payroll jalan.
-  const [citySimInput, setCitySimInput] = useState("");
-  const [citySimCustom, setCitySimCustom] = useState(false);
-  const citySimCities = useMemo(
-    () => [...new Set(areaCityRules.flatMap((r) => citiesFromRaw(r.citiesRaw)))],
-    [areaCityRules],
-  );
-  const citySimMatch = citySimInput.trim()
-    ? resolveAreaPricingRule(buildAreaCityConfig({ rules: areaCityRules }, true), citySimInput)
-    : null;
 
   const handleCategoryChange = (cat: PricingCategory) => {
     setCategory(cat);
@@ -513,10 +592,6 @@ function PricingFormInner({
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     if (!effFrom) return toast.error(t("pform.effFromRequired"));
-    if (category === "delivery" && areaCityRules.length > 0) {
-      const err = validateAreaCityState({ rules: areaCityRules });
-      if (err) return toast.error(err);
-    }
     if (category === "delivery" && f.deliveryIncentiveOn) {
       const err = validateDeliveryIncentiveState(f.deliveryIncentives);
       if (err) return toast.error(err);
@@ -538,7 +613,7 @@ function PricingFormInner({
         scheme_for: schemeFor,
         effective_from: effFrom,
         effective_to: effTo || null,
-        params: buildEnvelope(category, subtype, schemeFor, f, areaCityRules),
+        params: buildEnvelope(category, subtype, schemeFor, f),
       });
       posthog.capture("pricing_scheme_saved", {
         mode,
@@ -555,29 +630,75 @@ function PricingFormInner({
     }
   };
 
+  const selectedAreas = useMemo(() => new Set(citiesFromRaw(f.cityScopeRaw)), [f.cityScopeRaw]);
+  const allAreas = useMemo(
+    () => [...new Set([...scopeAreas, ...selectedAreas])].sort(),
+    [scopeAreas, selectedAreas],
+  );
+  const toggleArea = (a: string) => {
+    const next = new Set(selectedAreas);
+    next.has(a) ? next.delete(a) : next.add(a);
+    patch({ cityScopeRaw: [...next].join(", ") });
+  };
+
+  const selectedHubs = useMemo(() => new Set(citiesFromRaw(f.hubScopeRaw)), [f.hubScopeRaw]);
+  const allHubs = useMemo(
+    () => [...new Set([...scopeHubs, ...selectedHubs])].sort(),
+    [scopeHubs, selectedHubs],
+  );
+  const toggleHub = (h: string) => {
+    const next = new Set(selectedHubs);
+    next.has(h) ? next.delete(h) : next.add(h);
+    patch({ hubScopeRaw: [...next].join(", ") });
+  };
+
   return (
     <AdminLayout
       title={mode === "create" ? t("pform.addSchemeTitle") : t("pform.editSchemeTitle")}
       subtitle={t("pform.pageSubtitle")}
     >
-      <div className="pricing-workbench">
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/admin/pricing" })}
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-4"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> {t("pform.backToList")}
-        </button>
+      <div className="pricing-workbench space-y-4">
+        {/* ── Sticky header bar ── */}
+        <div className="sticky top-0 z-10 -mx-1 px-1 py-2 bg-background/95 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-3 rounded-lg border-[3px] border-border-strong bg-card px-4 py-2.5 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/admin/pricing" })}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground flex-shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-semibold truncate">
+                {name ||
+                  (mode === "create" ? t("pform.addSchemeTitle") : t("pform.editSchemeTitle"))}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/admin/pricing" })}
+                className="rounded-md border-2 border-border-strong bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+              >
+                {t("pform.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-[3px_3px_0_0_var(--color-border-strong)] hover:opacity-90 disabled:opacity-50 transition-colors"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {saving ? t("pform.saving") : t("pform.saveScheme")}
+              </button>
+            </div>
+          </div>
+        </div>
 
-        {/* Rail (kiri, sticky) + Builder (kanan) — digabung dari 3 card terpisah
-          (Info / Kategori / Modifier) biar Billing Add-ons (dulu nyempil di
-          card Modifier paling bawah, di dalam ToggleBlock default-collapsed)
-          keliatan begitu buka halaman, dan tabel rate + kalkulator gak perlu
-          discroll jauh buat sampe. Gak ada field/handler yang dihapus — cuma
-          dipindah posisi. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 mb-4 items-start">
-          <aside className="pricing-rail rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4 lg:sticky lg:top-4">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+        {/* ── Row 1: Identity + Period/Side ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-3">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
               {t("pform.sectionBasicInfo")}
             </p>
             <div className="flex flex-col gap-1.5">
@@ -601,6 +722,12 @@ function PricingFormInner({
                 options={clients.map((c) => ({ value: c.id, label: c.name }))}
               />
             </div>
+          </div>
+
+          <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-3">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+              {t("pform.sectionSchemeType")}
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <FieldLabel>{t("pform.effectiveFrom")}</FieldLabel>
@@ -614,66 +741,11 @@ function PricingFormInner({
                 <DatePicker value={effTo} onChange={setEffTo} className="w-full" />
               </div>
             </div>
-
-            {category === "delivery" && (
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-                  {t("pform.sectionSchemeScope")}
-                </p>
-                <div className="flex flex-col gap-3 rounded-md border border-dashed border-border-strong p-3">
-                  {/* Scope SKEMA ini (siapa/kemana yang dipakein skema ini) —
-                  dipisah fisik dari "Beda per Area" di bawah (sekarang malah
-                  dipindah ke bawah Pilih Kategori, box terpisah), itu fitur
-                  BEDA (override rate di dalam 1 skema), biar gak keliatan
-                  nyatu jadi 1 alur yang sama. */}
-                  <div className="flex flex-col gap-1">
-                    <FieldLabel>
-                      {t("pform.cityScopeLabel")}{" "}
-                      <span className="font-normal text-muted-foreground">
-                        ({t("pform.optional")})
-                      </span>
-                    </FieldLabel>
-                    <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
-                      {t("pform.cityScopeHint")}
-                    </span>
-                    <TextInput
-                      value={f.cityScopeRaw}
-                      placeholder={t("pfAreaCity.citiesPlaceholder")}
-                      onChange={(e) => patch({ cityScopeRaw: e.target.value })}
-                      className="mt-0.5"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1 border-t border-border pt-3">
-                    <FieldLabel>
-                      {t("pform.hubScopeLabel")}{" "}
-                      <span className="font-normal text-muted-foreground">
-                        ({t("pform.optional")})
-                      </span>
-                    </FieldLabel>
-                    <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
-                      {t("pform.hubScopeHint")}
-                    </span>
-                    <TextInput
-                      value={f.hubScopeRaw}
-                      placeholder={t("pfDelivery.columnSenderName")}
-                      onChange={(e) => patch({ hubScopeRaw: e.target.value })}
-                      className="mt-0.5"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Scheme for */}
             <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-                {t("pform.sectionSchemeType")}
-              </p>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                {t("pform.schemeForLabel")}
-              </p>
-              <div className="grid grid-cols-1 gap-2">
+              <div className="mb-1.5">
+                <FieldLabel>{t("pform.schemeForLabel")}</FieldLabel>
+              </div>
+              <div className="inline-flex rounded-md border-2 border-border-strong overflow-hidden">
                 {(["rider", "client"] as SchemeFor[]).map((sf) => (
                   <button
                     key={sf}
@@ -681,28 +753,29 @@ function PricingFormInner({
                     type="button"
                     onClick={() => setSchemeFor(sf)}
                     className={
-                      "text-left rounded-md px-3 py-2.5 border-2 border-border-strong transition-colors " +
+                      "px-3.5 py-1.5 text-xs font-medium transition-colors " +
                       (schemeFor === sf
-                        ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                        ? "bg-primary text-primary-foreground"
                         : "bg-card text-foreground hover:bg-muted")
                     }
                   >
-                    <span className="text-xs font-medium block">
-                      {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {sf === "rider" ? t("pform.riderCostDesc") : t("pform.clientRevenueDesc")}
-                    </span>
+                    {sf === "rider" ? t("pform.riderCost") : t("pform.clientRevenue")}
                   </button>
                 ))}
               </div>
             </div>
+          </div>
+        </div>
 
-            <div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
+        {/* ── Row 2: Config strip — category + dimensions + scope ── */}
+        <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+          <div className="flex flex-wrap items-start gap-4">
+            {/* Category toggle */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
                 {t("pform.selectCategory")}
-              </p>
-              <div className="grid grid-cols-1 gap-2">
+              </span>
+              <div className="inline-flex rounded-md border-2 border-border-strong overflow-hidden">
                 {PRICING_CATEGORIES.map((cat) => {
                   const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS] ?? Truck;
                   const active = category === cat.key;
@@ -713,197 +786,27 @@ function PricingFormInner({
                       type="button"
                       onClick={() => handleCategoryChange(cat.key)}
                       className={
-                        "text-left rounded-md px-3 py-2.5 flex flex-col gap-1 transition-all duration-150 border-2 border-border-strong " +
+                        "flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium transition-colors " +
                         (active
-                          ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
+                          ? "bg-primary text-primary-foreground"
                           : "bg-card text-foreground hover:bg-muted")
                       }
                     >
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-4 h-4" />
-                        <span className="text-xs font-medium leading-tight">{cat.name}</span>
-                      </div>
-                      <span className="text-[11px] text-muted-foreground leading-snug">
-                        {cat.desc}
-                      </span>
+                      <Icon className="w-3.5 h-3.5" />
+                      {cat.name}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Rate override per Area (Area City Pricing launcher) — dipindah
-              ke bawah sini (setelah Pilih Kategori), FISIK terpisah dari
-              section "Scope Skema" di atas. Ini fitur BEDA: override rate DI
-              DALAM 1 skema, bukan scope skema-nya sendiri. */}
-            {category === "delivery" && (
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-                  {t("pform.sectionAreaRateOverride")}
-                </p>
-                <div className="flex flex-col gap-2 rounded-md border border-dashed border-border-strong p-3">
-                  <div className="flex flex-col gap-0.5">
-                    <FieldLabel>{t("pform.areaLauncherLabel")}</FieldLabel>
-                    <span className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line">
-                      {t("pform.areaLauncherHint")}
-                    </span>
-                  </div>
-                  {areaCityRules.length === 0 && (
-                    <p className="text-xs text-muted-foreground">{t("pfAreaCity.empty")}</p>
-                  )}
-                  {areaCityRules.map((rule) => {
-                    const cities = citiesFromRaw(rule.citiesRaw);
-                    const modelLabel =
-                      rule.model === "flat"
-                        ? t("pfAreaCity.modelFlat")
-                        : t("pfAreaCity.modelPerKm");
-                    const rateNum = Number(parseRupiah(rule.rate)) || 0;
-                    const rateLabel = `Rp${rateNum.toLocaleString("id-ID")}${rule.model === "flat" ? "/order" : "/km"}`;
-                    return (
-                      <div
-                        key={rule.id}
-                        className="flex items-center justify-between gap-2 rounded-md bg-muted/50 p-2.5"
-                      >
-                        <div className="min-w-0 flex flex-col">
-                          <span className="text-xs font-medium truncate">
-                            {rule.name || cities.join(", ") || "—"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground truncate">
-                            {cities.join(", ") || "—"} · {modelLabel} · {rateLabel}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openEditAreaRule(rule)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeAreaRule(rule.id)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-muted"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={openAddAreaRule}
-                    className="w-full text-xs text-primary border border-dashed border-primary-border rounded-md px-3 py-1.5 hover:bg-primary-soft/50 inline-flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> {t("pfAreaCity.addArea")}
-                  </button>
-
-                  {areaCityRules.length > 0 && (
-                    <div className="flex flex-col gap-1 rounded-md border border-dashed border-border-strong p-2.5">
-                      <FieldLabel>{t("pfAreaCity.citySimLabel")}</FieldLabel>
-                      <select
-                        value={citySimCustom ? "__custom__" : citySimInput}
-                        onChange={(e) => {
-                          if (e.target.value === "__custom__") {
-                            setCitySimCustom(true);
-                            setCitySimInput("");
-                          } else {
-                            setCitySimCustom(false);
-                            setCitySimInput(e.target.value);
-                          }
-                        }}
-                        className="w-full rounded-md border-2 border-border-strong bg-card px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="" disabled>
-                          {t("pfAreaCity.citySimPlaceholder")}
-                        </option>
-                        {citySimCities.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                        <option value="__custom__">{t("pfAreaCity.citySimCustomOption")}</option>
-                      </select>
-                      {/* Ketik bebas — buat tes City yang belum terdaftar (mastiin fallback-nya
-                            bener), gak cuma City yang udah ada di rule. */}
-                      {citySimCustom && (
-                        <TextInput
-                          value={citySimInput}
-                          placeholder={t("pfAreaCity.citiesPlaceholder")}
-                          onChange={(e) => setCitySimInput(e.target.value)}
-                          className="mt-0.5"
-                          autoFocus
-                        />
-                      )}
-                      {citySimInput.trim() && (
-                        <p className="text-[11px]">
-                          {citySimMatch ? (
-                            <span className="text-emerald-700 dark:text-emerald-400">
-                              {t("pfAreaCity.ruleMatched")}: <b>{citySimMatch.name}</b> (
-                              {citySimMatch.model === "flat"
-                                ? t("pfAreaCity.modelFlat")
-                                : t("pfAreaCity.modelPerKm")}
-                              , Rp{Number(citySimMatch.rate).toLocaleString("id-ID")}
-                              {citySimMatch.model === "flat" ? "/order" : "/km"})
-                            </span>
-                          ) : (
-                            <span className="text-amber-700 dark:text-amber-400">
-                              {t("pfAreaCity.ruleFallback")}
-                            </span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {areaModalOpen && (
-              <AreaRuleModal
-                editing={editingAreaRule}
-                existingRules={areaCityRules.filter((r) => r.id !== editingAreaRule?.id)}
-                clientId={clientId}
-                onClose={() => setAreaModalOpen(false)}
-                onSave={(rule) => {
-                  saveAreaRule(rule);
-                  setAreaModalOpen(false);
-                }}
-              />
-            )}
-
-            {/* Revenue Share — fee rider = % dari revenue client per AWB (bukan
-              dari dimensi Distance/Weight). Cuma masuk akal buat sisi Rider:
-              revenue-nya sendiri diambil dari skema Client yang aktif pas
-              Hitung Fee (lihat admin.calculate.tsx), bukan diisi di sini. */}
-            {category === "delivery" && schemeFor === "rider" && (
-              <ToggleBlock
-                label={t("pform.revenueShareLabel")}
-                hint={t("pform.revenueShareHint")}
-                on={f.revenueShareOn}
-                onToggle={(on) => patch({ revenueShareOn: on })}
-              >
-                <div className="flex flex-col gap-1.5 max-w-xs">
-                  <FieldLabel>{t("pform.percentToRider")}</FieldLabel>
-                  <TextInput
-                    value={f.revenueSharePercent}
-                    inputMode="decimal"
-                    onChange={(e) =>
-                      patch({ revenueSharePercent: sanitizeDecimalInput(e.target.value) })
-                    }
-                  />
-                </div>
-              </ToggleBlock>
-            )}
-
-            {/* Dimensi delivery — checkbox Distance / Weight */}
+            {/* Dimension badges */}
             {category === "delivery" && !f.revenueShareOn && (
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-2">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
                   {t("pform.pricingDimensionsLabel")}
-                </label>
-                <div className="grid grid-cols-1 gap-2">
+                </span>
+                <div className="flex gap-2">
                   {DELIVERY_DIMENSIONS.map((dim) => {
                     const Icon = DIMENSION_ICONS[dim.key];
                     const dims = (subtype as DeliveryDimensions) || {
@@ -911,13 +814,12 @@ function PricingFormInner({
                       weight: false,
                     };
                     const checked = dims[dim.key] ?? false;
-
                     return (
                       <label
                         key={dim.key}
                         data-pricing-dimension={dim.key}
                         className={
-                          "text-left rounded-md px-3 py-2.5 flex items-start gap-2.5 transition-all duration-150 border-2 border-border-strong cursor-pointer " +
+                          "inline-flex items-center gap-1.5 rounded-md border-2 border-border-strong px-3 py-1.5 text-xs font-medium cursor-pointer transition-all " +
                           (checked
                             ? "bg-primary text-primary-foreground shadow-[3px_3px_0_0_var(--color-border-strong)]"
                             : "bg-card text-foreground hover:bg-muted")
@@ -927,17 +829,10 @@ function PricingFormInner({
                           type="checkbox"
                           checked={checked}
                           onChange={(e) => setSubtype({ ...dims, [dim.key]: e.target.checked })}
-                          className="w-4 h-4 mt-0.5 flex-shrink-0"
+                          className="sr-only"
                         />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span className="text-xs font-medium leading-tight">{dim.name}</span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground leading-snug block mt-0.5">
-                            {dim.desc}
-                          </span>
-                        </div>
+                        <Icon className="w-3.5 h-3.5" />
+                        {dim.name}
                       </label>
                     );
                   })}
@@ -945,290 +840,352 @@ function PricingFormInner({
               </div>
             )}
 
-            {/* Callout */}
-            <div className="pricing-callout rounded-md border-2 border-border-strong bg-secondary px-3.5 py-2.5 flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-foreground leading-relaxed">
-                {category === "delivery"
-                  ? (() => {
-                      if (f.revenueShareOn) return t("pform.calloutRevenueShare");
-                      const dims = subtype as DeliveryDimensions | null;
-                      if (!dims || (!dims.distance && !dims.weight))
-                        return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
-                      const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map(
-                        (d) => d.name,
-                      );
-                      if (enabled.length === 1)
-                        return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
-                      return t("pform.calloutBothDimensions");
-                    })()
-                  : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
-              </p>
-            </div>
+            {/* Revenue share toggle (inline) */}
+            {category === "delivery" && schemeFor === "rider" && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+                  Revenue Share
+                </span>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={f.revenueShareOn}
+                    onChange={(e) => patch({ revenueShareOn: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-xs">{t("pform.revenueShareLabel")}</span>
+                </label>
+              </div>
+            )}
 
-            {/* Billing Add-ons — dipindah dari card Modifier paling bawah biar
-              gak nyembunyi di collapsed toggle yang jauh di bawah fold (lihat
-              diskusi redesign). Gating sama persis kayak sebelumnya:
-              scheme_for === "client" doang, gak dibatasi kategori. */}
-            {schemeFor === "client" && (
-              <ToggleBlock
-                label={t("pform.billingAddonsLabel")}
-                hint={t("pform.billingAddonsHint")}
-                on={f.billingOn}
-                onToggle={(on) => patch({ billingOn: on })}
-              >
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel>{t("pform.minCharge")}</FieldLabel>
-                    <RupiahInput
-                      value={f.billing.min_charge}
-                      onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel>{t("pform.managementFee")}</FieldLabel>
-                    <TextInput
-                      value={f.billing.management_fee_percent}
-                      inputMode="decimal"
+            {/* Scope dropdowns */}
+            {category === "delivery" && (
+              <div className="flex flex-col gap-1.5 min-w-[160px]">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
+                  Scope
+                </span>
+                <div className="flex gap-2">
+                  <ScopeDropdown
+                    label={`Area (${t("pform.optional")})`}
+                    options={allAreas}
+                    selected={selectedAreas}
+                    onToggle={toggleArea}
+                    emptyText={
+                      clientId
+                        ? "Tidak ada data area di pengiriman client ini."
+                        : "Pilih client dulu."
+                    }
+                  />
+                  <ScopeDropdown
+                    label={`Hub (${t("pform.optional")})`}
+                    options={allHubs}
+                    selected={selectedHubs}
+                    onToggle={toggleHub}
+                    emptyText={
+                      clientId
+                        ? "Tidak ada data hub di pengiriman client ini."
+                        : "Pilih client dulu."
+                    }
+                  />
+                </div>
+                {!f.cityScopeRaw && !f.hubScopeRaw && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Skema utama — berlaku untuk semua Area &amp; Hub.
+                  </span>
+                )}
+                {mode === "edit" && (
+                  <Link
+                    to="/admin/pricing/new"
+                    search={{
+                      clientId: clientId || undefined,
+                      category: "delivery",
+                      schemeFor,
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                  >
+                    {t("pform.newScopedSchemeLink")} <ArrowUpRight className="w-3 h-3" />
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Callout */}
+          <div className="mt-3 rounded-md border-2 border-border-strong bg-secondary px-3.5 py-2 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-foreground leading-relaxed">
+              {category === "delivery"
+                ? (() => {
+                    if (f.revenueShareOn) return t("pform.calloutRevenueShare");
+                    const dims = subtype as DeliveryDimensions | null;
+                    if (!dims || (!dims.distance && !dims.weight))
+                      return PRICING_CATEGORIES.find((c) => c.key === category)!.callout;
+                    const enabled = DELIVERY_DIMENSIONS.filter((d) => dims[d.key]).map(
+                      (d) => d.name,
+                    );
+                    if (enabled.length === 1)
+                      return DELIVERY_DIMENSIONS.find((d) => d.name === enabled[0])!.callout;
+                    return t("pform.calloutBothDimensions");
+                  })()
+                : PRICING_CATEGORIES.find((c) => c.key === category)!.callout}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Revenue Share fields (expanded when on) ── */}
+        {category === "delivery" && schemeFor === "rider" && f.revenueShareOn && (
+          <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+            <div className="flex flex-col gap-1.5 max-w-xs">
+              <FieldLabel>{t("pform.percentToRider")}</FieldLabel>
+              <TextInput
+                value={f.revenueSharePercent}
+                inputMode="decimal"
+                onChange={(e) =>
+                  patch({ revenueSharePercent: sanitizeDecimalInput(e.target.value) })
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── Billing Add-ons ── */}
+        {schemeFor === "client" && (
+          <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+            <ToggleBlock
+              label={t("pform.billingAddonsLabel")}
+              hint={t("pform.billingAddonsHint")}
+              on={f.billingOn}
+              onToggle={(on) => patch({ billingOn: on })}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>{t("pform.minCharge")}</FieldLabel>
+                  <RupiahInput
+                    value={f.billing.min_charge}
+                    onChange={(v) => patch({ billing: { ...f.billing, min_charge: v } })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>{t("pform.managementFee")}</FieldLabel>
+                  <TextInput
+                    value={f.billing.management_fee_percent}
+                    inputMode="decimal"
+                    onChange={(e) =>
+                      patch({
+                        billing: {
+                          ...f.billing,
+                          management_fee_percent: sanitizeDecimalInput(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>{t("pform.adminFee")}</FieldLabel>
+                  <RupiahInput
+                    value={f.billing.admin_fee_flat}
+                    onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>{t("pform.insuranceFee")}</FieldLabel>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={f.billing.insurance_fee_mode}
                       onChange={(e) =>
                         patch({
                           billing: {
                             ...f.billing,
-                            management_fee_percent: sanitizeDecimalInput(e.target.value),
+                            insurance_fee_mode: e.target.value as "flat" | "percent",
+                            insurance_fee_amount: "",
                           },
                         })
                       }
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel>{t("pform.adminFee")}</FieldLabel>
-                    <RupiahInput
-                      value={f.billing.admin_fee_flat}
-                      onChange={(v) => patch({ billing: { ...f.billing, admin_fee_flat: v } })}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel>{t("pform.insuranceFee")}</FieldLabel>
-                    <div className="flex gap-1.5">
-                      <select
-                        value={f.billing.insurance_fee_mode}
+                      className="w-24 flex-shrink-0 rounded-md border-2 border-border-strong bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="flat">{t("pform.insuranceModeFlat")}</option>
+                      <option value="percent">{t("pform.insuranceModePercent")}</option>
+                    </select>
+                    {f.billing.insurance_fee_mode === "percent" ? (
+                      <TextInput
+                        value={f.billing.insurance_fee_amount}
+                        inputMode="decimal"
                         onChange={(e) =>
                           patch({
                             billing: {
                               ...f.billing,
-                              insurance_fee_mode: e.target.value as "flat" | "percent",
-                              insurance_fee_amount: "",
+                              insurance_fee_amount: sanitizeDecimalInput(e.target.value),
                             },
                           })
                         }
-                        className="w-24 flex-shrink-0 rounded-md border-2 border-border-strong bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-                      >
-                        <option value="flat">{t("pform.insuranceModeFlat")}</option>
-                        <option value="percent">{t("pform.insuranceModePercent")}</option>
-                      </select>
-                      {f.billing.insurance_fee_mode === "percent" ? (
-                        <TextInput
-                          value={f.billing.insurance_fee_amount}
-                          inputMode="decimal"
-                          onChange={(e) =>
-                            patch({
-                              billing: {
-                                ...f.billing,
-                                insurance_fee_amount: sanitizeDecimalInput(e.target.value),
-                              },
-                            })
-                          }
-                        />
-                      ) : (
-                        <RupiahInput
-                          value={f.billing.insurance_fee_amount}
-                          onChange={(v) =>
-                            patch({ billing: { ...f.billing, insurance_fee_amount: v } })
-                          }
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel>{t("pform.ppn")}</FieldLabel>
-                    <TextInput
-                      value={f.billing.ppn_percent}
-                      inputMode="decimal"
-                      onChange={(e) =>
-                        patch({
-                          billing: {
-                            ...f.billing,
-                            ppn_percent: sanitizeDecimalInput(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              </ToggleBlock>
-            )}
-          </aside>
-
-          {/* Builder — tabel rate/attendance, modifier delivery-only (Add-KG,
-            Multi-drop), kalkulator hidup, semuanya dalam 1 panel biar keliatan
-            bareng tanpa scroll jauh. */}
-          <div className="pricing-builder rounded-xl border-[3px] border-border-strong bg-card p-5 shadow-[6px_6px_0_0_var(--color-border-strong)] space-y-4">
-            {category === "delivery" && f.revenueShareOn && (
-              <RevenueShareCalc
-                clientId={clientId}
-                effFrom={effFrom}
-                effTo={effTo}
-                percentToRider={f.revenueSharePercent}
-              />
-            )}
-
-            {category === "delivery" && !f.revenueShareOn && subtype && (
-              <DeliveryFields
-                subtype={subtype}
-                value={f.delivery}
-                onChange={(v) => patch({ delivery: v })}
-              />
-            )}
-
-            {category === "attendance" && (
-              <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
-            )}
-
-            {category === "delivery" &&
-              !f.revenueShareOn &&
-              (() => {
-                const activeCount = [f.addKgOn, f.multiDropOn, f.deliveryIncentiveOn].filter(
-                  Boolean,
-                ).length;
-                const hasActive = activeCount > 0;
-                return (
-                  <div
-                    className={
-                      "rounded-md transition-colors " +
-                      (hasActive
-                        ? "border-2 border-primary bg-primary-soft"
-                        : "border-2 border-primary-soft bg-primary-soft/40")
-                    }
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setModifiersOpen((o) => !o)}
-                      className={
-                        "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:bg-primary-soft/70 rounded-md transition-colors " +
-                        (hasActive ? "text-primary-soft-foreground" : "text-foreground")
-                      }
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                        </span>
-                        <ChevronRight
-                          className={
-                            "w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " +
-                            (modifiersOpen ? "rotate-90" : "")
-                          }
-                        />
-                        <span className="flex flex-col">
-                          <span className="text-sm font-semibold leading-tight">
-                            {t("pform.modifiersToggle")}
-                          </span>
-                          <span className="text-[11px] font-normal text-muted-foreground">
-                            {t("pform.modifiersSubtitle")}
-                          </span>
-                        </span>
-                      </span>
-                      {hasActive && (
-                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground flex-shrink-0">
-                          {activeCount} {t("pform.modifiersActiveSuffix")}
-                        </span>
-                      )}
-                    </button>
-                    {modifiersOpen && (
-                      <div className="px-3.5 pb-3.5 space-y-3">
-                        {!(subtype as DeliveryDimensions | null)?.weight && (
-                          <ToggleBlock
-                            label={t("pform.addKgLabel")}
-                            hint={t("pform.addKgHint")}
-                            on={f.addKgOn}
-                            onToggle={(on) => patch({ addKgOn: on })}
-                          >
-                            <StepTierEditor
-                              unit="kg"
-                              value={f.addKg}
-                              onChange={(v) => patch({ addKg: v })}
-                            />
-                          </ToggleBlock>
-                        )}
-
-                        <ToggleBlock
-                          label={t("pform.multiDropLabel")}
-                          hint={t("pform.multiDropHint")}
-                          on={f.multiDropOn}
-                          onToggle={(on) => patch({ multiDropOn: on })}
-                        >
-                          <div className="flex flex-col gap-1.5 max-w-xs">
-                            <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
-                            <RupiahInput
-                              value={f.multiDropFee}
-                              onChange={(v) => patch({ multiDropFee: v })}
-                            />
-                          </div>
-                        </ToggleBlock>
-
-                        <ToggleBlock
-                          label={t("pform.deliveryIncentiveLabel")}
-                          hint={t("pform.deliveryIncentiveHint")}
-                          on={f.deliveryIncentiveOn}
-                          onToggle={(on) => patch({ deliveryIncentiveOn: on })}
-                        >
-                          <DeliveryIncentiveFields
-                            value={f.deliveryIncentives}
-                            onChange={(v) => patch({ deliveryIncentives: v })}
-                          />
-                        </ToggleBlock>
-                      </div>
+                      />
+                    ) : (
+                      <RupiahInput
+                        value={f.billing.insurance_fee_amount}
+                        onChange={(v) =>
+                          patch({ billing: { ...f.billing, insurance_fee_amount: v } })
+                        }
+                      />
                     )}
                   </div>
-                );
-              })()}
-
-            {!(category === "delivery" && f.revenueShareOn) && (
-              <InteractiveCalc
-                category={category}
-                subtype={subtype}
-                delivery={f.delivery}
-                attendance={f.attendance}
-                schemeFor={schemeFor}
-                addKgOn={f.addKgOn}
-                multiDropOn={f.multiDropOn}
-                multiDropFee={f.multiDropFee}
-                areaCityOn={areaCityRules.length > 0}
-                areaCity={{ rules: areaCityRules }}
-                billingOn={f.billingOn}
-              />
-            )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>{t("pform.ppn")}</FieldLabel>
+                  <TextInput
+                    value={f.billing.ppn_percent}
+                    inputMode="decimal"
+                    onChange={(e) =>
+                      patch({
+                        billing: {
+                          ...f.billing,
+                          ppn_percent: sanitizeDecimalInput(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </ToggleBlock>
           </div>
+        )}
+
+        {/* ── Rate table (full width) ── */}
+        <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+          {category === "delivery" && f.revenueShareOn && (
+            <RevenueShareCalc
+              clientId={clientId}
+              effFrom={effFrom}
+              effTo={effTo}
+              percentToRider={f.revenueSharePercent}
+            />
+          )}
+
+          {category === "delivery" && !f.revenueShareOn && subtype && (
+            <DeliveryFields
+              subtype={subtype}
+              value={f.delivery}
+              onChange={(v) => patch({ delivery: v })}
+              clientId={clientId}
+            />
+          )}
+
+          {category === "attendance" && (
+            <AttendanceFields value={f.attendance} onChange={(v) => patch({ attendance: v })} />
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/admin/pricing" })}
-            className="rounded-md border border-border bg-card px-4 py-2 text-sm hover:bg-muted"
-          >
-            {t("pform.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? t("pform.saving") : t("pform.saveScheme")}
-          </button>
-        </div>
+        {/* ── Modifiers (collapsible) ── */}
+        {category === "delivery" &&
+          !f.revenueShareOn &&
+          (() => {
+            const activeCount = [f.addKgOn, f.multiDropOn, f.deliveryIncentiveOn].filter(
+              Boolean,
+            ).length;
+            const hasActive = activeCount > 0;
+            return (
+              <div
+                className={
+                  "rounded-lg transition-colors " +
+                  (hasActive
+                    ? "border-[3px] border-primary bg-primary-soft shadow-[6px_6px_0_0_var(--color-border-strong)]"
+                    : "border-[3px] border-border-strong bg-card shadow-[6px_6px_0_0_var(--color-border-strong)]")
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => setModifiersOpen((o) => !o)}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-primary-soft/30 rounded-lg transition-colors"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground flex-shrink-0">
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                    </span>
+                    <ChevronRight
+                      className={
+                        "w-4 h-4 flex-shrink-0 transition-transform text-muted-foreground " +
+                        (modifiersOpen ? "rotate-90" : "")
+                      }
+                    />
+                    <span className="flex flex-col">
+                      <span className="text-sm font-semibold leading-tight">
+                        {t("pform.modifiersToggle")}
+                      </span>
+                      <span className="text-[11px] font-normal text-muted-foreground">
+                        {t("pform.modifiersSubtitle")}
+                      </span>
+                    </span>
+                  </span>
+                  {hasActive && (
+                    <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground flex-shrink-0">
+                      {activeCount} {t("pform.modifiersActiveSuffix")}
+                    </span>
+                  )}
+                </button>
+                {modifiersOpen && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {!(subtype as DeliveryDimensions | null)?.weight && (
+                      <ToggleBlock
+                        label={t("pform.addKgLabel")}
+                        hint={t("pform.addKgHint")}
+                        on={f.addKgOn}
+                        onToggle={(on) => patch({ addKgOn: on })}
+                      >
+                        <StepTierEditor
+                          unit="kg"
+                          value={f.addKg}
+                          onChange={(v) => patch({ addKg: v })}
+                        />
+                      </ToggleBlock>
+                    )}
+
+                    <ToggleBlock
+                      label={t("pform.multiDropLabel")}
+                      hint={t("pform.multiDropHint")}
+                      on={f.multiDropOn}
+                      onToggle={(on) => patch({ multiDropOn: on })}
+                    >
+                      <div className="flex flex-col gap-1.5 max-w-xs">
+                        <FieldLabel>{t("pform.feePerExtraShipment")}</FieldLabel>
+                        <RupiahInput
+                          value={f.multiDropFee}
+                          onChange={(v) => patch({ multiDropFee: v })}
+                        />
+                      </div>
+                    </ToggleBlock>
+
+                    <ToggleBlock
+                      label={t("pform.deliveryIncentiveLabel")}
+                      hint={t("pform.deliveryIncentiveHint")}
+                      on={f.deliveryIncentiveOn}
+                      onToggle={(on) => patch({ deliveryIncentiveOn: on })}
+                    >
+                      <DeliveryIncentiveFields
+                        value={f.deliveryIncentives}
+                        onChange={(v) => patch({ deliveryIncentives: v })}
+                      />
+                    </ToggleBlock>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+        {/* ── Calculator simulator ── */}
+        {!(category === "delivery" && f.revenueShareOn) && (
+          <div className="rounded-lg border-[3px] border-border-strong bg-card p-4 shadow-[6px_6px_0_0_var(--color-border-strong)]">
+            <InteractiveCalc
+              category={category}
+              subtype={subtype}
+              delivery={f.delivery}
+              attendance={f.attendance}
+              schemeFor={schemeFor}
+              addKgOn={f.addKgOn}
+              multiDropOn={f.multiDropOn}
+              multiDropFee={f.multiDropFee}
+              billingOn={f.billingOn}
+            />
+          </div>
+        )}
       </div>
     </AdminLayout>
   );

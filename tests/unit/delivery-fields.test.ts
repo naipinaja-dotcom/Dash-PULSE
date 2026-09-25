@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildDeliveryConfig, emptyDeliveryState } from "@/components/pricing-form/delivery-fields";
 import { sanitizeDecimalInput, sanitizeTimeInput } from "@/components/pricing-form/shared";
-import { computeInteractive, defaultCalcInputs, type InteractiveCalcProps } from "@/components/pricing-form/interactive-calc";
+import {
+  computeInteractive,
+  defaultCalcInputs,
+  type InteractiveCalcProps,
+} from "@/components/pricing-form/interactive-calc";
 import { emptyAttendanceState } from "@/components/pricing-form/attendance-fields";
-import { emptyAreaCityState } from "@/components/pricing-form/area-city-fields";
 
 describe("sanitizeDecimalInput", () => {
   it("replaces comma with dot (ID keyboards type decimals with comma)", () => {
@@ -43,7 +46,9 @@ describe("buildDeliveryConfig", () => {
     // Meniru persis apa yang kejadian di form: user centang Distance (subtype),
     // isi baris tarif di tabel (rows) — tapi state.distance.enabled tetap
     // default false karena gak ada UI yang nyentuh field itu.
-    state.distance.rows = [{ type: "flat", from: "0", to: "12", base_fee: "15000", step: "0", add_per_step: "0" }];
+    state.distance.rows = [
+      { type: "flat", from: "0", to: "12", base_fee: "15000", step: "0", add_per_step: "0" },
+    ];
 
     const config = buildDeliveryConfig({ distance: true, weight: false }, state);
 
@@ -58,7 +63,9 @@ describe("buildDeliveryConfig", () => {
 
   it("still saves null when the checkbox is off", () => {
     const state = emptyDeliveryState();
-    state.distance.rows = [{ type: "flat", from: "0", to: "12", base_fee: "15000", step: "0", add_per_step: "0" }];
+    state.distance.rows = [
+      { type: "flat", from: "0", to: "12", base_fee: "15000", step: "0", add_per_step: "0" },
+    ];
 
     const config = buildDeliveryConfig({ distance: false, weight: false }, state);
 
@@ -92,8 +99,6 @@ describe("computeInteractive (pricing scheme preview calculator)", () => {
       addKgOn: false,
       multiDropOn: false,
       multiDropFee: "0",
-      areaCityOn: false,
-      areaCity: emptyAreaCityState(),
       billingOn: false,
     };
 

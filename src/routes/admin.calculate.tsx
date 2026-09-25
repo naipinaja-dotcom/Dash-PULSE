@@ -166,6 +166,28 @@ function CalculatePage() {
     [schemes, clientId],
   );
 
+  // Dropdown "Skema" — untuk kategori delivery, sibling yang di-scope
+  // city_scope/hub_scope (mis. Kalimantan) DIKUMPULIN jadi 1 opsi per
+  // scheme_for (Rider/Client), bukan 1 baris per skema — run() di bawah
+  // udah auto-gabung semua sibling itu lewat calcDeliveryFeeMultiCity, jadi
+  // gak perlu lagi milih satu-satu per city/hub secara manual di sini.
+  // Attendance/hybrid TETAP ditampilin per skema (belum ada mesin auto-
+  // resolve multi-scheme buat kategori itu).
+  const schemeDropdownOptions = useMemo(() => {
+    const delivery = matchingSchemes.filter((s) => s.category === "delivery");
+    const others = matchingSchemes.filter((s) => s.category !== "delivery");
+    const byFor = new Map<string, PricingScheme[]>();
+    for (const s of delivery) {
+      const arr = byFor.get(s.scheme_for) ?? [];
+      arr.push(s);
+      byFor.set(s.scheme_for, arr);
+    }
+    const representatives = [...byFor.values()].map(
+      (group) => group.find((s) => !s.city_scope?.length && !s.hub_scope?.length) ?? group[0],
+    );
+    return [...representatives, ...others];
+  }, [matchingSchemes]);
+
   const run = async () => {
     const scheme = schemes.find((s) => s.id === schemeId);
     if (!scheme) return toast.error("Pilih skema dulu");
@@ -817,7 +839,7 @@ function CalculatePage() {
             searchPlaceholder="Cari skema..."
             emptyText="Skema tidak ditemukan"
             itemLabel="skema"
-            options={matchingSchemes.map((s) => ({
+            options={schemeDropdownOptions.map((s) => ({
               value: s.id,
               label: `${s.name} · ${s.scheme_for === "client" ? "Client" : "Rider"} · ${pricingLabel(s.category, s.subtype)}`,
             }))}

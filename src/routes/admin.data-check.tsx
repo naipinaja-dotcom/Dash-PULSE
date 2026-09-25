@@ -5,9 +5,12 @@ import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Radio } from "lucide-react";
 import { ClientCombobox } from "@/components/client-combobox";
 import { DatePicker } from "@/components/date-picker";
+import { loadLiveFeeDeliveries } from "@/lib/api/live-fee-deliveries.functions";
+import { upsertLiveDeliveries } from "@/lib/sync-live-deliveries";
+import { loadApiProviders, type ApiProvider } from "@/lib/api/providers.functions";
 
 // Search params opsional — diisi otomatis kalau dibuka dari link "Cek Data"
 // di Payroll Run (bawa periode run aktif), biar gak perlu pilih ulang manual.
@@ -28,12 +31,16 @@ export const Route = createFileRoute("/admin/data-check")({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
 
-type Client = { id: string; name: string };
+type Client = { id: string; name: string; provider_id?: number | null };
 
 function useClients() {
   const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => {
-    supabase.from("clients").select("id, name").order("name").then(({ data }) => setClients(data ?? []));
+    (supabase as any)
+      .from("clients")
+      .select("id, name, provider_id")
+      .order("name")
+      .then(({ data }: { data: Client[] | null }) => setClients(data ?? []));
   }, []);
   return clients;
 }
@@ -60,9 +67,18 @@ function DataCheckPage() {
 }
 
 type DeliveryRow = {
-  driver_code: string | null; delivery_date: string; status: string | null;
-  delivery_type: string | null; client_id: string | null; dash_delivery_id: string | null;
-  provider_order_id: string | null; distance_km: number | null; weight_kg: number | null;
+  driver_code: string | null;
+  delivery_date: string;
+  status: string | null;
+  delivery_type: string | null;
+  client_id: string | null;
+  dash_delivery_id: string | null;
+  provider_order_id: string | null;
+  distance_km: number | null;
+  weight_kg: number | null;
+  city: string | null;
+  district: string | null;
+  sender_name: string | null;
   riders?: { full_name: string | null } | null;
 };
 
@@ -80,6 +96,33 @@ function DeliveryCheck() {
   const [completed, setCompleted] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [providers, setProviders] = useState<ApiProvider[]>([]);
+  const [syncing, setSyncing] = useState(false);
+
+  const selectedClient = clients.find((c) => c.id === clientId) ?? null;
+  const matchedProvider = selectedClient
+    ? ((selectedClient.provider_id != null
+        ? providers.find((p) => p.id === selectedClient.provider_id)
+        : null) ??
+      providers.find(
+        (p) => p.name.trim().toLowerCase() === selectedClient.name.trim().toLowerCase(),
+      ) ??
+      null)
+    : null;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (!token) return;
+        const r = await loadApiProviders({ data: { token } });
+        setProviders(r.providers);
+      } catch (e) {
+        toast.error(`Gagal muat provider API: ${(e as Error).message}`);
+      }
+    })();
+  }, []);
 
   // Server-side pagination beneran — cuma tarik 1 halaman (pageSize baris)
   // dari database per request, BUKAN tarik semua baris dulu baru dipotong di
@@ -87,7 +130,8 @@ function DeliveryCheck() {
   // dari SEMUA baris kayak Reports/Payroll Run), jadi aman di-page di server —
   // reload jadi jauh lebih cepat buat client yang datanya ribuan baris.
   const fetchPage = async (pageNum: number) => {
-    setLoading(true); setRan(true);
+    setLoading(true);
+    setRan(true);
     try {
       const baseFilter = (query: any) => {
         let q2 = query;
@@ -101,11 +145,18 @@ function DeliveryCheck() {
       const start = (pageNum - 1) * pageSize;
       const [pageRes, completedRes] = await Promise.all([
         baseFilter(
-          sb.from("delivery_records")
-            .select("driver_code, delivery_date, status, delivery_type, client_id, dash_delivery_id, provider_order_id, distance_km, weight_kg, riders(full_name)", { count: "exact" })
+          sb
+            .from("delivery_records")
+            .select(
+              "driver_code, delivery_date, status, delivery_type, client_id, dash_delivery_id, provider_order_id, distance_km, weight_kg, city, district, sender_name, riders(full_name)",
+              { count: "exact" },
+            )
             .order("delivery_date", { ascending: false }),
         ).range(start, start + pageSize - 1),
-        baseFilter(sb.from("delivery_records").select("id", { count: "exact", head: true })).eq("status", "completed"),
+        baseFilter(sb.from("delivery_records").select("id", { count: "exact", head: true })).eq(
+          "status",
+          "completed",
+        ),
       ]);
       if (pageRes.error) throw pageRes.error;
       if (completedRes.error) throw completedRes.error;
@@ -114,7 +165,8 @@ function DeliveryCheck() {
       setTotal(pageRes.count ?? 0);
       setCompleted(completedRes.count ?? 0);
       setPage(pageNum);
-      if (pageNum === 1 && (pageRes.count ?? 0) === 0) toast.message("Tidak ada baris cocok di database untuk filter ini.");
+      if (pageNum === 1 && (pageRes.count ?? 0) === 0)
+        toast.message("Tidak ada baris cocok di database untuk filter ini.");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -135,7 +187,46 @@ function DeliveryCheck() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSize]);
 
-  const clientName = (id: string | null) => (id ? clients.find((c) => c.id === id)?.name ?? "(client tak dikenal)" : "(client KOSONG)");
+  const syncFromApi = async () => {
+    if (!clientId) return toast.error("Pilih client dulu.");
+    if (!matchedProvider) return toast.error("Client ini belum ter-integrasi API.");
+    if (!from || !to) return toast.error("Isi tanggal dari & sampai.");
+    if (from > to) return toast.error("Tanggal 'dari' tidak boleh setelah 'sampai'.");
+
+    setSyncing(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token ?? "";
+      const bu =
+        matchedProvider.revenueStreams.length === 1 ? matchedProvider.revenueStreams[0] : "";
+      const live = await loadLiveFeeDeliveries({
+        data: { token, providerId: matchedProvider.id, businessUnit: bu || null, from, to },
+      });
+      if (live.rows.length === 0)
+        return toast.message("API tersambung, tapi tidak ada pengiriman di rentang ini.");
+
+      const res = await upsertLiveDeliveries(
+        clientId,
+        live.rows,
+        `Cek Data sync · ${live.meta.business_unit} · ${from}..${to}`,
+      );
+      toast.success(
+        `Sync selesai: ${res.inserted} baris tersimpan` +
+          (res.overwritten ? `, ${res.overwritten} lama ditimpa` : "") +
+          (res.ridersCreated ? `, ${res.ridersCreated} rider baru` : "") +
+          (res.dropped ? `, ${res.dropped} status transien dilewati` : "") +
+          ".",
+      );
+      await fetchPage(1);
+    } catch (e) {
+      toast.error(`Sync gagal: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const clientName = (id: string | null) =>
+    id ? (clients.find((c) => c.id === id)?.name ?? "(client tak dikenal)") : "(client KOSONG)";
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeTo = Math.min(page * pageSize, total);
@@ -144,7 +235,9 @@ function DeliveryCheck() {
     <>
       <div className="rounded-xl border-2 border-border-strong bg-card shadow-[5px_5px_0_0_var(--color-border-strong)] p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Client <span className="font-normal">(opsional)</span></label>
+          <label className="font-medium text-muted-foreground">
+            Client <span className="font-normal">(opsional)</span>
+          </label>
           <ClientCombobox
             value={clientId}
             onChange={setClientId}
@@ -154,29 +247,63 @@ function DeliveryCheck() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Kode Rider <span className="font-normal">(opsional, mis. MTR0006460)</span></label>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ketik sebagian kode rider…"
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
+          <label className="font-medium text-muted-foreground">
+            Kode Rider <span className="font-normal">(opsional, mis. MTR0006460)</span>
+          </label>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="ketik sebagian kode rider…"
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
+          />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Dari Tanggal <span className="font-normal">(opsional)</span></label>
+          <label className="font-medium text-muted-foreground">
+            Dari Tanggal <span className="font-normal">(opsional)</span>
+          </label>
           <DatePicker value={from} onChange={setFrom} className="w-full" />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Sampai Tanggal <span className="font-normal">(opsional)</span></label>
+          <label className="font-medium text-muted-foreground">
+            Sampai Tanggal <span className="font-normal">(opsional)</span>
+          </label>
           <DatePicker value={to} onChange={setTo} className="w-full" />
         </div>
-        <div className="md:col-span-2">
-          <button onClick={() => fetchPage(1)} disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-4 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} {loading ? "Mencari…" : "Cari di Database"}
+        <div className="md:col-span-2 flex flex-wrap gap-2">
+          <button
+            onClick={() => fetchPage(1)}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-4 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Search className="w-4 h-4" />
+            )}{" "}
+            {loading ? "Mencari…" : "Cari di Database"}
+          </button>
+          <button
+            onClick={syncFromApi}
+            disabled={syncing || loading || !clientId || !matchedProvider}
+            title={
+              !clientId
+                ? "Pilih client dulu"
+                : !matchedProvider
+                  ? "Client ini belum ter-link ke API provider"
+                  : undefined
+            }
+            className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-emerald-600 text-white px-4 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
+          >
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}{" "}
+            {syncing ? "Menarik data…" : "Tarik dari API"}
           </button>
         </div>
       </div>
 
       {ran && !loading && (
         <p className="text-sm text-muted-foreground mb-3">
-          Ketemu <b className="text-foreground">{total}</b> baris tersimpan · <b className="text-foreground">{completed}</b> COMPLETED.
+          Ketemu <b className="text-foreground">{total}</b> baris tersimpan ·{" "}
+          <b className="text-foreground">{completed}</b> COMPLETED.
           {total === 0 && " → berarti data ini MEMANG belum ada di database (bukan salah hitung)."}
         </p>
       )}
@@ -195,9 +322,18 @@ function DeliveryCheck() {
             <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-muted text-left">
                 <tr>
-                  <th className="p-2">Kode Rider</th><th className="px-3">Nama</th><th className="px-3">Tgl Delivery</th>
-                  <th className="px-3">Status</th><th className="px-3">Delivery Type</th><th className="px-3">Client</th>
-                  <th className="px-3">Dash ID</th><th className="px-3 text-right">Jarak</th><th className="px-3 text-right">Berat</th>
+                  <th className="p-2">Kode Rider</th>
+                  <th className="px-3">Nama</th>
+                  <th className="px-3">Tgl Delivery</th>
+                  <th className="px-3">Status</th>
+                  <th className="px-3">Delivery Type</th>
+                  <th className="px-3">Client</th>
+                  <th className="px-3">Area</th>
+                  <th className="px-3">District</th>
+                  <th className="px-3">Hub</th>
+                  <th className="px-3">Dash ID</th>
+                  <th className="px-3 text-right">Jarak</th>
+                  <th className="px-3 text-right">Berat</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,7 +344,12 @@ function DeliveryCheck() {
                     <td className="px-3 tabular-nums">{r.delivery_date}</td>
                     <td className="px-3">{r.status ?? "—"}</td>
                     <td className="px-3">{r.delivery_type ?? "—"}</td>
-                    <td className={"px-3 " + (r.client_id ? "" : "text-destructive font-medium")}>{clientName(r.client_id)}</td>
+                    <td className={"px-3 " + (r.client_id ? "" : "text-destructive font-medium")}>
+                      {clientName(r.client_id)}
+                    </td>
+                    <td className="px-3">{r.city ?? "—"}</td>
+                    <td className="px-3">{r.district ?? "—"}</td>
+                    <td className="px-3">{r.sender_name ?? "—"}</td>
                     <td className="px-3 font-mono text-xs">{r.dash_delivery_id ?? "—"}</td>
                     <td className="px-3 text-right tabular-nums">{r.distance_km ?? "—"}</td>
                     <td className="px-3 text-right tabular-nums">{r.weight_kg ?? "—"}</td>
@@ -218,9 +359,12 @@ function DeliveryCheck() {
             </table>
           </div>
           <PaginationBar
-            page={page} totalPages={totalPages}
+            page={page}
+            totalPages={totalPages}
             setPage={(fn) => fetchPage(fn(page))}
-            from={rangeFrom} to={rangeTo} total={total}
+            from={rangeFrom}
+            to={rangeTo}
+            total={total}
           />
         </>
       )}
@@ -229,9 +373,16 @@ function DeliveryCheck() {
 }
 
 type AttendanceRow = {
-  driver_code: string | null; log_date: string; clock_in: string | null; clock_out: string | null;
-  duration_minutes: number | null; is_late: boolean | null; is_absent: boolean | null; fee: number | null;
-  client_id: string | null; pitstop_name: string | null;
+  driver_code: string | null;
+  log_date: string;
+  clock_in: string | null;
+  clock_out: string | null;
+  duration_minutes: number | null;
+  is_late: boolean | null;
+  is_absent: boolean | null;
+  fee: number | null;
+  client_id: string | null;
+  pitstop_name: string | null;
   riders?: { full_name: string | null } | null;
 };
 
@@ -255,7 +406,8 @@ function AttendanceCheck() {
   const [pageSize, setPageSize] = useState(50);
 
   const fetchPage = async (pageNum: number) => {
-    setLoading(true); setRan(true);
+    setLoading(true);
+    setRan(true);
     try {
       const baseFilter = (query: any) => {
         let q2 = query;
@@ -269,11 +421,18 @@ function AttendanceCheck() {
       const start = (pageNum - 1) * pageSize;
       const [pageRes, absentRes] = await Promise.all([
         baseFilter(
-          sb.from("attendance_logs")
-            .select("driver_code, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee, client_id, pitstop_name, riders(full_name)", { count: "exact" })
+          sb
+            .from("attendance_logs")
+            .select(
+              "driver_code, log_date, clock_in, clock_out, duration_minutes, is_late, is_absent, fee, client_id, pitstop_name, riders(full_name)",
+              { count: "exact" },
+            )
             .order("log_date", { ascending: false }),
         ).range(start, start + pageSize - 1),
-        baseFilter(sb.from("attendance_logs").select("id", { count: "exact", head: true })).eq("is_absent", true),
+        baseFilter(sb.from("attendance_logs").select("id", { count: "exact", head: true })).eq(
+          "is_absent",
+          true,
+        ),
       ]);
       if (pageRes.error) throw pageRes.error;
       if (absentRes.error) throw absentRes.error;
@@ -282,7 +441,8 @@ function AttendanceCheck() {
       setTotal(pageRes.count ?? 0);
       setAbsent(absentRes.count ?? 0);
       setPage(pageNum);
-      if (pageNum === 1 && (pageRes.count ?? 0) === 0) toast.message("Tidak ada baris cocok di database untuk filter ini.");
+      if (pageNum === 1 && (pageRes.count ?? 0) === 0)
+        toast.message("Tidak ada baris cocok di database untuk filter ini.");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -295,7 +455,8 @@ function AttendanceCheck() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSize]);
 
-  const clientName = (id: string | null) => (id ? clients.find((c) => c.id === id)?.name ?? "(client tak dikenal)" : "(client KOSONG)");
+  const clientName = (id: string | null) =>
+    id ? (clients.find((c) => c.id === id)?.name ?? "(client tak dikenal)") : "(client KOSONG)";
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeTo = Math.min(page * pageSize, total);
@@ -304,7 +465,9 @@ function AttendanceCheck() {
     <>
       <div className="rounded-xl border-2 border-border-strong bg-card shadow-[5px_5px_0_0_var(--color-border-strong)] p-5 mb-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Client <span className="font-normal">(opsional)</span></label>
+          <label className="font-medium text-muted-foreground">
+            Client <span className="font-normal">(opsional)</span>
+          </label>
           <ClientCombobox
             value={clientId}
             onChange={setClientId}
@@ -314,29 +477,48 @@ function AttendanceCheck() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Kode Rider <span className="font-normal">(opsional, mis. MTR0006460)</span></label>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ketik sebagian kode rider…"
-            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring" />
+          <label className="font-medium text-muted-foreground">
+            Kode Rider <span className="font-normal">(opsional, mis. MTR0006460)</span>
+          </label>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="ketik sebagian kode rider…"
+            className="w-full rounded-md border-2 border-border-strong bg-background px-3 py-2 outline-none focus:ring-1 focus:ring-ring"
+          />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Dari Tanggal <span className="font-normal">(opsional)</span></label>
+          <label className="font-medium text-muted-foreground">
+            Dari Tanggal <span className="font-normal">(opsional)</span>
+          </label>
           <DatePicker value={from} onChange={setFrom} className="w-full" />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="font-medium text-muted-foreground">Sampai Tanggal <span className="font-normal">(opsional)</span></label>
+          <label className="font-medium text-muted-foreground">
+            Sampai Tanggal <span className="font-normal">(opsional)</span>
+          </label>
           <DatePicker value={to} onChange={setTo} className="w-full" />
         </div>
         <div className="md:col-span-2">
-          <button onClick={() => fetchPage(1)} disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-4 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} {loading ? "Mencari…" : "Cari di Database"}
+          <button
+            onClick={() => fetchPage(1)}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-4 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Search className="w-4 h-4" />
+            )}{" "}
+            {loading ? "Mencari…" : "Cari di Database"}
           </button>
         </div>
       </div>
 
       {ran && !loading && (
         <p className="text-sm text-muted-foreground mb-3">
-          Ketemu <b className="text-foreground">{total}</b> baris tersimpan · <b className="text-foreground">{absent}</b> ABSEN.
+          Ketemu <b className="text-foreground">{total}</b> baris tersimpan ·{" "}
+          <b className="text-foreground">{absent}</b> ABSEN.
           {total === 0 && " → berarti data ini MEMANG belum ada di database (bukan salah hitung)."}
         </p>
       )}
@@ -355,10 +537,17 @@ function AttendanceCheck() {
             <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-muted text-left">
                 <tr>
-                  <th className="p-2">Kode Rider</th><th className="px-3">Nama</th><th className="px-3">Tanggal</th>
-                  <th className="px-3">Clock In</th><th className="px-3">Clock Out</th><th className="px-3 text-right">Durasi (menit)</th>
-                  <th className="px-3">Telat</th><th className="px-3">Absen</th><th className="px-3 text-right">Fee</th>
-                  <th className="px-3">Client</th><th className="px-3">Pitstop</th>
+                  <th className="p-2">Kode Rider</th>
+                  <th className="px-3">Nama</th>
+                  <th className="px-3">Tanggal</th>
+                  <th className="px-3">Clock In</th>
+                  <th className="px-3">Clock Out</th>
+                  <th className="px-3 text-right">Durasi (menit)</th>
+                  <th className="px-3">Telat</th>
+                  <th className="px-3">Absen</th>
+                  <th className="px-3 text-right">Fee</th>
+                  <th className="px-3">Client</th>
+                  <th className="px-3">Pitstop</th>
                 </tr>
               </thead>
               <tbody>
@@ -370,10 +559,18 @@ function AttendanceCheck() {
                     <td className="px-3 tabular-nums">{r.clock_in ?? "—"}</td>
                     <td className="px-3 tabular-nums">{r.clock_out ?? "—"}</td>
                     <td className="px-3 text-right tabular-nums">{r.duration_minutes ?? "—"}</td>
-                    <td className={"px-3 " + (r.is_late ? "text-warning font-medium" : "")}>{r.is_late ? "Ya" : "—"}</td>
-                    <td className={"px-3 " + (r.is_absent ? "text-destructive font-medium" : "")}>{r.is_absent ? "Ya" : "—"}</td>
-                    <td className="px-3 text-right tabular-nums">{r.fee != null ? `Rp${Number(r.fee).toLocaleString("id-ID")}` : "—"}</td>
-                    <td className={"px-3 " + (r.client_id ? "" : "text-destructive font-medium")}>{clientName(r.client_id)}</td>
+                    <td className={"px-3 " + (r.is_late ? "text-warning font-medium" : "")}>
+                      {r.is_late ? "Ya" : "—"}
+                    </td>
+                    <td className={"px-3 " + (r.is_absent ? "text-destructive font-medium" : "")}>
+                      {r.is_absent ? "Ya" : "—"}
+                    </td>
+                    <td className="px-3 text-right tabular-nums">
+                      {r.fee != null ? `Rp${Number(r.fee).toLocaleString("id-ID")}` : "—"}
+                    </td>
+                    <td className={"px-3 " + (r.client_id ? "" : "text-destructive font-medium")}>
+                      {clientName(r.client_id)}
+                    </td>
                     <td className="px-3">{r.pitstop_name ?? "—"}</td>
                   </tr>
                 ))}
@@ -381,9 +578,12 @@ function AttendanceCheck() {
             </table>
           </div>
           <PaginationBar
-            page={page} totalPages={totalPages}
+            page={page}
+            totalPages={totalPages}
             setPage={(fn) => fetchPage(fn(page))}
-            from={rangeFrom} to={rangeTo} total={total}
+            from={rangeFrom}
+            to={rangeTo}
+            total={total}
           />
         </>
       )}

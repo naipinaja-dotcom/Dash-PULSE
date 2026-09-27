@@ -1533,7 +1533,7 @@ const T = {
   "feeDrilldown.date": { id: "Tanggal", en: "Date" },
   "feeDrilldown.district": { id: "District", en: "District" },
   "feeDrilldown.area": { id: "Area", en: "Area" },
-  "feeDrilldown.hub": { id: "Hub", en: "Hub" },
+  "feeDrilldown.hub": { id: "Hub/Sender Name", en: "Hub/Sender Name" },
   "feeDrilldown.km": { id: "Jarak (km)", en: "Distance (km)" },
   "feeDrilldown.kg": { id: "Berat (kg)", en: "Weight (kg)" },
   "feeDrilldown.status": { id: "Status", en: "Status" },

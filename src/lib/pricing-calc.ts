@@ -642,14 +642,37 @@ export function calcDeliveryFeeMultiCity(
   clientRevenueByRow?: number[],
 ): CalcResult {
   const completed = rows.filter(isCompleted);
-  // Grouping key gabungan City+Hub (bukan cuma City) — separator NUL biar gak
-  // pernah nabrak sama isi city/hub asli (keduanya teks bebas dari MGMT).
-  const groups = groupBy(
-    completed,
-    (r) => `${normalizeCity(r.city)}\u0000${normalizeCity(r.sender_name)}`,
-  );
   const defaultScheme =
     candidates.find((s) => !s.city_scope?.length && !s.hub_scope?.length) ?? candidates[0];
+
+  // Grouping per SKEMA yang MENANG (bukan per teks City/Hub mentah) — dua
+  // baris beda City/Hub yang kebetulan jatuh ke skema yang SAMA harus tetap
+  // 1 grup, supaya "accumulate: daily" (atau pooling per-rider-hari lainnya
+  // di dalam calcScheme) tetap ngitung SATU hari penuh milik rider itu, bukan
+  // kefragmentasi jadi banyak grup kecil. Sebelumnya grouping pakai raw
+  // (city,hub) text duluan — buat client model instant/multi-merchant,
+  // sender_name (Hub) isinya nama MERCHANT per order (lihat comment
+  // DeliveryRow.sender_name), beda tiap baris walau rider & harinya sama.
+  // Skema tanpa hub_scope/city_scope beneran (cuma 1 kandidat, kasus normal)
+  // ke-pecah jadi 1 grup per merchant, dan "accumulate: daily" yang harusnya
+  // 1 fee flat per hari malah ke-apply ULANG per grup merchant — fee
+  // membengkak berkali lipat (mis. MAP: 8 order sehari jadi ~8x lipat,
+  // bukan 1x flat per hari).
+  const groups = new Map<string, DeliveryRow[]>();
+  const unresolved = new Map<string, { city: unknown; hub: unknown; rows: DeliveryRow[] }>();
+  for (const r of completed) {
+    const scheme = resolveSchemeForCityHub(candidates, r.city, r.sender_name, clientId);
+    if (!scheme) {
+      const k = `${normalizeCity(r.city)}\u0000${normalizeCity(r.sender_name)}`;
+      const entry = unresolved.get(k) ?? { city: r.city, hub: r.sender_name, rows: [] };
+      entry.rows.push(r);
+      unresolved.set(k, entry);
+      continue;
+    }
+    const arr = groups.get(scheme.id) ?? [];
+    arr.push(r);
+    groups.set(scheme.id, arr);
+  }
 
   const perRow: RowFee[] = [];
   let perRiderMap = new Map<string, RiderLine>();
@@ -662,6 +685,12 @@ export function calcDeliveryFeeMultiCity(
   let totalMargin = 0;
   let hasRevenueShare = false;
 
+  for (const { city, hub, rows: badRows } of unresolved.values()) {
+    warnings.push(
+      `${badRows.length} delivery di city '${city ?? "(kosong)"}' / hub '${hub ?? "(kosong)"}' gak ketemu skema manapun (gak match rule manapun & gak ada skema default).`,
+    );
+  }
+
   // clientRevenueByRow (kalau ada) index-aligned ke `completed` secara utuh
   // (lihat kontrak di calcScheme di atas) — peta by OBJECT REFERENCE (bukan
   // r.id, yang bisa null/kosong di data test/edge-case) biar bisa di-slice
@@ -671,16 +700,8 @@ export function calcDeliveryFeeMultiCity(
     completed.forEach((r, i) => revenueOf.set(r, clientRevenueByRow[i]));
   }
 
-  for (const [, groupRows] of groups) {
-    const rawCity = groupRows[0]?.city ?? null;
-    const rawHub = groupRows[0]?.sender_name ?? null;
-    const scheme = resolveSchemeForCityHub(candidates, rawCity, rawHub, clientId);
-    if (!scheme) {
-      warnings.push(
-        `${groupRows.length} delivery di city '${rawCity ?? "(kosong)"}' / hub '${rawHub ?? "(kosong)"}' gak ketemu skema manapun (gak match rule manapun & gak ada skema default).`,
-      );
-      continue;
-    }
+  for (const [schemeId, groupRows] of groups) {
+    const scheme = candidates.find((s) => s.id === schemeId)!;
     const groupRevenue = clientRevenueByRow
       ? groupRows.map((r) => revenueOf.get(r) ?? 0)
       : undefined;

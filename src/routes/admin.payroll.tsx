@@ -29,6 +29,7 @@ import {
 import {
   generatePayrollDetails,
   computeInstallmentAdvance,
+  isMultiClientDeductionGroupComplete,
   DEDUCTION_PRIORITY,
 } from "@/lib/payroll-generate";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
@@ -1019,7 +1020,31 @@ function PayrollPage() {
             .eq("id", row.installment_id)
             .single();
           if (!ins) continue;
-          const advance = computeInstallmentAdvance(ins, paid >= amount);
+          let paidInFull = paid >= amount;
+          // Cicilan mode='fixed' yang eligible >1 client (client_ids, lihat
+          // allocateMultiClientDeduction di payroll-generate.ts) bisa displit
+          // jadi beberapa baris LINTAS CLIENT buat 1 periode yang sama —
+          // progress (installments_paid) cuma boleh maju kalau SEMUA baris
+          // split itu (client lain, periode overlap) juga udah lunas, bukan
+          // cuma baris di run ini doang. Tanpa ini, tiap baris split maju
+          // sendiri-sendiri dan cicilan bisa "lunas" 2x lebih cepat dari
+          // seharusnya. 'daily'/'monthly' gak butuh ini — computeInstallmentAdvance
+          // udah selalu return null buat mode itu (open-ended, gak ada progress).
+          if (
+            paidInFull &&
+            ins.mode === "fixed" &&
+            Array.isArray(ins.client_ids) &&
+            ins.client_ids.length > 1
+          ) {
+            paidInFull = await isMultiClientDeductionGroupComplete(
+              supabase,
+              ins.id,
+              activeRun.period_start,
+              activeRun.period_end,
+              row.id,
+            );
+          }
+          const advance = computeInstallmentAdvance(ins, paidInFull);
           if (!advance) continue;
           await supabase.from("rider_installments").update(advance).eq("id", ins.id);
         }

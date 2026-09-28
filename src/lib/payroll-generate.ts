@@ -29,6 +29,63 @@ export const DEDUCTION_PRIORITY: Record<string, number> = {
   KUOTA: 6,
 };
 
+export interface MultiClientShare {
+  clientId: string;
+  amount: number;
+  arrearsPortion: number;
+}
+
+// Cicilan mode='fixed'/'monthly' yang eligible di >1 client (rider_installments.
+// client_ids) — pecah `arrears + baseAmount` jadi beberapa baris LINTAS CLIENT
+// sesuai urutan prioritas admin (client_ids), tiap client nanggung sebesar
+// gross-nya SENDIRI sampai abis, sisanya jalan ke client prioritas berikutnya
+// (waterfall). BEDA dari model lama (winner-take-all, 1 client nanggung
+// SEMUA) — itu ninggalin gross client lain "nganggur" walau rider beneran
+// jalan di situ juga periode ini, padahal maksud fitur ini justru buat
+// NGELENGKAPIN kekurangan potongan pakai client lain, bukan mindahin semua
+// potongan ke 1 client aja (lihat kasus Lucky Permana/Nahrowi — winner-take-
+// all pernah kepake bareng bug dedup exact-match, hasilnya malah DOBEL
+// charge; begitu dedup-nya bener pun winner-take-all masih nyisain uang di
+// meja kalau kedua client SAMA-SAMA gak cukup sendiri-sendiri tapi
+// gabungannya cukup).
+//
+// `grossByClient` cuma isi client yang KETAHUAN aktif periode ini (diri
+// sendiri + sibling yang run-nya udah ada di DB, lihat siblingGrossByRiderClient
+// di generatePayrollDetails) — client yang belum digenerate sama sekali gak
+// ikut keitung, konsisten sama filosofi "idempotent kalau di-Generate Ulang"
+// yang udah dipakai fitur ini dari awal.
+//
+// Jumlah SELURUH `amount` hasil fungsi ini SELALU PERSIS `arrears+baseAmount`
+// (gak pernah kurang) — client PALING TERAKHIR yang eligible & aktif periode
+// ini nanggung SISA APAPUN yang gak ke-cover gross client-client sebelumnya,
+// bahkan kalau gross-nya sendiri juga gak cukup. Ini PENTING buat
+// getCarriedArrears (tunggakan next cycle): kalau totalnya gak pernah
+// di-"tagih" penuh di SALAH SATU baris, kekurangan yang beneran gak
+// collectible bakal hilang diam-diam (bukan ke-carry ke next cycle) —
+// bukan "dilengkapin", malah "diputihin".
+export function allocateMultiClientDeduction(
+  arrears: number,
+  baseAmount: number,
+  clientIdsPriority: string[],
+  grossByClient: Map<string, number>,
+): MultiClientShare[] {
+  const present = clientIdsPriority.filter((cid) => grossByClient.has(cid));
+  if (present.length === 0) return [];
+  let remainingTotal = Math.max(0, arrears) + Math.max(0, baseAmount);
+  let remainingArrears = Math.max(0, arrears);
+  const out: MultiClientShare[] = [];
+  present.forEach((clientId, idx) => {
+    const isLast = idx === present.length - 1;
+    const gross = Math.max(0, grossByClient.get(clientId) ?? 0);
+    const amount = isLast ? remainingTotal : Math.min(remainingTotal, gross);
+    const arrearsPortion = Math.min(amount, remainingArrears);
+    remainingArrears -= arrearsPortion;
+    remainingTotal -= amount;
+    out.push({ clientId, amount, arrearsPortion });
+  });
+  return out;
+}
+
 // Dipanggil dari publish() di admin.payroll.tsx per baris payroll_deductions
 // yang nunjuk ke sebuah cicilan, buat mutusin progress-nya maju atau nggak.
 // null = jangan sentuh installments_paid/active sama sekali baris ini.
@@ -115,33 +172,115 @@ async function getCarriedArrears(
   );
   const { data: runs } = await (client as any)
     .from("payroll_runs")
-    .select("id, period_end")
+    .select("id, period_start, period_end")
     .in("id", runIds);
-  const periodEndOfRun = new Map<string, string>(
-    (runs ?? []).map((r: { id: string; period_end: string }) => [r.id, r.period_end]),
+  const periodOfRun = new Map<string, { start: string; end: string }>(
+    (runs ?? []).map((r: { id: string; period_start: string; period_end: string }) => [
+      r.id,
+      { start: r.period_start, end: r.period_end },
+    ]),
   );
 
-  const latestByInstallment = new Map<string, { periodEnd: string; unpaid: number }>();
-  const latestByRiderType = new Map<string, { periodEnd: string; unpaid: number }>();
+  // Cicilan multi-client (allocateMultiClientDeduction) bisa displit jadi
+  // >1 baris LINTAS CLIENT buat 1 periode yang sama (periode overlap, bukan
+  // identik — beda client beda siklus payroll). "Latest row menang" aja gak
+  // cukup lagi buat kasus ini: cuma ngambil SATU baris (bisa aja yang PALING
+  // KECIL porsinya) dan ngelewatin sisa baris sibling-nya yang justru nyimpen
+  // sebagian besar tunggakan. Grouping baru: ambil baris ber-period_end
+  // TERBARU per installment sebagai anchor, lalu JUMLAHIN unpaid semua baris
+  // lain yang periode-nya OVERLAP anchor itu (installment single-client tetap
+  // cuma 1 baris per periode seperti biasa, hasilnya identik logic lama).
+  type ResolvedRow = {
+    installmentId: string | null;
+    riderId: string;
+    clientId: string | null;
+    deductionTypeId: string;
+    unpaid: number;
+    period: { start: string; end: string };
+  };
+  const resolved: ResolvedRow[] = [];
   for (const r of rows) {
     const info = detailInfo.get(r.detail_id);
     if (!info || info.run_id === excludeRunId) continue;
-    const periodEnd = periodEndOfRun.get(info.run_id);
-    if (!periodEnd) continue;
-    const unpaid = Math.max(0, Number(r.amount) - Number(r.paid_amount));
-    if (r.installment_id) {
-      const cur = latestByInstallment.get(r.installment_id);
-      if (!cur || periodEnd > cur.periodEnd)
-        latestByInstallment.set(r.installment_id, { periodEnd, unpaid });
+    const period = periodOfRun.get(info.run_id);
+    if (!period) continue;
+    resolved.push({
+      installmentId: r.installment_id,
+      riderId: info.rider_id,
+      clientId: info.client_id,
+      deductionTypeId: r.deduction_type_id,
+      unpaid: Math.max(0, Number(r.amount) - Number(r.paid_amount)),
+      period,
+    });
+  }
+
+  const rowsByInstallment = new Map<string, ResolvedRow[]>();
+  const latestByRiderType = new Map<string, { periodEnd: string; unpaid: number }>();
+  for (const r of resolved) {
+    if (r.installmentId) {
+      const arr = rowsByInstallment.get(r.installmentId) ?? [];
+      arr.push(r);
+      rowsByInstallment.set(r.installmentId, arr);
     } else {
-      const key = `${info.rider_id}|${r.deduction_type_id}|${info.client_id ?? ""}`;
+      const key = `${r.riderId}|${r.deductionTypeId}|${r.clientId ?? ""}`;
       const cur = latestByRiderType.get(key);
-      if (!cur || periodEnd > cur.periodEnd) latestByRiderType.set(key, { periodEnd, unpaid });
+      if (!cur || r.period.end > cur.periodEnd)
+        latestByRiderType.set(key, { periodEnd: r.period.end, unpaid: r.unpaid });
     }
   }
-  for (const [k, v] of latestByInstallment) byInstallment.set(k, v.unpaid);
+  for (const [instId, group] of rowsByInstallment) {
+    const anchor = group.reduce((a, b) => (b.period.end > a.period.end ? b : a));
+    const overlapping = group.filter(
+      (r) => r.period.start <= anchor.period.end && r.period.end >= anchor.period.start,
+    );
+    byInstallment.set(
+      instId,
+      overlapping.reduce((s, r) => s + r.unpaid, 0),
+    );
+  }
   for (const [k, v] of latestByRiderType) byRiderType.set(k, v.unpaid);
   return { byInstallment, byRiderType };
+}
+
+// Dipanggil dari publish() di admin.payroll.tsx SEBELUM ngelanjutin
+// computeInstallmentAdvance buat baris cicilan yang eligible >1 client
+// (allocateMultiClientDeduction bisa mecah 1 periode jadi beberapa baris
+// lintas client). Progress (installments_paid) cuma boleh maju SEKALI per
+// periode gabungan — kalau tiap baris split ngecek "gua sendiri udah lunas"
+// terus maju sendiri-sendiri, cicilan 4x bisa "lunas" cuma dalam 2 periode
+// (dobel-advance). Baris ini nunggu SEMUA sibling baris (installment sama,
+// periode run-nya overlap, lihat pattern dedup generate-time) juga udah
+// paid_amount >= amount — baru progress boleh maju, di publish PALING
+// TERAKHIR yang nutup grup itu.
+export async function isMultiClientDeductionGroupComplete(
+  client: typeof supabase,
+  installmentId: string,
+  periodStart: string,
+  periodEnd: string,
+  excludeDeductionRowId: string,
+): Promise<boolean> {
+  const { data: overlapRuns } = await (client as any)
+    .from("payroll_runs")
+    .select("id")
+    .lte("period_start", periodEnd)
+    .gte("period_end", periodStart);
+  const runIds = (overlapRuns ?? []).map((r: { id: string }) => r.id);
+  if (runIds.length === 0) return true;
+  const { data: details } = await (client as any)
+    .from("payroll_details")
+    .select("id")
+    .in("run_id", runIds);
+  const detailIds = (details ?? []).map((d: { id: string }) => d.id);
+  if (detailIds.length === 0) return true;
+  const { data: siblingDeds } = await (client as any)
+    .from("payroll_deductions")
+    .select("id, amount, paid_amount")
+    .eq("installment_id", installmentId)
+    .in("detail_id", detailIds)
+    .neq("id", excludeDeductionRowId);
+  return ((siblingDeds ?? []) as { amount: number; paid_amount: number | null }[]).every(
+    (d) => d.paid_amount != null && Number(d.paid_amount) >= Number(d.amount),
+  );
 }
 
 const DAY_MS = 86_400_000;
@@ -537,12 +676,12 @@ export async function generatePayrollDetails(
 
   // Cicilan mode='fixed'/'monthly' eligible di beberapa client (client_ids) —
   // beda dari 'daily' yang dedup-nya per TANGGAL (dailyChargedDates di atas,
-  // aman displit antar client), fixed/monthly itu lump-sum per periode, jadi
-  // dedup-nya per INSTALLMENT UTUH: kalau udah kecharge di sibling run
-  // (client lain yang eligible, PERIODE PERSIS SAMA), jangan dicharge lagi di
-  // sini. Query-based (bukan state di-mutate) — tetap idempotent kalau
-  // di-"Generate Ulang". siblingGrossByRiderClient dipakai buat milih client
-  // mana yang "cukup" nanggung potongannya (lihat ranking di loop rider).
+  // aman displit antar client), fixed/monthly itu lump-sum per periode.
+  // siblingGrossByRiderClient (rider -> client -> gross periode ini) dipakai
+  // allocateMultiClientDeduction buat waterfall-split per rider di loop bawah
+  // — gross client lain yang KETAHUAN aktif periode ini (run-nya udah ada di
+  // DB), query-based (bukan state di-mutate), idempotent kalau di-"Generate
+  // Ulang" (hasil sama persis selama gross-nya belum berubah).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const multiClientInsts = ((installments ?? []) as any[]).filter(
     (i: any) =>
@@ -550,18 +689,26 @@ export async function generatePayrollDetails(
       Array.isArray(i.client_ids) &&
       i.client_ids.length > 0,
   );
-  const alreadyChargedElsewhere = new Set<string>(); // key `${riderId}|${installmentId}`
   const siblingGrossByRiderClient = new Map<string, Map<string, number>>(); // riderId -> clientId -> gross_earning
   if (multiClientInsts.length > 0) {
-    const multiClientInstIds = multiClientInsts.map((i) => i.id);
     const allEligibleClientIds = [
       ...new Set(multiClientInsts.flatMap((i: any) => i.client_ids as string[])),
     ];
+    // Overlap check (bukan exact match) — beda client bisa punya siklus
+    // payroll beda cadence/hari-potong (mis. client A mingguan Senin-Minggu,
+    // client B per-3-hari), jadi periode run-nya jarang PERSIS sama walau
+    // overlap kalendernya penuh. Exact match bikin sibling run gak pernah
+    // ketemu di kasus itu, dan cicilan yang sama ke-charge dobel di kedua
+    // client buat rentang tanggal yang sama (lihat kasus rider Lucky Permana:
+    // instalmen 4x ke-charge di client A DAN client B buat minggu yang sama,
+    // gara-gara period client B gak identik PERSIS sama 2 run mingguan client
+    // A walau overlap). Pola overlap ini sama persis kayak dedup sewa harian
+    // (dailyChargedDates) di atas — disamain biar konsisten.
     const { data: siblingRuns } = await (client as any)
       .from("payroll_runs")
       .select("id, client_id")
-      .eq("period_start", run.period_start)
-      .eq("period_end", run.period_end)
+      .lte("period_start", run.period_end)
+      .gte("period_end", run.period_start)
       .in("client_id", allEligibleClientIds)
       .neq("id", run.id);
     const siblingRunIds = (siblingRuns ?? []).map((r: any) => r.id);
@@ -573,26 +720,12 @@ export async function generatePayrollDetails(
         .from("payroll_details")
         .select("id, run_id, rider_id, gross_earning")
         .in("run_id", siblingRunIds);
-      const detailById = new Map((siblingDetails ?? []).map((d: any) => [d.id, d]));
       for (const d of (siblingDetails ?? []) as any[]) {
         const cid = clientOfSiblingRun.get(d.run_id);
         if (!cid) continue;
         const m = siblingGrossByRiderClient.get(d.rider_id) ?? new Map<string, number>();
         m.set(cid, Number(d.gross_earning || 0));
         siblingGrossByRiderClient.set(d.rider_id, m);
-      }
-      const siblingDetailIds = [...detailById.keys()];
-      if (siblingDetailIds.length > 0) {
-        const { data: siblingDeds } = await (client as any)
-          .from("payroll_deductions")
-          .select("detail_id, installment_id")
-          .in("detail_id", siblingDetailIds)
-          .in("installment_id", multiClientInstIds);
-        for (const ded of (siblingDeds ?? []) as any[]) {
-          const detail = detailById.get(ded.detail_id) as { rider_id: string } | undefined;
-          if (!detail) continue;
-          alreadyChargedElsewhere.add(`${detail.rider_id}|${ded.installment_id}`);
-        }
       }
     }
   }
@@ -639,6 +772,44 @@ export async function generatePayrollDetails(
     // hasDailyCharge/hasMonthlyChargeDue/continue-check, konsisten di semua
     // downstream (dedItems dst pakai rInstallForRun yang SUDAH difilter).
     const projectedGross = deliveryFee + attendanceFee;
+    // Waterfall-split per installment (allocateMultiClientDeduction) — gross
+    // tiap client yang KETAHUAN aktif periode ini (diri sendiri + sibling
+    // dari siblingGrossByRiderClient), diurut sesuai prioritas admin
+    // (i.client_ids). Dihitung SEKALI di sini per installment, dipakai ulang
+    // oleh filter rInstallForRun di bawah DAN dedItems (biar gak dihitung 2x
+    // dengan kemungkinan hasil beda).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const multiClientCharge = new Map<string, MultiClientShare & { splitLegs: number }>();
+    for (const i of rInstallMatched as any[]) {
+      if (
+        (i.mode !== "fixed" && i.mode !== "monthly") ||
+        !Array.isArray(i.client_ids) ||
+        i.client_ids.length === 0
+      )
+        continue; // 'daily' displit per-tanggal (dailyChargedDates), fixed/monthly single-client gak butuh split
+      const baseAmount =
+        i.mode === "monthly"
+          ? Number(i.daily_rate || 0) * monthlyDueDays(i, run.period_end, closedCyclesByInst)
+          : Number(i.per_period_amount || 0);
+      const arrears = arrearsByInstallment.get(i.id) ?? 0;
+      const grossByClient = new Map<string, number>();
+      if (run.client_id) grossByClient.set(run.client_id, projectedGross);
+      const siblingGross = siblingGrossByRiderClient.get(rider.id);
+      if (siblingGross)
+        for (const [cid, g] of siblingGross) if (cid !== run.client_id) grossByClient.set(cid, g);
+      const shares = allocateMultiClientDeduction(
+        arrears,
+        baseAmount,
+        i.client_ids as string[],
+        grossByClient,
+      );
+      const mine = shares.find((s) => s.clientId === run.client_id);
+      if (mine)
+        multiClientCharge.set(i.id, {
+          ...mine,
+          splitLegs: shares.filter((s) => s.amount > 0).length,
+        });
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rInstallForRun = rInstallMatched.filter((i: any) => {
       if (
@@ -646,40 +817,8 @@ export async function generatePayrollDetails(
         !Array.isArray(i.client_ids) ||
         i.client_ids.length === 0
       )
-        return true; // 'daily' displit per-tanggal (dailyChargedDates), fixed/monthly single-client gak butuh ranking
-      const key = `${rider.id}|${i.id}`;
-      if (alreadyChargedElsewhere.has(key)) return false; // udah kecharge di sibling run periode ini
-      const siblingGross = siblingGrossByRiderClient.get(rider.id);
-      const candidates: { clientId: string; gross: number; isCurrent: boolean }[] = [
-        { clientId: run.client_id as string, gross: projectedGross, isCurrent: true },
-      ];
-      if (siblingGross) {
-        for (const cid of i.client_ids as string[]) {
-          if (cid === run.client_id) continue;
-          const g = siblingGross.get(cid);
-          if (g !== undefined) candidates.push({ clientId: cid, gross: g, isCurrent: false });
-        }
-      }
-      if (candidates.length === 1) return true; // baru run ini yang ada periode ini, charge di sini kayak biasa
-      const amount =
-        i.mode === "monthly"
-          ? Number(i.daily_rate || 0) * monthlyDueDays(i, run.period_end, closedCyclesByInst)
-          : Number(i.per_period_amount || 0);
-      // Urutan client_ids = prioritas admin. Menang: (1) client yang "cukup"
-      // (gross >= amount) sesuai urutan prioritas, (2) kalau gak ada yang
-      // cukup, client yang gross-nya > 0 sesuai urutan prioritas, (3) fallback
-      // urutan prioritas pertama apa adanya (sama kayak perilaku lama).
-      const rank = (c: { clientId: string; gross: number }): [number, number] => {
-        const order = (i.client_ids as string[]).indexOf(c.clientId);
-        const tier = c.gross >= amount ? 0 : c.gross > 0 ? 1 : 2;
-        return [tier, order];
-      };
-      candidates.sort((a, b) => {
-        const [ta, oa] = rank(a);
-        const [tb, ob] = rank(b);
-        return ta !== tb ? ta - tb : oa - ob;
-      });
-      return candidates[0].isCurrent;
+        return true; // 'daily' displit per-tanggal (dailyChargedDates), fixed/monthly single-client gak butuh split
+      return (multiClientCharge.get(i.id)?.amount ?? 0) > 0;
     });
 
     // Rider yang gak ada kerja sama sekali periode ini TETAP dibikinin baris
@@ -702,8 +841,13 @@ export async function generatePayrollDetails(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dedItems = rInstallForRun.map((i: any) => {
-      const arrears = arrearsByInstallment.get(i.id) ?? 0;
+      // Multi-client (fixed/monthly, client_ids>0) udah dihitung waterfall-nya
+      // di multiClientCharge di atas — pakai APA ADANYA (amount udah termasuk
+      // porsi arrears-nya), jangan dihitung ulang di sini biar gak nyimpang
+      // dari split yang udah ditentukan.
+      const share = multiClientCharge.get(i.id);
       if (i.mode === "daily") {
+        const arrears = arrearsByInstallment.get(i.id) ?? 0;
         const rate = Number(i.daily_rate || 0);
         const charged = dailyChargedDates.get(`${rider.id}|${i.id}`);
         // Tanggal PERSIS yang kena di periode ini (bukan cuma count) — biar
@@ -721,22 +865,42 @@ export async function generatePayrollDetails(
           if (!charged?.has(iso)) chargedDates.push(iso);
         }
         const days = chargedDates.length;
-        return { amount: rate * days + arrears, days, arrears, chargedDates };
+        return { amount: rate * days + arrears, days, arrears, chargedDates, splitLegs: 1 };
       }
       if (i.mode === "monthly") {
         const days = monthlyDueDays(i, run.period_end, closedCyclesByInst);
+        if (share)
+          return {
+            amount: share.amount,
+            days,
+            arrears: share.arrearsPortion,
+            chargedDates: [] as string[],
+            splitLegs: share.splitLegs,
+          };
+        const arrears = arrearsByInstallment.get(i.id) ?? 0;
         return {
           amount: Number(i.daily_rate || 0) * days + arrears,
           days,
           arrears,
           chargedDates: [] as string[],
+          splitLegs: 1,
         };
       }
+      if (share)
+        return {
+          amount: share.amount,
+          days: 0,
+          arrears: share.arrearsPortion,
+          chargedDates: [] as string[],
+          splitLegs: share.splitLegs,
+        };
+      const arrears = arrearsByInstallment.get(i.id) ?? 0;
       return {
         amount: Number(i.per_period_amount || 0) + arrears,
         days: 0,
         arrears,
         chargedDates: [] as string[],
+        splitLegs: 1,
       };
     });
     // charge_target='client_revenue' (mis. molis gratis buat rider, kita yang
@@ -823,14 +987,22 @@ export async function generatePayrollDetails(
         ins.mode === "daily" && item.chargedDates.length > 0
           ? ` (tgl ${item.chargedDates.map((d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(", ")})`
           : "";
+      // Cicilan/sewa yang kena waterfall-split (allocateMultiClientDeduction,
+      // >1 client sama-sama nanggung periode ini) — ditandain di deskripsi
+      // biar keliatan angka ini BUKAN keseluruhan potongan periode itu, sisanya
+      // ada di slip client lain (lihat splitLegs di dedItems).
+      const splitNote = item.splitLegs > 1 ? " (dibagi dgn client lain)" : "";
       const description =
         ins.mode === "daily" || ins.mode === "monthly"
           ? `Sewa ${item.days} hari x Rp${Number(ins.daily_rate || 0).toLocaleString("id-ID")}` +
             datesNote +
             arrearsNote +
             cycleNote +
-            revenueNote
-          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` + arrearsNote;
+            revenueNote +
+            splitNote
+          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` +
+            arrearsNote +
+            splitNote;
       deductionsToInsert.push({
         detail_id: detailId,
         deduction_type_id: ins.deduction_type_id,

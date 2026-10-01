@@ -57,7 +57,7 @@ function PnlPage() {
       const [all, attAll, molisCost] = await Promise.all([
         fetchAllRows<DeliveryRow & { client_id: string | null }>((c, f, t) =>
           c.from("delivery_records")
-            .select("client_id, rider_id, driver_code, delivery_date, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
+            .select("client_id, rider_id, driver_code, delivery_date, district, city, sender_name, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
             .gte("delivery_date", from).lte("delivery_date", to).range(f, t)),
         fetchAllRows<AttendanceLogRow & { client_name: string | null }>((c, f, t) =>
           (c as any).from("attendance_logs")

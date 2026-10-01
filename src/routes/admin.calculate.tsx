@@ -381,11 +381,33 @@ function CalculatePage() {
         }
         setRiderNames(names);
 
+        // Sibling scheme yang sama scheme_for/category/client (termasuk yang
+        // di-scope city_scope/hub_scope) buat client + periode ini — sama
+        // persis pola pickPricingSchemeCandidates di pnl-engine.ts, biar
+        // Hitung Fee manual ini auto-resolve skema per City/Hub kayak Payroll
+        // Run, bukan cuma pakai 1 skema yang dipilih di dropdown doang.
+        const effectiveClientId = scheme.client_id ?? clientId ?? "";
+        const deliveryCandidates = schemes.filter(
+          (s) =>
+            s.scheme_for === scheme.scheme_for &&
+            s.category === "delivery" &&
+            s.params?.version === 1 &&
+            (s.client_id === effectiveClientId || s.client_id === null) &&
+            s.effective_from <= to &&
+            (!s.effective_to || s.effective_to >= from),
+        );
+
         // Skema "revenue_share": fee rider = persen dari revenue client per
         // AWB — revenue-nya diambil dari hasil calcScheme skema Client yang
         // aktif buat client+periode yang sama (bukan tabel tarif sendiri).
+        // Cek SEMUA sibling candidate (bukan cuma `scheme` representatif
+        // dropdown) — kalau client punya beberapa skema rider yang
+        // di-scope per city/hub tanpa default unscoped, representatif
+        // dropdown bisa aja kebagian sibling yang BUKAN revenue_share,
+        // padahal sibling lain tetap revenue_share (lihat kasus Noovoleum).
         let clientRevenueByRow: number[] | undefined;
-        if (scheme.params.type === "revenue_share") {
+        const candidatesForType = deliveryCandidates.length ? deliveryCandidates : [scheme];
+        if (candidatesForType.some((s) => s.params.type === "revenue_share")) {
           if (!clientId) {
             toast.error("Skema Revenue Share butuh client dipilih (buat nyari revenue-nya).");
             return;
@@ -408,21 +430,6 @@ function CalculatePage() {
           clientRevenueByRow = clientRes.perRow.map((r) => r.fee);
         }
 
-        // Sibling scheme yang sama scheme_for/category/client (termasuk yang
-        // di-scope city_scope/hub_scope) buat client + periode ini — sama
-        // persis pola pickPricingSchemeCandidates di pnl-engine.ts, biar
-        // Hitung Fee manual ini auto-resolve skema per City/Hub kayak Payroll
-        // Run, bukan cuma pakai 1 skema yang dipilih di dropdown doang.
-        const effectiveClientId = scheme.client_id ?? clientId ?? "";
-        const deliveryCandidates = schemes.filter(
-          (s) =>
-            s.scheme_for === scheme.scheme_for &&
-            s.category === "delivery" &&
-            s.params?.version === 1 &&
-            (s.client_id === effectiveClientId || s.client_id === null) &&
-            s.effective_from <= to &&
-            (!s.effective_to || s.effective_to >= from),
-        );
         const res = calcDeliveryFeeMultiCity(
           deliveryCandidates.length ? deliveryCandidates : [scheme],
           rows,

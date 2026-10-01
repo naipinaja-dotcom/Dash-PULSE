@@ -40,9 +40,16 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
           });
         }
 
+        // TODO(sementara): hapus log ini begitu kontrak payload Basecamp udah
+        // dikonfirmasi cocok sama { requestId, status, completedAt } di bawah —
+        // cuma buat liat PERSIS apa yang Basecamp kirim pertama kali (cek
+        // Vercel function logs buat "/api/basecamp-webhook") tanpa nebak lagi.
+        const rawBody = await request!.text();
+        console.log("[basecamp-webhook] raw body:", rawBody);
+
         let body: { requestId?: string; status?: string; completedAt?: string };
         try {
-          body = await request!.json();
+          body = JSON.parse(rawBody);
         } catch {
           return new Response(JSON.stringify({ ok: false, error: "Invalid JSON body" }), {
             status: 400,
@@ -130,9 +137,12 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
           });
           await posthog.flush();
 
-          return new Response(JSON.stringify({ ok: true, slipCount, runFullyPublished: published }), {
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({ ok: true, slipCount, runFullyPublished: published }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         } catch (e) {
           return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
             status: 500,

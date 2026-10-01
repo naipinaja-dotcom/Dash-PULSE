@@ -297,6 +297,28 @@ function PayrollPage() {
   const selectedSpendControlRepushRows = spendControlRepushableRows.filter((r) =>
     selectedSpendControlRepushes.has(r.clientId),
   );
+  // Title auto-generate (nama client + periode) cuma DEFAULT — admin bisa
+  // override manual per client sebelum push, mis. nambah catatan khusus buat
+  // 1 pengajuan tanpa ngubah template buat pengajuan lain. valid ikut
+  // direcompute di sini (bukan dibaca ulang dari field lama) biar validasi
+  // limit karakter tetap akurat terhadap teks yang BENERAN bakal dikirim.
+  const updateSpendControlTitle = (clientId: string, title: string) => {
+    setSpendControlRows((rows) =>
+      rows.map((r) =>
+        r.clientId === clientId
+          ? {
+              ...r,
+              title,
+              valid:
+                r.businessUnit !== null &&
+                r.contract !== null &&
+                title.length > 0 &&
+                title.length <= SPEND_CONTROL_TITLE_LIMIT,
+            }
+          : r,
+      ),
+    );
+  };
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -2667,19 +2689,22 @@ function PayrollPage() {
                           <tr key={r.clientId} className="border-t border-border">
                             <td className="px-3 py-2 whitespace-nowrap">{r.clientName}</td>
                             <td className="px-3 py-2">
-                              <div
+                              <input
+                                type="text"
+                                value={r.title}
+                                disabled={spendControlPushing || !!result?.ok}
+                                onChange={(e) => updateSpendControlTitle(r.clientId, e.target.value)}
                                 className={
-                                  r.title.length > SPEND_CONTROL_TITLE_LIMIT
-                                    ? "text-destructive"
-                                    : ""
+                                  "w-full min-w-[220px] rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-ring disabled:opacity-60 " +
+                                  (r.title.length > SPEND_CONTROL_TITLE_LIMIT
+                                    ? "border-destructive text-destructive"
+                                    : "border-border")
                                 }
-                              >
-                                {r.title}
-                              </div>
+                              />
                               {r.title.length > SPEND_CONTROL_TITLE_LIMIT && (
                                 <div className="text-destructive text-[11px] mt-0.5">
                                   {r.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter —
-                                  kepanjangan, perbaiki nama client sebelum push
+                                  kepanjangan, perbaiki sebelum push
                                 </div>
                               )}
                             </td>

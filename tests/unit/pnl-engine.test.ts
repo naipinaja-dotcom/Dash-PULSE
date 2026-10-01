@@ -226,6 +226,85 @@ describe("computePnl — rider revenue_share (Komu Komu Bakehouse regression)", 
   });
 });
 
+// Regression: Noovoleum — client dengan DUA rider scheme city-scoped SEKALIGUS
+// (revenue_share buat Bali/Bandung, flat buat Jabodetabek), TANPA satupun
+// scheme rider unscoped/default. computePnl dulu nentuin perlu/gaknya
+// clientRevenueByRow dari 1 "scheme representatif" (resolveSchemeForCity
+// dgn city=undefined) — kalau SEMUA rider scheme client itu city-scoped,
+// representatif itu jatuh ke undefined, jadi clientRevenueByRow gak pernah
+// kehitung sama sekali. Akibatnya SEMUA order yang masuk city group
+// revenue_share cost-nya 0 (dianggap "belum dihitung"), walau city group
+// flat di client yang SAMA kehitung normal — margin keliatan jauh lebih
+// bagus dari aslinya.
+describe("computePnl — rider revenue_share city-scoped TANPA scheme default (Noovoleum regression)", () => {
+  const clients = [{ id: "noo", name: "Noovoleum" }];
+
+  const clientScheme = scheme({
+    id: "noo-client",
+    client_id: "noo",
+    scheme_for: "client",
+    category: "delivery",
+    params: {
+      version: 1,
+      type: "flat_unit",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: { rate_by: "flat", flat_rate: 20000 },
+    } as PricingScheme["params"],
+  });
+  const riderRevShareBali = scheme({
+    id: "noo-rider-bali",
+    client_id: "noo",
+    scheme_for: "rider",
+    category: "delivery",
+    city_scope: ["Badung"],
+    params: {
+      version: 1,
+      type: "revenue_share",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: { percent_to_rider: 85 },
+    } as PricingScheme["params"],
+  });
+  const riderFlatJakarta = scheme({
+    id: "noo-rider-jkt",
+    client_id: "noo",
+    scheme_for: "rider",
+    category: "delivery",
+    city_scope: ["Jakarta"],
+    params: {
+      version: 1,
+      type: "flat_unit",
+      add_kg: null,
+      multi_drop: null,
+      billing_addons: null,
+      area_city_pricing: null,
+      config: { rate_by: "flat", flat_rate: 9000 },
+    } as PricingScheme["params"],
+  });
+
+  const deliveryRows = [
+    { client_id: "noo", rider_id: "R1", delivery_date: "2026-09-25", city: "Badung", status: "COMPLETED" },
+    { client_id: "noo", rider_id: "R2", delivery_date: "2026-09-25", city: "Jakarta", status: "COMPLETED" },
+  ];
+
+  it("revenue_share city group tetap kehitung (bukan 0) walau gak ada rider scheme default/unscoped", () => {
+    const { perClient } = computePnl(
+      deliveryRows,
+      [clientScheme, riderRevShareBali, riderFlatJakarta],
+      clients,
+    );
+    const c = perClient.find((c) => c.clientId === "noo");
+    expect(c?.revenue).toBe(40000); // 2 x flat_rate 20000
+    // Badung: 85% x 20000 = 17000. Jakarta: flat 9000. Total = 26000, bukan 9000.
+    expect(c?.cost).toBe(26000);
+  });
+});
+
 describe("pickPricingSchemeCandidates", () => {
   it("returns every active candidate for a client, not just the winner (unlike pickPricingScheme)", () => {
     const jkt = scheme({

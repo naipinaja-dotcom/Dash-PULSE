@@ -209,10 +209,9 @@ export function computePnl(
     const cattendance = attByClient.get(cid) ?? [];
     const riderCandidates = pickPricingSchemeCandidates(schemes, cid, "rider", asOfDate);
     const clientCandidates = pickPricingSchemeCandidates(schemes, cid, "client", asOfDate);
-    // Representatif default (city=undefined) — cuma buat cek .params.type/
-    // .category di bawah, bukan buat kalkulasi langsung (itu tugas
-    // calcForScheme yang city-aware lewat candidates penuh).
-    const riderS = resolveSchemeForCity(riderCandidates, undefined, cid);
+    // Representatif default (city=undefined) — cuma buat cek .category di
+    // bawah (clientS), bukan buat kalkulasi langsung (itu tugas calcForScheme
+    // yang city-aware lewat candidates penuh).
     const clientS = resolveSchemeForCity(clientCandidates, undefined, cid);
     const revResult = calcForScheme(clientCandidates, cid, crows, cattendance);
     // Skema rider "revenue_share" itung fee sebagai % dari revenue client
@@ -223,8 +222,19 @@ export function computePnl(
     // calcHybridScheme yang perRow-nya per tanggal, bukan per delivery row) —
     // sama seperti syarat di admin.calculate.tsx. Tanpa fix ini, cost selalu
     // 0 buat client dengan skema revenue_share (mis. Komu Komu Bakehouse).
+    //
+    // Dicek dari SELURUH riderCandidates (bukan 1 scheme representatif
+    // city=undefined) — client bisa punya beberapa rider scheme city-scoped
+    // beda tipe sekaligus (mis. Noovoleum: revenue_share buat Bali/Bandung,
+    // flat buat Jabodetabek). Representatif city=undefined jatuh ke undefined
+    // kalau SEMUA scheme city-scoped (gak ada default), jadi cek berbasis itu
+    // doang bikin clientRevenueByRow gak pernah kehitung sama sekali — city
+    // group yang revenue_share ke-skip dan fee-nya 0 (dianggap "belum
+    // dihitung", lihat pricing-calc.ts), walau city group LAIN di client yang
+    // sama normal.
+    const hasRevenueShareRider = riderCandidates.some((s) => s.params.type === "revenue_share");
     const clientRevenueByRow =
-      riderS?.params.type === "revenue_share" && clientS?.category === "delivery"
+      hasRevenueShareRider && clientS?.category === "delivery"
         ? revResult?.perRow.map((r) => r.fee)
         : undefined;
     const costResult = calcForScheme(riderCandidates, cid, crows, cattendance, clientRevenueByRow);

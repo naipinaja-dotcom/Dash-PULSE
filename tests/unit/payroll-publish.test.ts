@@ -67,7 +67,9 @@ function makeFakeClient(tables: Record<string, any[]>) {
         if (q.verb === "upsert") {
           const onConflictKey = "detail_id";
           for (const row of q.rows) {
-            const existing = tables[table].find((r: any) => r[onConflictKey] === row[onConflictKey]);
+            const existing = tables[table].find(
+              (r: any) => r[onConflictKey] === row[onConflictKey],
+            );
             if (existing) Object.assign(existing, row);
             else tables[table].push({ ...row });
           }
@@ -110,7 +112,9 @@ describe("publishPayrollDetails", () => {
       payroll_deductions: [],
       rider_installments: [],
       spend_control_pushes: [],
-      payroll_runs: [{ id: "run-1", status: "finalized", period_start: "2026-09-01", period_end: "2026-09-07" }],
+      payroll_runs: [
+        { id: "run-1", status: "finalized", period_start: "2026-09-01", period_end: "2026-09-07" },
+      ],
     };
     client = makeFakeClient(tables);
   });
@@ -185,7 +189,11 @@ describe("maybeCompleteRunPublish", () => {
   });
 
   it("run dengan 2 client — belum published selama SALAH SATU client belum ke-publish", async () => {
-    await publishPayrollDetails(client, { runId: "run-1", clientId: "client-a", actorUserId: null });
+    await publishPayrollDetails(client, {
+      runId: "run-1",
+      clientId: "client-a",
+      actorUserId: null,
+    });
 
     const flipped = await maybeCompleteRunPublish(client, "run-1");
     expect(flipped).toBe(false);
@@ -193,8 +201,16 @@ describe("maybeCompleteRunPublish", () => {
   });
 
   it("run fully published begitu SEMUA client udah ke-publish", async () => {
-    await publishPayrollDetails(client, { runId: "run-1", clientId: "client-a", actorUserId: null });
-    await publishPayrollDetails(client, { runId: "run-1", clientId: "client-b", actorUserId: null });
+    await publishPayrollDetails(client, {
+      runId: "run-1",
+      clientId: "client-a",
+      actorUserId: null,
+    });
+    await publishPayrollDetails(client, {
+      runId: "run-1",
+      clientId: "client-b",
+      actorUserId: null,
+    });
 
     const flipped = await maybeCompleteRunPublish(client, "run-1", "user-1");
     expect(flipped).toBe(true);

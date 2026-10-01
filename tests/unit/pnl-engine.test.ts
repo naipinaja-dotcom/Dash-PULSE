@@ -288,8 +288,20 @@ describe("computePnl — rider revenue_share city-scoped TANPA scheme default (N
   });
 
   const deliveryRows = [
-    { client_id: "noo", rider_id: "R1", delivery_date: "2026-09-25", city: "Badung", status: "COMPLETED" },
-    { client_id: "noo", rider_id: "R2", delivery_date: "2026-09-25", city: "Jakarta", status: "COMPLETED" },
+    {
+      client_id: "noo",
+      rider_id: "R1",
+      delivery_date: "2026-09-25",
+      city: "Badung",
+      status: "COMPLETED",
+    },
+    {
+      client_id: "noo",
+      rider_id: "R2",
+      delivery_date: "2026-09-25",
+      city: "Jakarta",
+      status: "COMPLETED",
+    },
   ];
 
   it("revenue_share city group tetap kehitung (bukan 0) walau gak ada rider scheme default/unscoped", () => {

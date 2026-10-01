@@ -19,7 +19,11 @@ type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 // client browser, jadi gak bisa dipakai di server.
 async function fetchAllRowsAdmin<T>(
   admin: SupabaseAdmin,
-  builder: (client: SupabaseAdmin, from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  builder: (
+    client: SupabaseAdmin,
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: unknown }>,
   pageSize = 1000,
 ): Promise<T[]> {
   const results: T[] = [];
@@ -53,10 +57,15 @@ export function defaultWeekRange(): { weekStart: string; weekEnd: string } {
   return { weekStart: fmt(start), weekEnd: fmt(end) };
 }
 
-const jt = (n: number) => "Rp " + (n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " jt";
+const jt = (n: number) =>
+  "Rp " + (n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 }) + " jt";
 const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
-function buildSlackText(weekStart: string, weekEnd: string, perClient: ReturnType<typeof computePnl>["perClient"]) {
+function buildSlackText(
+  weekStart: string,
+  weekEnd: string,
+  perClient: ReturnType<typeof computePnl>["perClient"],
+) {
   const totRevenue = perClient.reduce((s, r) => s + (r.revenue ?? 0), 0);
   const totCost = perClient.reduce((s, r) => s + r.cost, 0);
   const totMargin = totRevenue - totCost;
@@ -73,7 +82,11 @@ function buildSlackText(weekStart: string, weekEnd: string, perClient: ReturnTyp
   return lines.join("\n");
 }
 
-function buildEmailHtml(weekStart: string, weekEnd: string, perClient: ReturnType<typeof computePnl>["perClient"]) {
+function buildEmailHtml(
+  weekStart: string,
+  weekEnd: string,
+  perClient: ReturnType<typeof computePnl>["perClient"],
+) {
   const totRevenue = perClient.reduce((s, r) => s + (r.revenue ?? 0), 0);
   const totCost = perClient.reduce((s, r) => s + r.cost, 0);
   const totMargin = totRevenue - totCost;
@@ -132,28 +145,49 @@ export async function runWeeklyPnlPush(opts: {
   weekEnd?: string;
 }): Promise<WeeklyPnlPushResult> {
   const admin = getSupabaseAdmin();
-  const { weekStart, weekEnd } = opts.weekStart && opts.weekEnd
-    ? { weekStart: opts.weekStart, weekEnd: opts.weekEnd }
-    : defaultWeekRange();
+  const { weekStart, weekEnd } =
+    opts.weekStart && opts.weekEnd
+      ? { weekStart: opts.weekStart, weekEnd: opts.weekEnd }
+      : defaultWeekRange();
 
-  const [deliveries, attendance, { data: schemesRaw, error: schemesErr }, { data: clientsRaw, error: clientsErr }, molisCost] =
-    await Promise.all([
-      fetchAllRowsAdmin<DeliveryRow & { client_id: string | null }>(admin, (c, from, to) =>
-        (c as any).from("delivery_records")
-          .select("client_id, rider_id, driver_code, delivery_date, district, city, sender_name, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
-          .gte("delivery_date", weekStart).lte("delivery_date", weekEnd).range(from, to)),
-      fetchAllRowsAdmin<AttendanceLogRow & { client_name: string | null }>(admin, (c, from, to) =>
-        (c as any).from("attendance_logs")
-          .select("rider_id, driver_code, client_name, log_date, clock_in, duration_minutes, is_late, is_absent")
-          .gte("log_date", weekStart).lte("log_date", weekEnd).range(from, to)),
-      (admin as any).from("pricing_schemes")
-        .select("id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at"),
-      admin.from("clients").select("id, name"),
-      // Biaya molis charge_target='client_revenue' (lihat molis-cost.ts) — dashboard
-      // Margin Analytics (admin.pnl-dashboard.tsx) udah masukin ini ke computePnl,
-      // tapi job mingguan ini dulu enggak, jadi cost-nya ke-bawah-hitung tiap minggu.
-      fetchMolisRevenueCost(weekStart, weekEnd, admin as any),
-    ]);
+  const [
+    deliveries,
+    attendance,
+    { data: schemesRaw, error: schemesErr },
+    { data: clientsRaw, error: clientsErr },
+    molisCost,
+  ] = await Promise.all([
+    fetchAllRowsAdmin<DeliveryRow & { client_id: string | null }>(admin, (c, from, to) =>
+      (c as any)
+        .from("delivery_records")
+        .select(
+          "client_id, rider_id, driver_code, delivery_date, district, city, sender_name, distance_km, weight_kg, destination_address, service_type, status, delivery_type",
+        )
+        .gte("delivery_date", weekStart)
+        .lte("delivery_date", weekEnd)
+        .range(from, to),
+    ),
+    fetchAllRowsAdmin<AttendanceLogRow & { client_name: string | null }>(admin, (c, from, to) =>
+      (c as any)
+        .from("attendance_logs")
+        .select(
+          "rider_id, driver_code, client_name, log_date, clock_in, duration_minutes, is_late, is_absent",
+        )
+        .gte("log_date", weekStart)
+        .lte("log_date", weekEnd)
+        .range(from, to),
+    ),
+    (admin as any)
+      .from("pricing_schemes")
+      .select(
+        "id, name, client_id, scheme_for, calc_type, effective_from, effective_to, params, created_at",
+      ),
+    admin.from("clients").select("id, name"),
+    // Biaya molis charge_target='client_revenue' (lihat molis-cost.ts) — dashboard
+    // Margin Analytics (admin.pnl-dashboard.tsx) udah masukin ini ke computePnl,
+    // tapi job mingguan ini dulu enggak, jadi cost-nya ke-bawah-hitung tiap minggu.
+    fetchMolisRevenueCost(weekStart, weekEnd, admin as any),
+  ]);
   // pricing_schemes/clients gagal fetch dulu diam-diam jadi array kosong (data
   // null ?? []) — delivery/attendance di atas udah fail-fast lewat
   // fetchAllRowsAdmin, dua query ini disamain biar gak diam-diam ngirim
@@ -171,7 +205,12 @@ export async function runWeeklyPnlPush(opts: {
   // di-backfill/rerun harus pakai skema yang berlaku PAS periode itu, bukan
   // skema yang aktif hari job-nya dijalanin (lihat pnl-engine.ts).
   const { perClient, totRevenue, totCost, totMargin, totMarginPct } = computePnl(
-    deliveries, schemes, clients, attendance, molisCost, weekEnd,
+    deliveries,
+    schemes,
+    clients,
+    attendance,
+    molisCost,
+    weekEnd,
   );
 
   const slackResult = await sendSlackMessage(buildSlackText(weekStart, weekEnd, perClient));
@@ -198,7 +237,12 @@ export async function runWeeklyPnlPush(opts: {
         total_margin: totMargin,
         total_margin_pct: totMarginPct,
         per_client: perClient.map((r) => ({
-          client_id: r.clientId, client: r.client, revenue: r.revenue, cost: r.cost, margin: r.margin, marginPct: r.marginPct,
+          client_id: r.clientId,
+          client: r.client,
+          revenue: r.revenue,
+          cost: r.cost,
+          margin: r.margin,
+          marginPct: r.marginPct,
         })),
         push_status: pushStatus,
         triggered_by: opts.triggeredBy,
@@ -221,8 +265,14 @@ export async function runWeeklyPnlPush(opts: {
   }
 
   return {
-    weekStart, weekEnd, totalRevenue: totRevenue, totalCost: totCost, totalMargin: totMargin, totalMarginPct: totMarginPct,
-    pushStatus, snapshotId: snapshot.id,
+    weekStart,
+    weekEnd,
+    totalRevenue: totRevenue,
+    totalCost: totCost,
+    totalMargin: totMargin,
+    totalMarginPct: totMarginPct,
+    pushStatus,
+    snapshotId: snapshot.id,
   };
 }
 

@@ -156,11 +156,7 @@ export async function maybeCompleteRunPublish(
   runId: string,
   actorUserId: string | null = null,
 ): Promise<boolean> {
-  const { data: run } = await client
-    .from("payroll_runs")
-    .select("status")
-    .eq("id", runId)
-    .single();
+  const { data: run } = await client.from("payroll_runs").select("status").eq("id", runId).single();
   if (!run || run.status === "published") return false;
 
   const { data: dets } = await client.from("payroll_details").select("id").eq("run_id", runId);

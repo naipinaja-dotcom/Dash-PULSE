@@ -854,13 +854,20 @@ export async function generatePayrollDetails(
         // recap/slip bisa nunjukin hari mana yang beneran kepotong, bukan
         // cuma rentang periode run (yang bisa salah kalau sebagian harinya
         // udah kepotong run lain, lihat dailyChargedDates di atas).
+        //
+        // Mulai dari start_date cicilan ini KALAU itu lebih telat dari awal
+        // periode run (bukan selalu run.period_start mentah) — sewa yang baru
+        // mulai DI TENGAH periode (mis. unit baru diambil tgl 27, padahal
+        // run-nya 24-30) sebelumnya tetap ke-charge dari tgl 1 periode (hari
+        // SEBELUM unit-nya bahkan ada), bukan dari start_date. mode='monthly'
+        // di monthlyDueDays di atas udah bener ngelakuin clamp yang sama
+        // (effectiveStart) — daily ketinggalan, ini nyamain.
+        const periodStart = new Date(`${run.period_start}T00:00:00Z`);
+        const instStart = i.start_date ? new Date(`${i.start_date}T00:00:00Z`) : null;
+        const loopStart = instStart && instStart > periodStart ? instStart : periodStart;
         const chargedDates: string[] = [];
         const end = new Date(`${run.period_end}T00:00:00Z`);
-        for (
-          const d = new Date(`${run.period_start}T00:00:00Z`);
-          d <= end;
-          d.setUTCDate(d.getUTCDate() + 1)
-        ) {
+        for (const d = new Date(loopStart); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
           const iso = d.toISOString().slice(0, 10);
           if (!charged?.has(iso)) chargedDates.push(iso);
         }

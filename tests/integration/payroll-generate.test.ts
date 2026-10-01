@@ -170,6 +170,43 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     });
   });
 
+  it("mode='daily': sewa yang start_date-nya DI TENGAH periode run cuma ke-charge dari start_date, bukan dari awal periode", () => {
+    // Regresi nyata: rider Ade Irwansyah (GORECA) — sewa mode='daily' dengan
+    // start_date 2026-07-22 (hari ke-2 dari periode run Selasa-Kamis 21-23
+    // Jul), sebelumnya tetap ke-charge "3 hari" (21,22,23) walau unit baru
+    // diambil tgl 22 — harusnya cuma 2 hari (22,23).
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Ade" },
+    ];
+    mock.tables.delivery_records = [];
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [
+      {
+        id: "ins1",
+        rider_id: "r1",
+        deduction_type_id: "sewa",
+        mode: "daily",
+        daily_rate: 59000,
+        active: true,
+        start_date: "2026-07-22",
+        next_deduction_date: "2026-07-22",
+        installments_paid: 0,
+        installment_count: null,
+        per_period_amount: null,
+      },
+    ];
+    mock.tables.deduction_types = [];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      const ded = mock.inserted.payroll_deductions[0];
+      expect(ded.amount).toBe(59000 * 2); // cuma 22 & 23 Jul, BUKAN 21/22/23
+      expect(ded.description).toContain("2 hari");
+      expect(ded.description).toContain("22/07");
+      expect(ded.description).toContain("23/07");
+      expect(ded.description).not.toContain("21/07");
+    });
+  });
+
   it("mode='daily' TIDAK dobel-tagih di run client lain (bukan 'rumah' rider itu)", () => {
     mock.tables.riders = [
       { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },

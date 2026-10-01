@@ -19,6 +19,27 @@ export interface SyncResult {
 
 const ALLOWED_STATUSES = new Set(["COMPLETED", "FAILED"]);
 
+// Fee final 1 baris: feeByDashId (caller yang BENERAN ngitung, mis.
+// syncOneClient) menang kalau ada; kalau enggak, PERTAHANKAN fee yang udah
+// tersimpan sebelumnya (caller raw-data-only, mis. "Tarik dari API" di Cek
+// Data) — bukan reset ke 0. `r.dash_delivery_id && ...` sengaja TIDAK dipakai
+// buat nentuin fallback (string kosong itu falsy tapi bukan nullish, bisa
+// lolos jadi fee="" kalau asal pakai `??` berantai) — key-nya dibangun
+// eksplisit sama persis pola byExternalId di atas.
+export function resolveFee(
+  r: LiveDeliveryRow,
+  feeByDashId: Map<string, number> | undefined,
+  existingFeeByExternalId: Map<string, number>,
+): number {
+  const dashId = r.dash_delivery_id?.trim();
+  if (dashId) {
+    const fresh = feeByDashId?.get(dashId);
+    if (fresh !== undefined) return fresh;
+  }
+  const key = dashId ? `dash:${dashId}` : `provider:${r.provider_order_id!.trim()}`;
+  return existingFeeByExternalId.get(key) ?? 0;
+}
+
 // `client` opsional buat caller server-only (cron live-fee-sync) tanpa sesi
 // admin login — pakai getSupabaseAdmin() (service role, bypass RLS) di situ.
 // Default anon `supabase` biar caller browser yang ada sekarang gak berubah.
@@ -58,6 +79,57 @@ export async function upsertLiveDeliveries(
     ridersCreated: 0,
   };
   if (usable.length === 0) return result;
+
+  // replace_live_deliveries (RPC) itu DELETE+INSERT penuh per baris (match by
+  // dash_delivery_id/provider_order_id) — bukan upsert parsial, jadi kolom
+  // `fee` row LAMA yang gak ketimpa feeByDashId bakal hilang diam-diam
+  // (default ke 0) kalau gak di-preserve manual di sini. Caller yang SENGAJA
+  // gak ngitung fee (mis. "Tarik dari API" di Cek Data — raw data doang,
+  // lihat komentar syncFromApi di admin.data-check.tsx) sebelumnya nge-reset
+  // fee baris yang UDAH ke-Hitung-Fee/di-commit ke 0 kalau date range-nya
+  // overlap periode yang udah dihitung — payroll yang udah di-Finalize/
+  // Publish ikut keikut nol pas di-Generate Ulang (bug nyata: GORECA).
+  // feeByDashId (kalau caller ngasih, mis. syncOneClient/"Tarik & Sync dari
+  // API" di Hitung Fee) TETAP menang — itu representasi fee TERBARU yang
+  // emang mau ditulis ulang.
+  const existingFeeByExternalId = new Map<string, number>();
+  const dashIds = usable.map((r) => r.dash_delivery_id?.trim()).filter((v): v is string => !!v);
+  const providerIds = usable
+    .map((r) => r.provider_order_id?.trim())
+    .filter((v): v is string => !!v);
+  // Dua query terpisah (bukan 1 query .or() string-built) — ID dari mgmt API
+  // gak terjamin bebas koma/karakter spesial, jadi aman dari filter PostgREST
+  // yang salah parse kalau dipaksa digabung jadi satu string.
+  const existingRowsQueries = [
+    dashIds.length > 0
+      ? (client as any)
+          .from("delivery_records")
+          .select("dash_delivery_id, provider_order_id, fee")
+          .eq("client_id", clientId)
+          .in("dash_delivery_id", dashIds)
+      : null,
+    providerIds.length > 0
+      ? (client as any)
+          .from("delivery_records")
+          .select("dash_delivery_id, provider_order_id, fee")
+          .eq("client_id", clientId)
+          .in("provider_order_id", providerIds)
+      : null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ].filter((q): q is any => q !== null);
+  const existingResults = await Promise.all(existingRowsQueries);
+  for (const { data: existing } of existingResults) {
+    for (const r of (existing ?? []) as {
+      dash_delivery_id: string | null;
+      provider_order_id: string | null;
+      fee: number | null;
+    }[]) {
+      const key = r.dash_delivery_id
+        ? `dash:${r.dash_delivery_id}`
+        : `provider:${r.provider_order_id}`;
+      existingFeeByExternalId.set(key, Number(r.fee) || 0);
+    }
+  }
 
   // 1. Resolve/create rider dari kode mitra.
   const namesByCode: Record<string, string> = {};
@@ -102,7 +174,7 @@ export async function upsertLiveDeliveries(
     receiver_name: r.receiver_name,
     service_type: r.service_type,
     delivery_type: r.delivery_type ?? "DELIVERY",
-    fee: (r.dash_delivery_id && feeByDashId?.get(r.dash_delivery_id)) || 0,
+    fee: resolveFee(r, feeByDashId, existingFeeByExternalId),
   }));
 
   // Delete + insert dijalankan sebagai SATU transaksi di Postgres. Kalau

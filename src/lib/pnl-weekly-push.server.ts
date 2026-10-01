@@ -140,7 +140,7 @@ export async function runWeeklyPnlPush(opts: {
     await Promise.all([
       fetchAllRowsAdmin<DeliveryRow & { client_id: string | null }>(admin, (c, from, to) =>
         (c as any).from("delivery_records")
-          .select("client_id, rider_id, driver_code, delivery_date, district, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
+          .select("client_id, rider_id, driver_code, delivery_date, district, city, sender_name, distance_km, weight_kg, destination_address, service_type, status, delivery_type")
           .gte("delivery_date", weekStart).lte("delivery_date", weekEnd).range(from, to)),
       fetchAllRowsAdmin<AttendanceLogRow & { client_name: string | null }>(admin, (c, from, to) =>
         (c as any).from("attendance_logs")

@@ -2693,7 +2693,9 @@ function PayrollPage() {
                                 type="text"
                                 value={r.title}
                                 disabled={spendControlPushing || !!result?.ok}
-                                onChange={(e) => updateSpendControlTitle(r.clientId, e.target.value)}
+                                onChange={(e) =>
+                                  updateSpendControlTitle(r.clientId, e.target.value)
+                                }
                                 className={
                                   "w-full min-w-[220px] rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-ring disabled:opacity-60 " +
                                   (r.title.length > SPEND_CONTROL_TITLE_LIMIT

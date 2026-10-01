@@ -72,7 +72,9 @@ export function getServerConfig() {
     // admin.payroll.tsx) — Basecamp's /api/spend-requests punya nol auth
     // (lihat spend-request-api-integration.md §3), jadi gak ada token di sini,
     // cuma base URL biar bisa diarahkan ke staging tanpa ubah kode.
-    basecampSpendControlUrl: (process.env.BASECAMP_SPEND_CONTROL_URL || "https://basecamp.dashelectric.co").trim(),
+    basecampSpendControlUrl: (
+      process.env.BASECAMP_SPEND_CONTROL_URL || "https://basecamp.dashelectric.co"
+    ).trim(),
 
     // Basecamp Spend Control webhook (lihat src/routes/api.basecamp-webhook.ts) —
     // arah SEBALIKNYA dari basecampSpendControlUrl di atas: ini Basecamp yang

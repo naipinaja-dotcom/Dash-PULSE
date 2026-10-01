@@ -26,12 +26,8 @@ import {
   SkipForward,
   Lock,
 } from "lucide-react";
-import {
-  generatePayrollDetails,
-  computeInstallmentAdvance,
-  isMultiClientDeductionGroupComplete,
-  DEDUCTION_PRIORITY,
-} from "@/lib/payroll-generate";
+import { generatePayrollDetails } from "@/lib/payroll-generate";
+import { publishPayrollDetails, maybeCompleteRunPublish } from "@/lib/payroll-publish";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
 import { triggerPayrollWorkflow } from "@/lib/api/payroll-workflow.functions";
 import { IncentiveEditor } from "@/components/incentive-editor";
@@ -170,6 +166,10 @@ type SpendControlPushResult = {
   error?: string;
   pushedBy?: string | null;
   pushedAt?: string | null;
+  // Status terakhir dari webhook Basecamp (lihat api.basecamp-webhook.ts) —
+  // "pending" sampai Basecamp bilang "completed" (atau status lain mereka).
+  // Dipakai nunjukin progress auto-publish per client di dialog ini.
+  basecampStatus?: string;
 };
 
 // Kasbon dengan penerima pihak ke-3 (kasbon_recipients, lihat add-tab.tsx)
@@ -297,6 +297,28 @@ function PayrollPage() {
   const selectedSpendControlRepushRows = spendControlRepushableRows.filter((r) =>
     selectedSpendControlRepushes.has(r.clientId),
   );
+  // Title auto-generate (nama client + periode) cuma DEFAULT — admin bisa
+  // override manual per client sebelum push, mis. nambah catatan khusus buat
+  // 1 pengajuan tanpa ngubah template buat pengajuan lain. valid ikut
+  // direcompute di sini (bukan dibaca ulang dari field lama) biar validasi
+  // limit karakter tetap akurat terhadap teks yang BENERAN bakal dikirim.
+  const updateSpendControlTitle = (clientId: string, title: string) => {
+    setSpendControlRows((rows) =>
+      rows.map((r) =>
+        r.clientId === clientId
+          ? {
+              ...r,
+              title,
+              valid:
+                r.businessUnit !== null &&
+                r.contract !== null &&
+                title.length > 0 &&
+                title.length <= SPEND_CONTROL_TITLE_LIMIT,
+            }
+          : r,
+      ),
+    );
+  };
   const [newDedDescription, setNewDedDescription] = useState("");
   const [newDedAmount, setNewDedAmount] = useState(0);
   const {
@@ -961,115 +983,55 @@ function PayrollPage() {
     if (!activeRun) return;
     setPublishing(true);
     try {
-      // create payslips
-      const { data: dets } = await supabase
+      // Fallback manual: force-publish SEMUA client di run ini sekaligus,
+      // apapun status Spend Control-nya — dipakai kalau webhook Basecamp gak
+      // kunjung datang/gagal. publishPayrollDetails() per client idempoten
+      // (skip detail yang udah punya payslip), jadi aman walau sebagian
+      // client di run ini udah ke-publish duluan lewat webhook (lihat
+      // api.basecamp-webhook.ts & payroll-publish.ts).
+      const { data: clientRows } = await supabase
         .from("payroll_details")
-        .select("*")
+        .select("client_id")
         .eq("run_id", activeRun.id);
-      if (!dets?.length) return toast.error("Belum ada detail");
-      const slips = dets.map((d: any) => ({
-        detail_id: d.id,
-        run_id: activeRun.id,
-        rider_id: d.rider_id,
-        data: d,
-      }));
-      const { error: e1 } = await supabase
-        .from("payslips")
-        .upsert(slips, { onConflict: "detail_id" });
-      if (e1) return toast.error(e1.message);
-      // Alokasi gross_earning tiap detail ke potongan-potongannya sesuai
-      // prioritas (Admin > BPJS > Kerusakan Barang > Kasbon > Sewa Molis >
-      // Pinjaman Kuota) — kalau gross gak cukup, prioritas rendah yang kena
-      // kurang duluan. paid_amount per baris dicatat di sini (cuma pas
-      // Publish), selisihnya otomatis ketagih lagi periode berikutnya lewat
-      // getCarriedArrears di payroll-generate.ts.
-      const grossByDetail = new Map<string, number>(
-        dets.map((d: any) => [d.id, Number(d.gross_earning)]),
-      );
-      const { data: deds } = await supabase
-        .from("payroll_deductions")
-        .select("id, detail_id, installment_id, amount, deduction_types(code)")
-        .in(
-          "detail_id",
-          dets.map((d: any) => d.id),
-        );
+      if (!clientRows?.length) return toast.error("Belum ada detail");
+      const clientIds = [...new Set(clientRows.map((d: any) => d.client_id as string | null))];
 
-      const byDetail = new Map<string, any[]>();
-      for (const d of (deds ?? []) as any[]) {
-        const arr = byDetail.get(d.detail_id) ?? [];
-        arr.push(d);
-        byDetail.set(d.detail_id, arr);
+      let totalSlips = 0;
+      for (const cid of clientIds) {
+        const { slipCount } = await publishPayrollDetails(supabase, {
+          runId: activeRun.id,
+          clientId: cid,
+          actorUserId: user?.id ?? null,
+        });
+        totalSlips += slipCount;
       }
+      await maybeCompleteRunPublish(supabase, activeRun.id, user?.id ?? null);
 
-      for (const [detailId, rows] of byDetail) {
-        let remaining = grossByDetail.get(detailId) ?? 0;
-        const sorted = [...(rows ?? [])].sort(
-          (a: any, b: any) =>
-            (DEDUCTION_PRIORITY[a.deduction_types?.code] ?? 99) -
-            (DEDUCTION_PRIORITY[b.deduction_types?.code] ?? 99),
-        );
-        for (const row of sorted as any[]) {
-          const amount = Number(row.amount);
-          const paid = Math.max(0, Math.min(remaining, amount));
-          remaining -= paid;
-          await supabase.from("payroll_deductions").update({ paid_amount: paid }).eq("id", row.id);
-          if (!row.installment_id) continue;
-          const { data: ins } = await supabase
-            .from("rider_installments")
-            .select("*")
-            .eq("id", row.installment_id)
-            .single();
-          if (!ins) continue;
-          let paidInFull = paid >= amount;
-          // Cicilan mode='fixed' yang eligible >1 client (client_ids, lihat
-          // allocateMultiClientDeduction di payroll-generate.ts) bisa displit
-          // jadi beberapa baris LINTAS CLIENT buat 1 periode yang sama —
-          // progress (installments_paid) cuma boleh maju kalau SEMUA baris
-          // split itu (client lain, periode overlap) juga udah lunas, bukan
-          // cuma baris di run ini doang. Tanpa ini, tiap baris split maju
-          // sendiri-sendiri dan cicilan bisa "lunas" 2x lebih cepat dari
-          // seharusnya. 'daily'/'monthly' gak butuh ini — computeInstallmentAdvance
-          // udah selalu return null buat mode itu (open-ended, gak ada progress).
-          if (
-            paidInFull &&
-            ins.mode === "fixed" &&
-            Array.isArray(ins.client_ids) &&
-            ins.client_ids.length > 1
-          ) {
-            paidInFull = await isMultiClientDeductionGroupComplete(
-              supabase,
-              ins.id,
-              activeRun.period_start,
-              activeRun.period_end,
-              row.id,
-            );
-          }
-          const advance = computeInstallmentAdvance(ins, paidInFull);
-          if (!advance) continue;
-          await supabase.from("rider_installments").update(advance).eq("id", ins.id);
-        }
-      }
-      const { error: e2 } = await (supabase as any)
+      const { data: refreshedRun } = await supabase
         .from("payroll_runs")
-        .update({
-          status: "published",
-          published_at: new Date().toISOString(),
-          published_by: user?.id ?? null,
-        })
-        .eq("id", activeRun.id);
-      if (e2) return toast.error(e2.message);
+        .select("status, published_by")
+        .eq("id", activeRun.id)
+        .single();
       if (user?.id) resolveProfileNames([user.id]);
       setActiveRun((current) =>
         current?.id === activeRun.id
-          ? { ...current, status: "published", published_by: user?.id ?? null }
+          ? {
+              ...current,
+              status: refreshedRun?.status ?? current.status,
+              published_by: refreshedRun?.published_by ?? current.published_by,
+            }
           : current,
       );
       posthog.capture("payroll_run_published", {
         run_id: activeRun.id,
         client_id: activeRun.client_id,
-        slip_count: slips.length,
+        slip_count: totalSlips,
       });
-      toast.success(`Publish ${slips.length} slip gaji`);
+      toast.success(
+        totalSlips > 0
+          ? `Publish ${totalSlips} slip gaji`
+          : "Semua rider di run ini sudah ke-publish sebelumnya",
+      );
       loadRuns();
     } finally {
       setPublishing(false);
@@ -1344,7 +1306,7 @@ function PayrollPage() {
         (supabase as any)
           .from("spend_control_pushes")
           .select(
-            "client_id, request_code, workflow_configured, workflow_missing_reason, attempt, pushed_by, pushed_at",
+            "client_id, request_code, workflow_configured, workflow_missing_reason, attempt, pushed_by, pushed_at, basecamp_status",
           )
           .eq("payroll_run_id", activeRun.id)
           .order("attempt", { ascending: false }),
@@ -1364,6 +1326,7 @@ function PayrollPage() {
               workflowMissingReason: p.workflow_missing_reason ?? undefined,
               pushedBy: p.pushed_by ?? null,
               pushedAt: p.pushed_at ?? null,
+              basecampStatus: p.basecamp_status ?? "pending",
             };
           }
           return latest;
@@ -1897,13 +1860,22 @@ function PayrollPage() {
                           ` · ${new Date(activeRun.finalized_at).toLocaleString("id-ID")}`}
                       </div>
                     )}
-                    {activeRun.published_by && (
+                    {activeRun.published_by ? (
                       <div className="text-[11px] text-muted-foreground mt-0.5">
                         Dipublish oleh{" "}
                         <span className="text-primary font-medium">
                           {profileNames[activeRun.published_by] ?? "..."}
                         </span>
                       </div>
+                    ) : (
+                      activeRun.status === "published" && (
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          Dipublish otomatis{" "}
+                          <span className="text-primary font-medium">
+                            (Basecamp Spend Control completed)
+                          </span>
+                        </div>
+                      )
                     )}
                     {runLatestPush && (
                       <div className="text-[11px] text-muted-foreground mt-0.5">
@@ -2717,19 +2689,22 @@ function PayrollPage() {
                           <tr key={r.clientId} className="border-t border-border">
                             <td className="px-3 py-2 whitespace-nowrap">{r.clientName}</td>
                             <td className="px-3 py-2">
-                              <div
+                              <input
+                                type="text"
+                                value={r.title}
+                                disabled={spendControlPushing || !!result?.ok}
+                                onChange={(e) => updateSpendControlTitle(r.clientId, e.target.value)}
                                 className={
-                                  r.title.length > SPEND_CONTROL_TITLE_LIMIT
-                                    ? "text-destructive"
-                                    : ""
+                                  "w-full min-w-[220px] rounded border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-ring disabled:opacity-60 " +
+                                  (r.title.length > SPEND_CONTROL_TITLE_LIMIT
+                                    ? "border-destructive text-destructive"
+                                    : "border-border")
                                 }
-                              >
-                                {r.title}
-                              </div>
+                              />
                               {r.title.length > SPEND_CONTROL_TITLE_LIMIT && (
                                 <div className="text-destructive text-[11px] mt-0.5">
                                   {r.title.length}/{SPEND_CONTROL_TITLE_LIMIT} karakter —
-                                  kepanjangan, perbaiki nama client sebelum push
+                                  kepanjangan, perbaiki sebelum push
                                 </div>
                               )}
                             </td>
@@ -2773,6 +2748,19 @@ function PayrollPage() {
                                   </span>
                                   {result.pushedAt &&
                                     ` · ${new Date(result.pushedAt).toLocaleString("id-ID")}`}
+                                </div>
+                              )}
+                              {result?.ok && (
+                                <div className="mt-0.5">
+                                  <span
+                                    className={
+                                      result.basecampStatus === "completed"
+                                        ? "rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-success text-[11px]"
+                                        : "rounded border border-border-strong/40 px-1.5 py-0.5 text-muted-foreground text-[11px]"
+                                    }
+                                  >
+                                    Basecamp: {result.basecampStatus ?? "pending"}
+                                  </span>
                                 </div>
                               )}
                               {result?.ok && r.valid && (

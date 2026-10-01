@@ -73,5 +73,12 @@ export function getServerConfig() {
     // (lihat spend-request-api-integration.md §3), jadi gak ada token di sini,
     // cuma base URL biar bisa diarahkan ke staging tanpa ubah kode.
     basecampSpendControlUrl: (process.env.BASECAMP_SPEND_CONTROL_URL || "https://basecamp.dashelectric.co").trim(),
+
+    // Basecamp Spend Control webhook (lihat src/routes/api.basecamp-webhook.ts) —
+    // arah SEBALIKNYA dari basecampSpendControlUrl di atas: ini Basecamp yang
+    // manggil KITA begitu status request berubah (mis. "completed"), dipakai
+    // buat auto-publish payroll run per client (lihat payroll-publish.ts).
+    // Sama polanya dgn pnlPushSecret, header `x-basecamp-webhook-secret`.
+    basecampWebhookSecret: process.env.BASECAMP_WEBHOOK_SECRET?.trim(),
   };
 }

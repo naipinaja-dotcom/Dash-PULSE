@@ -25,6 +25,7 @@ import { Route as ApiLiveFeeSyncRouteImport } from './routes/api.live-fee-sync'
 import { Route as ApiExecutiveDashboardRouteImport } from './routes/api.executive-dashboard'
 import { Route as ApiDataImportRouteImport } from './routes/api.data-import'
 import { Route as ApiCooInsightRouteImport } from './routes/api.coo-insight'
+import { Route as ApiBasecampWebhookRouteImport } from './routes/api.basecamp-webhook'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminUploadRouteImport } from './routes/admin.upload'
 import { Route as AdminShipmentAnalyticsRouteImport } from './routes/admin.shipment-analytics'
@@ -126,6 +127,11 @@ const ApiDataImportRoute = ApiDataImportRouteImport.update({
 const ApiCooInsightRoute = ApiCooInsightRouteImport.update({
   id: '/api/coo-insight',
   path: '/api/coo-insight',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBasecampWebhookRoute = ApiBasecampWebhookRouteImport.update({
+  id: '/api/basecamp-webhook',
+  path: '/api/basecamp-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -264,6 +270,7 @@ export interface FileRoutesByFullPath {
   '/admin/shipment-analytics': typeof AdminShipmentAnalyticsRoute
   '/admin/upload': typeof AdminUploadRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/basecamp-webhook': typeof ApiBasecampWebhookRoute
   '/api/coo-insight': typeof ApiCooInsightRoute
   '/api/data-import': typeof ApiDataImportRoute
   '/api/executive-dashboard': typeof ApiExecutiveDashboardRoute
@@ -304,6 +311,7 @@ export interface FileRoutesByTo {
   '/admin/shipment-analytics': typeof AdminShipmentAnalyticsRoute
   '/admin/upload': typeof AdminUploadRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/basecamp-webhook': typeof ApiBasecampWebhookRoute
   '/api/coo-insight': typeof ApiCooInsightRoute
   '/api/data-import': typeof ApiDataImportRoute
   '/api/executive-dashboard': typeof ApiExecutiveDashboardRoute
@@ -345,6 +353,7 @@ export interface FileRoutesById {
   '/admin/shipment-analytics': typeof AdminShipmentAnalyticsRoute
   '/admin/upload': typeof AdminUploadRoute
   '/admin/users': typeof AdminUsersRoute
+  '/api/basecamp-webhook': typeof ApiBasecampWebhookRoute
   '/api/coo-insight': typeof ApiCooInsightRoute
   '/api/data-import': typeof ApiDataImportRoute
   '/api/executive-dashboard': typeof ApiExecutiveDashboardRoute
@@ -387,6 +396,7 @@ export interface FileRouteTypes {
     | '/admin/shipment-analytics'
     | '/admin/upload'
     | '/admin/users'
+    | '/api/basecamp-webhook'
     | '/api/coo-insight'
     | '/api/data-import'
     | '/api/executive-dashboard'
@@ -427,6 +437,7 @@ export interface FileRouteTypes {
     | '/admin/shipment-analytics'
     | '/admin/upload'
     | '/admin/users'
+    | '/api/basecamp-webhook'
     | '/api/coo-insight'
     | '/api/data-import'
     | '/api/executive-dashboard'
@@ -467,6 +478,7 @@ export interface FileRouteTypes {
     | '/admin/shipment-analytics'
     | '/admin/upload'
     | '/admin/users'
+    | '/api/basecamp-webhook'
     | '/api/coo-insight'
     | '/api/data-import'
     | '/api/executive-dashboard'
@@ -489,6 +501,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RiderRoute: typeof RiderRouteWithChildren
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  ApiBasecampWebhookRoute: typeof ApiBasecampWebhookRoute
   ApiCooInsightRoute: typeof ApiCooInsightRoute
   ApiDataImportRoute: typeof ApiDataImportRoute
   ApiExecutiveDashboardRoute: typeof ApiExecutiveDashboardRoute
@@ -610,6 +623,13 @@ declare module '@tanstack/react-router' {
       path: '/api/coo-insight'
       fullPath: '/api/coo-insight'
       preLoaderRoute: typeof ApiCooInsightRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/basecamp-webhook': {
+      id: '/api/basecamp-webhook'
+      path: '/api/basecamp-webhook'
+      fullPath: '/api/basecamp-webhook'
+      preLoaderRoute: typeof ApiBasecampWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -843,6 +863,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RiderRoute: RiderRouteWithChildren,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  ApiBasecampWebhookRoute: ApiBasecampWebhookRoute,
   ApiCooInsightRoute: ApiCooInsightRoute,
   ApiDataImportRoute: ApiDataImportRoute,
   ApiExecutiveDashboardRoute: ApiExecutiveDashboardRoute,

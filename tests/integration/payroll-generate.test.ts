@@ -276,6 +276,92 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     });
   });
 
+  it("run EWA (kind=ewa, rider_scope) cuma hitung rider terpilih, net=gross, tanpa ADM/BPJS", () => {
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
+      { id: "r2", client_id: "client-1", employee_id: "MTR2", full_name: "Sari" },
+    ];
+    mock.tables.delivery_records = ["r1", "r2"].map((rider_id) => ({
+      rider_id,
+      driver_code: null,
+      fee: 100000,
+      delivery_date: "2026-07-22",
+      client_id: "client-1",
+      status: "COMPLETED",
+    }));
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [];
+    // ADM auto-recurring ADA, tapi run EWA harus LEWATI semua potongan auto.
+    mock.tables.deduction_types = [
+      { id: "adm", code: "ADM", name: "Biaya Admin", auto_recurring: true, applies_to_all: true, recurring_amount: 2500, active: true, trigger_frequency: null },
+    ];
+
+    const ewaRun = { ...run(), kind: "ewa", rider_scope: ["r1"] };
+    return generatePayrollDetails(ewaRun as any, mock.client as any).then(() => {
+      // cuma r1 yang dibuatkan detail
+      expect(mock.inserted.payroll_details.map((d: any) => d.rider_id)).toEqual(["r1"]);
+      expect(mock.inserted.payroll_details[0].net_pay).toBe(100000); // net=gross, tanpa ADM
+      expect(mock.inserted.payroll_deductions ?? []).toHaveLength(0);
+    });
+  });
+
+  it("run reguler motong balik net run EWA yang published; rider non-EWA tak berubah", () => {
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
+      { id: "r2", client_id: "client-1", employee_id: "MTR2", full_name: "Sari" },
+    ];
+    mock.tables.delivery_records = ["r1", "r2"].map((rider_id) => ({
+      rider_id,
+      driver_code: null,
+      fee: 100000,
+      delivery_date: "2026-07-22",
+      client_id: "client-1",
+      status: "COMPLETED",
+    }));
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [];
+    mock.tables.deduction_types = [{ id: "ewa-type", code: "EWA", name: "EWA", auto_recurring: false, applies_to_all: true, active: true }];
+    // Run EWA published yang overlap + detail-nya (net 40.000 buat r1).
+    mock.tables.payroll_runs = [
+      { id: "ewa-run", client_id: "client-1", kind: "ewa", status: "published", period_start: "2026-07-22", period_end: "2026-07-22" },
+    ];
+    mock.tables.payroll_details = [
+      { id: "ewa-d1", run_id: "ewa-run", rider_id: "r1", net_pay: 40000 },
+    ];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      const byRider = (id: string) =>
+        mock.inserted.payroll_details.find((d: any) => d.rider_id === id);
+      expect(byRider("r1").net_pay).toBe(60000); // 100.000 - EWA 40.000
+      expect(byRider("r2").net_pay).toBe(100000); // non-EWA tak berubah
+      const ded = mock.inserted.payroll_deductions.filter((d: any) => d.deduction_type_id === "ewa-type");
+      expect(ded).toHaveLength(1);
+      expect(ded[0].amount).toBe(40000);
+      expect(ded[0].description).toContain("EWA dibayar lebih awal");
+    });
+  });
+
+  it("run EWA yang BELUM published tidak dipotong di run reguler", () => {
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
+    ];
+    mock.tables.delivery_records = [
+      { rider_id: "r1", driver_code: null, fee: 100000, delivery_date: "2026-07-22", client_id: "client-1", status: "COMPLETED" },
+    ];
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [];
+    mock.tables.deduction_types = [{ id: "ewa-type", code: "EWA", name: "EWA", auto_recurring: false, applies_to_all: true, active: true }];
+    mock.tables.payroll_runs = [
+      { id: "ewa-run", client_id: "client-1", kind: "ewa", status: "draft", period_start: "2026-07-22", period_end: "2026-07-22" },
+    ];
+    mock.tables.payroll_details = [{ id: "ewa-d1", run_id: "ewa-run", rider_id: "r1", net_pay: 40000 }];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      expect(mock.inserted.payroll_details[0].net_pay).toBe(100000); // belum published = tidak dipotong
+      expect((mock.inserted.payroll_deductions ?? []).filter((d: any) => d.deduction_type_id === "ewa-type")).toHaveLength(0);
+    });
+  });
+
   it("delivery_records status != COMPLETED (FAILED/PENDING_PICKUP) TIDAK ikut kehitung ke gaji", () => {
     mock.tables.riders = [
       { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },

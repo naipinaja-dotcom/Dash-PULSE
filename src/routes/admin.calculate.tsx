@@ -108,6 +108,11 @@ function CalculatePage() {
   const [combinedResult, setCombinedResult] = useState<CombinedCalcResult | null>(null);
   const [riderNames, setRiderNames] = useState<Record<string, string>>({});
   const [ranScheme, setRanScheme] = useState<PricingScheme | null>(null);
+  // Mode EWA: hitung & ajukan upah lebih awal buat rider TERPILIH saja. Default
+  // reguler = perilaku lama (semua rider). ewaRiders = rider key (rider_id/
+  // driver_code, sama seperti perRider.rider) yang diajukan EWA.
+  const [payMode, setPayMode] = useState<"regular" | "ewa">("regular");
+  const [ewaRiders, setEwaRiders] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   // Daftar provider API — client ditautkan ke provider lewat clients.provider_id
   // (persisted, lihat migration clients_provider_id) kalau sudah pernah
@@ -600,12 +605,23 @@ function CalculatePage() {
     if (!ranScheme || ranScheme.scheme_for !== "rider") return;
     const isAttendance = ranScheme.category === "attendance";
     const isCombined = ranScheme.category === "hybrid";
-    const rows = isAttendance
+    const isEwa = payMode === "ewa";
+    if (isEwa && ewaRiders.size === 0)
+      return toast.error("Pilih minimal 1 rider dulu untuk diajukan EWA.");
+    const allRows = isAttendance
       ? (attResult?.perRow.filter((r) => r.id) ?? [])
       : isCombined
         ? (combinedResult?.perRow.filter((r) => r.id) ?? [])
         : (result?.perRow.filter((r) => r.id) ?? []);
-    if (rows.length === 0) return toast.error("Tidak ada baris untuk disimpan.");
+    // Mode EWA cuma commit baris milik rider terpilih — fee rider lain TIDAK
+    // disentuh, dan run EWA yang dibuat cuma berisi rider itu.
+    const rows = isEwa ? allRows.filter((r) => ewaRiders.has(r.rider)) : allRows;
+    if (rows.length === 0)
+      return toast.error(
+        isEwa
+          ? "Rider terpilih tidak punya baris untuk disimpan."
+          : "Tidak ada baris untuk disimpan.",
+      );
     const table = isAttendance ? "attendance_logs" : "delivery_records";
 
     if (commitLock.current)
@@ -618,11 +634,14 @@ function CalculatePage() {
       // slip; published = udah kepake) — Hitung Fee ulang gak boleh diam-diam
       // nimpa data sumbernya. Cuma draft yang masih boleh di-commit ulang bebas
       // (konsisten sama guard "draft only" di admin.payroll.tsx & payroll-workflow.server.ts).
+      // Guard dipisah per kind — run EWA tidak terblok oleh run reguler periode
+      // sama, dan sebaliknya (keduanya run terpisah).
       let publishedQ = (supabase as any)
         .from("payroll_runs")
         .select("id, name, status")
         .eq("period_start", from)
         .eq("period_end", to)
+        .eq("kind", isEwa ? "ewa" : "regular")
         .in("status", ["finalized", "published"]);
       publishedQ = clientId
         ? publishedQ.eq("client_id", clientId)
@@ -669,7 +688,9 @@ function CalculatePage() {
       // + attendance_logs.fee apa adanya, gak tau skema mana yang aktif).
       // Cuma jalan kalau client spesifik dipilih — run "Semua Client" lintas
       // banyak client sekaligus, ketebakan gede kalau ikut di-reset di sini.
-      if (clientId) {
+      // SKIP buat EWA: EWA cuma payout fee rider terpilih, bukan ganti skema
+      // kategori — reset lintas-rider malah menghapus fee rider lain.
+      if (clientId && !isEwa) {
         const otherTable = table === "attendance_logs" ? "delivery_records" : "attendance_logs";
         const dateCol = otherTable === "attendance_logs" ? "log_date" : "delivery_date";
         const { error: resetErr } = await (supabase as any)
@@ -729,10 +750,16 @@ function CalculatePage() {
         clientName,
         periodStart: from,
         periodEnd: to,
+        kind: isEwa ? "ewa" : "regular",
+        riderScope: isEwa ? [...ewaRiders] : null,
       });
       await generatePayrollDetails(run);
 
-      toast.success(`Fee tersimpan ke ${done} baris. Payroll Run "${clientName}" siap direview.`);
+      toast.success(
+        isEwa
+          ? `EWA tersimpan buat ${ewaRiders.size} rider. Payroll Run EWA "${clientName}" siap di-review & push.`
+          : `Fee tersimpan ke ${done} baris. Payroll Run "${clientName}" siap direview.`,
+      );
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -918,6 +945,36 @@ function CalculatePage() {
         </div>
       </div>
 
+      {/* Mode pembayaran: Reguler (semua rider) vs EWA (upah lebih awal, pilih
+          rider). Toggle di sini biar kelihatan sebelum commit. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium text-muted-foreground">Mode:</span>
+        <div className="inline-flex overflow-hidden rounded-md border-2 border-border-strong">
+          {(
+            [
+              ["regular", "Reguler"],
+              ["ewa", "EWA (upah lebih awal)"],
+            ] as [typeof payMode, string][]
+          ).map(([k, l]) => (
+            <button
+              key={k}
+              onClick={() => {
+                setPayMode(k);
+                if (k === "regular") setEwaRiders(new Set());
+              }}
+              className={`px-3 py-1.5 font-bold border-l-2 border-border-strong first:border-l-0 transition-colors ${payMode === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        {payMode === "ewa" && (
+          <span className="text-xs text-muted-foreground">
+            Centang rider di bawah — cuma rider terpilih yang dibuatkan run EWA & diajukan.
+          </span>
+        )}
+      </div>
+
       {result && ranScheme && (
         <>
           {/* Ringkasan */}
@@ -1082,6 +1139,74 @@ function CalculatePage() {
               <Line label="+ PPN" value={formatRupiah(result.billing.ppn)} />
               <div className="border-t border-border mt-2 pt-2">
                 <Line label="Total Tagihan" value={formatRupiah(result.billing.final)} bold />
+              </div>
+            </div>
+          )}
+
+          {/* Mode EWA + skema rider tapi hasil kosong — kasih tau kenapa panel
+              centang rider belum muncul (biar gak dikira fitur-nya hilang). */}
+          {payMode === "ewa" && ranScheme.scheme_for === "rider" && result.perRider.length === 0 && (
+            <div className="rounded-lg border-2 border-border-strong bg-card p-4 mb-4 text-sm text-muted-foreground">
+              Belum ada rider di hasil hitungan ini — ganti ke periode yang ada pengirimannya lalu
+              klik <strong>Hitung</strong>, nanti daftar rider buat dicentang muncul di sini.
+            </div>
+          )}
+
+          {/* Pilih rider EWA — cuma muncul di mode EWA buat skema rider */}
+          {payMode === "ewa" && ranScheme.scheme_for === "rider" && result.perRider.length > 0 && (
+            <div className="rounded-lg border-2 border-border-strong bg-card p-4 mb-4 text-sm">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="font-bold">Pilih rider untuk EWA</p>
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() =>
+                    setEwaRiders((prev) =>
+                      prev.size === result.perRider.length
+                        ? new Set()
+                        : new Set(result.perRider.map((r) => r.rider)),
+                    )
+                  }
+                >
+                  {ewaRiders.size === result.perRider.length ? "Kosongkan" : "Pilih semua"}
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto divide-y divide-border">
+                {result.perRider.map((r) => (
+                  <label
+                    key={r.rider}
+                    className="flex items-center justify-between gap-3 py-1.5 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={ewaRiders.has(r.rider)}
+                        onChange={(e) =>
+                          setEwaRiders((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(r.rider);
+                            else next.delete(r.rider);
+                            return next;
+                          })
+                        }
+                      />
+                      {riderNames[r.rider] ?? r.rider}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {formatRupiah(r.total)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between border-t-2 border-border pt-2 font-medium">
+                <span>{ewaRiders.size} rider dipilih</span>
+                <span className="tabular-nums">
+                  {formatRupiah(
+                    result.perRider
+                      .filter((r) => ewaRiders.has(r.rider))
+                      .reduce((s, r) => s + r.total, 0),
+                  )}
+                </span>
               </div>
             </div>
           )}

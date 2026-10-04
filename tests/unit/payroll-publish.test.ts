@@ -167,6 +167,20 @@ describe("publishPayrollDetails", () => {
     expect(tables.rider_installments[0].installments_paid).toBe(1);
     expect(tables.payslips.length).toBe(1);
   });
+
+  it("EWA diprioritaskan paling dulu: gross yang kurang jatuh ke potongan lain, bukan EWA", async () => {
+    tables.payroll_details.push(detail({ id: "d1", gross_earning: 50000 }));
+    tables.payroll_deductions.push(
+      { id: "adm", detail_id: "d1", installment_id: null, amount: 30000, deduction_types: { code: "ADM" } },
+      { id: "ewa", detail_id: "d1", installment_id: null, amount: 40000, deduction_types: { code: "EWA" } },
+    );
+
+    await publishPayrollDetails(client, { runId: "run-1", clientId: "client-a", actorUserId: null });
+
+    const paid = (id: string) => tables.payroll_deductions.find((d: any) => d.id === id).paid_amount;
+    expect(paid("ewa")).toBe(40000); // EWA lunas dulu
+    expect(paid("adm")).toBe(10000); // sisa gross 10.000, sisanya jadi tunggakan
+  });
 });
 
 describe("maybeCompleteRunPublish", () => {

@@ -3,7 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import type {} from "@tanstack/react-start";
 import { getServerConfig } from "@/lib/config.server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin.server";
-import { publishPayrollDetails, maybeCompleteRunPublish } from "@/lib/payroll-publish";
+import { publishByRequestId } from "@/lib/spend-control-publish.server";
 import { getPostHogClient } from "@/utils/posthog-server";
 
 // Webhook Basecamp Spend Control — begitu status 1 payment request berubah
@@ -67,60 +67,22 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
 
         try {
           const admin = getSupabaseAdmin();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: push, error: findErr } = await (admin as any)
-            .from("spend_control_pushes")
-            .select("id, payroll_run_id, client_id, attempt")
-            .eq("request_id", requestId)
-            .maybeSingle();
-          if (findErr) throw new Error(findErr.message);
-          if (!push) {
+          const res = await publishByRequestId(admin, requestId, {
+            status,
+            completedAt: body.completedAt ?? null,
+          });
+          if (!res.matched) {
             // Basecamp mungkin retry webhook — 200 no-op biar gak dikira gagal
             // terus-terusan di-retry buat requestId yang emang gak kita kenal.
             return new Response(
-              JSON.stringify({ ok: true, noop: true, reason: "requestId tidak ditemukan" }),
+              JSON.stringify({ ok: true, noop: true, reason: res.reason }),
               { headers: { "Content-Type": "application/json" } },
             );
           }
-
-          // Supersession guard — kalau request ini BUKAN attempt terakhir buat
-          // (run, client) ini (udah ke-repush), abaikan: completion event buat
-          // request LAMA gak boleh trigger publish atas nama request BARU.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: latest } = await (admin as any)
-            .from("spend_control_pushes")
-            .select("id, attempt")
-            .eq("payroll_run_id", push.payroll_run_id)
-            .eq("client_id", push.client_id)
-            .order("attempt", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (latest && latest.id !== push.id) {
-            return new Response(
-              JSON.stringify({ ok: true, noop: true, reason: "request sudah di-supersede" }),
-              { headers: { "Content-Type": "application/json" } },
-            );
-          }
-
-          await (admin as any)
-            .from("spend_control_pushes")
-            .update({
-              basecamp_status: status || "unknown",
-              basecamp_completed_at:
-                status === "completed" ? (body.completedAt ?? new Date().toISOString()) : null,
-            })
-            .eq("id", push.id);
-
-          let published = false;
-          let slipCount = 0;
-          if (status === "completed") {
-            const res = await publishPayrollDetails(admin, {
-              runId: push.payroll_run_id,
-              clientId: push.client_id,
-              actorUserId: null,
+          if (res.superseded) {
+            return new Response(JSON.stringify({ ok: true, noop: true, reason: res.reason }), {
+              headers: { "Content-Type": "application/json" },
             });
-            slipCount = res.slipCount;
-            published = await maybeCompleteRunPublish(admin, push.payroll_run_id, null);
           }
 
           const posthog = getPostHogClient();
@@ -128,20 +90,18 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
             distinctId: "system-basecamp-webhook",
             event: "payroll_run_auto_published",
             properties: {
-              run_id: push.payroll_run_id,
-              client_id: push.client_id,
+              run_id: res.runId,
+              client_id: res.clientId,
               status,
-              slip_count: slipCount,
-              run_fully_published: published,
+              slip_count: res.slipCount,
+              run_fully_published: res.published,
             },
           });
           await posthog.flush();
 
           return new Response(
-            JSON.stringify({ ok: true, slipCount, runFullyPublished: published }),
-            {
-              headers: { "Content-Type": "application/json" },
-            },
+            JSON.stringify({ ok: true, slipCount: res.slipCount, runFullyPublished: res.published }),
+            { headers: { "Content-Type": "application/json" } },
           );
         } catch (e) {
           return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {

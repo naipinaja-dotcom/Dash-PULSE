@@ -82,5 +82,11 @@ export function getServerConfig() {
     // buat auto-publish payroll run per client (lihat payroll-publish.ts).
     // Sama polanya dgn pnlPushSecret, header `x-basecamp-webhook-secret`.
     basecampWebhookSecret: process.env.BASECAMP_WEBHOOK_SECRET?.trim(),
+
+    // Slack Events API (lihat src/routes/api.slack-events.ts) — alternatif
+    // sumber status Spend Control lewat channel Slack. Signing secret dari
+    // Slack app ("Basic Information" → Signing Secret) dipakai verifikasi HMAC
+    // tiap request Slack. Tanpa ini endpoint menolak semua event.
+    slackSigningSecret: process.env.SLACK_SIGNING_SECRET?.trim(),
   };
 }

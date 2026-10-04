@@ -276,6 +276,91 @@ describe("generatePayrollDetails — deduction (mocked Supabase)", () => {
     });
   });
 
+  it("EWA: dipotong dari rider yang dicatat saja, rider lain di client yang sama tidak berubah", () => {
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
+      { id: "r2", client_id: "client-1", employee_id: "MTR2", full_name: "Sari" },
+    ];
+    mock.tables.delivery_records = ["r1", "r2"].map((rider_id) => ({
+      rider_id,
+      driver_code: null,
+      fee: 100000,
+      delivery_date: "2026-07-22",
+      client_id: "client-1",
+      status: "COMPLETED",
+    }));
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [
+      {
+        id: "ewa1",
+        rider_id: "r1",
+        deduction_type_id: "ewa",
+        mode: "fixed",
+        daily_rate: null,
+        active: true,
+        client_id: "client-1",
+        client_ids: ["client-1"],
+        start_date: "2026-07-22",
+        next_deduction_date: "2026-07-22",
+        installments_paid: 0,
+        installment_count: 1,
+        per_period_amount: 40000,
+        ewa_request_code: "REQ-1",
+      },
+    ];
+    mock.tables.deduction_types = [];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      const byRider = (id: string) =>
+        mock.inserted.payroll_details.find((d: any) => d.rider_id === id);
+      expect(byRider("r1").net_pay).toBe(60000); // 100.000 - EWA 40.000
+      expect(byRider("r2").net_pay).toBe(100000); // non-EWA gak kesentuh
+      expect(mock.inserted.payroll_deductions).toHaveLength(1);
+      expect(mock.inserted.payroll_deductions[0].description).toBe("EWA REQ-1");
+    });
+  });
+
+  it("EWA bertanggal SETELAH period_end run belum ikut kepotong di run ini", () => {
+    mock.tables.riders = [
+      { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },
+    ];
+    mock.tables.delivery_records = [
+      {
+        rider_id: "r1",
+        driver_code: null,
+        fee: 100000,
+        delivery_date: "2026-07-22",
+        client_id: "client-1",
+        status: "COMPLETED",
+      },
+    ];
+    mock.tables.attendance_logs = [];
+    mock.tables.rider_installments = [
+      {
+        id: "ewa1",
+        rider_id: "r1",
+        deduction_type_id: "ewa",
+        mode: "fixed",
+        daily_rate: null,
+        active: true,
+        client_id: "client-1",
+        client_ids: ["client-1"],
+        start_date: "2026-07-24", // run ini 21-23 Jul
+        next_deduction_date: "2026-07-24",
+        installments_paid: 0,
+        installment_count: 1,
+        per_period_amount: 40000,
+        ewa_request_code: "REQ-2",
+      },
+    ];
+    mock.tables.deduction_types = [];
+
+    return generatePayrollDetails(run(), mock.client as any).then(() => {
+      expect(mock.inserted.payroll_details[0].net_pay).toBe(100000);
+      expect(mock.inserted.payroll_deductions ?? []).toHaveLength(0);
+    });
+  });
+
   it("delivery_records status != COMPLETED (FAILED/PENDING_PICKUP) TIDAK ikut kehitung ke gaji", () => {
     mock.tables.riders = [
       { id: "r1", client_id: "client-1", employee_id: "MTR1", full_name: "Budi" },

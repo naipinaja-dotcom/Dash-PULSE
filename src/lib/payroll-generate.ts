@@ -21,6 +21,9 @@ export interface PayrollRunLite {
 // (kewajiban rutin kecil), baru BPJS, baru cicilan-cicilan installmentable,
 // sewa molis kedua-terakhir, pinjaman kuota paling akhir.
 export const DEDUCTION_PRIORITY: Record<string, number> = {
+  // EWA = upah yang SUDAH dicairkan duluan, jadi harus kepotong paling pertama
+  // (kode yang gak terdaftar di sini jatuh ke 99 = paling akhir, salah buat EWA).
+  EWA: 0,
   ADM: 1,
   BPJS: 2,
   RUSAK: 3,
@@ -1007,9 +1010,11 @@ export async function generatePayrollDetails(
             cycleNote +
             revenueNote +
             splitNote
-          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` +
-            arrearsNote +
-            splitNote;
+          : ins.ewa_request_code
+            ? `EWA ${ins.ewa_request_code}` + arrearsNote + splitNote
+            : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` +
+              arrearsNote +
+              splitNote;
       deductionsToInsert.push({
         detail_id: detailId,
         deduction_type_id: ins.deduction_type_id,

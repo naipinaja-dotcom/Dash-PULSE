@@ -13,6 +13,12 @@ export interface PayrollRunLite {
   period_start: string;
   period_end: string;
   status?: string;
+  // 'ewa' = run pembayaran upah lebih awal (hanya rider di rider_scope, payout
+  // bersih tanpa ADM/BPJS/cicilan). null/'regular' = run gaji biasa semua rider.
+  kind?: string | null;
+  // Diisi daftar rider_id HANYA buat run EWA — generatePayrollDetails membatasi
+  // hitungan ke rider ini saja. null = semua rider (run reguler).
+  rider_scope?: string[] | null;
 }
 
 // Urutan pelunasan pas gross gak cukup nutup semua potongan (dipakai di
@@ -438,18 +444,29 @@ export async function generatePayrollDetails(
     ]),
   ].filter((id): id is string => !!id);
 
+  // Run EWA (kind='ewa') = payout upah lebih awal buat rider TERTENTU saja
+  // (rider_scope), murni fee yang udah dihasilkan — tanpa ADM/BPJS/cicilan.
+  // Potongan-potongan itu tetap ketagih sekali di run reguler periode penuh,
+  // yang juga motong balik net EWA yang udah dibayar (lihat auto-deduct di
+  // bawah) biar rider gak kebayar dobel.
+  const isEwa = run.kind === "ewa";
+  const scopedRiderIds =
+    isEwa && run.rider_scope?.length
+      ? riderIds.filter((id) => run.rider_scope!.includes(id))
+      : riderIds;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let riders: any[] = [];
-  if (riderIds.length > 0) {
+  if (scopedRiderIds.length > 0) {
     const { data, error } = await client
       .from("riders")
       .select("id, client_id, employee_id, full_name")
-      .in("id", riderIds);
+      .in("id", scopedRiderIds);
     if (error) throw error;
     riders = data ?? [];
   }
 
-  const [{ data: installments }, { data: autoTypes }] = await Promise.all([
+  const [{ data: installmentsRaw }, { data: autoTypesRaw }] = await Promise.all([
     client
       .from("rider_installments")
       .select("*")
@@ -461,6 +478,12 @@ export async function generatePayrollDetails(
       .eq("active", true)
       .eq("auto_recurring", true),
   ]);
+
+  // Run EWA = payout bersih: gak ada cicilan & gak ada potongan auto (ADM/BPJS).
+  // Semua itu ketagih di run reguler. Dikosongin di sini biar seluruh pipeline
+  // di bawah (dedItems, autoItems, dedup bulanan, dst) otomatis no-op buat EWA.
+  const installments = isEwa ? [] : installmentsRaw;
+  const autoTypes = isEwa ? [] : autoTypesRaw;
 
   // applies_to_all=false (mis. BPJS yang cuma sebagian rider ikut) — cuma
   // rider yang terdaftar di deduction_type_riders yang kena, bukan semua
@@ -733,6 +756,50 @@ export async function generatePayrollDetails(
     }
   }
 
+  // Run reguler motong balik upah yang UDAH dibayar lewat run EWA (kind='ewa')
+  // yang status-nya published & periodenya overlap sama run ini — biar rider
+  // gak kebayar dobel. net_pay tiap baris run EWA = jumlah yang beneran cair,
+  // itu yang dipotong di run reguler. Dihitung ulang tiap generate (idempoten).
+  const ewaPaidByRider = new Map<string, { amount: number; periods: string[] }>();
+  let ewaDeductionTypeId: string | null = null;
+  if (!isEwa) {
+    let ewaRunQ = (client as any)
+      .from("payroll_runs")
+      .select("id, period_start, period_end")
+      .eq("kind", "ewa")
+      .eq("status", "published")
+      .lte("period_start", run.period_end)
+      .gte("period_end", run.period_start);
+    ewaRunQ = run.client_id ? ewaRunQ.eq("client_id", run.client_id) : ewaRunQ.is("client_id", null);
+    const { data: ewaRuns } = await ewaRunQ;
+    const ewaRunIds = ((ewaRuns ?? []) as any[]).map((r) => r.id);
+    if (ewaRunIds.length > 0) {
+      const periodOf = new Map(
+        ((ewaRuns ?? []) as any[]).map((r) => [r.id, `${r.period_start} → ${r.period_end}`]),
+      );
+      const { data: ewaDetails } = await (client as any)
+        .from("payroll_details")
+        .select("rider_id, net_pay, run_id")
+        .in("run_id", ewaRunIds);
+      for (const d of (ewaDetails ?? []) as any[]) {
+        if (!d.rider_id) continue;
+        const cur = ewaPaidByRider.get(d.rider_id) ?? { amount: 0, periods: [] as string[] };
+        cur.amount += Number(d.net_pay || 0);
+        const p = periodOf.get(d.run_id);
+        if (p && !cur.periods.includes(p)) cur.periods.push(p);
+        ewaPaidByRider.set(d.rider_id, cur);
+      }
+      if (ewaPaidByRider.size > 0) {
+        const { data: ewaType } = await (client as any)
+          .from("deduction_types")
+          .select("id")
+          .eq("code", "EWA")
+          .maybeSingle();
+        ewaDeductionTypeId = ewaType?.id ?? null;
+      }
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const detailsToInsert: any[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -956,7 +1023,11 @@ export async function generatePayrollDetails(
     });
     const autoTotal = autoItems.reduce((s: number, x) => s + x.amount, 0);
 
-    const totalDed = installTotal + autoTotal;
+    // Potong balik EWA yang udah dibayar (cuma run reguler; ewaDeductionTypeId
+    // null kalau gak ada run EWA overlap atau tipe EWA gak ketemu).
+    const ewaInfo = ewaDeductionTypeId ? ewaPaidByRider.get(rider.id) : undefined;
+    const ewaAmount = ewaInfo ? ewaInfo.amount : 0;
+    const totalDed = installTotal + autoTotal + ewaAmount;
     const net = Math.max(0, gross - totalDed);
     const detailId = crypto.randomUUID();
     // Prioritaskan client dari run (deliveries/attendance di atas udah
@@ -1010,11 +1081,9 @@ export async function generatePayrollDetails(
             cycleNote +
             revenueNote +
             splitNote
-          : ins.ewa_request_code
-            ? `EWA ${ins.ewa_request_code}` + arrearsNote + splitNote
-            : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` +
-              arrearsNote +
-              splitNote;
+          : `Cicilan ${ins.installments_paid + 1}/${ins.installment_count}` +
+            arrearsNote +
+            splitNote;
       deductionsToInsert.push({
         detail_id: detailId,
         deduction_type_id: ins.deduction_type_id,
@@ -1035,6 +1104,15 @@ export async function generatePayrollDetails(
         installment_id: null,
         description,
         amount: x.amount,
+      });
+    }
+    if (ewaAmount > 0 && ewaDeductionTypeId) {
+      deductionsToInsert.push({
+        detail_id: detailId,
+        deduction_type_id: ewaDeductionTypeId,
+        installment_id: null,
+        description: `EWA dibayar lebih awal (${ewaInfo!.periods.join(", ")})`,
+        amount: ewaAmount,
       });
     }
   }
@@ -1064,21 +1142,39 @@ export async function findOrCreatePayrollRun(
     clientName: string;
     periodStart: string;
     periodEnd: string;
+    // 'ewa' bikin run EWA (payout lebih awal) yang TERPISAH dari run reguler
+    // periode sama — pencocokan di bawah ikut nyaring kind biar gak saling
+    // nimpa. riderScope wajib buat run EWA (rider yang diajukan).
+    kind?: "regular" | "ewa";
+    riderScope?: string[] | null;
   },
   client: typeof supabase = supabase,
 ): Promise<PayrollRunLite> {
+  const kind = opts.kind ?? "regular";
   let q = (client as any)
     .from("payroll_runs")
-    .select("id, client_id, period_start, period_end, status")
+    .select("id, client_id, period_start, period_end, status, kind, rider_scope")
     .eq("period_start", opts.periodStart)
     .eq("period_end", opts.periodEnd)
+    .eq("kind", kind)
     .neq("status", "published");
   q = opts.clientId ? q.eq("client_id", opts.clientId) : q.is("client_id", null);
   const { data: existing, error: findErr } = await q.limit(1).maybeSingle();
   if (findErr) throw findErr;
-  if (existing) return existing;
+  if (existing) {
+    // Run EWA bisa di-commit ulang dengan daftar rider beda — segarkan scope-nya.
+    if (kind === "ewa") {
+      await (client as any)
+        .from("payroll_runs")
+        .update({ rider_scope: opts.riderScope ?? [] })
+        .eq("id", existing.id);
+      return { ...existing, rider_scope: opts.riderScope ?? [] };
+    }
+    return existing;
+  }
 
-  const name = `Payroll ${opts.clientName} periode ${opts.periodStart} → ${opts.periodEnd}`;
+  const label = kind === "ewa" ? "Payroll EWA" : "Payroll";
+  const name = `${label} ${opts.clientName} periode ${opts.periodStart} → ${opts.periodEnd}`;
   const { data: created, error: createErr } = await (client as any)
     .from("payroll_runs")
     .insert({
@@ -1087,8 +1183,10 @@ export async function findOrCreatePayrollRun(
       period_start: opts.periodStart,
       period_end: opts.periodEnd,
       client_id: opts.clientId,
+      kind,
+      rider_scope: kind === "ewa" ? (opts.riderScope ?? []) : null,
     })
-    .select("id, client_id, period_start, period_end, status")
+    .select("id, client_id, period_start, period_end, status, kind, rider_scope")
     .single();
   if (createErr) throw createErr;
   return created;

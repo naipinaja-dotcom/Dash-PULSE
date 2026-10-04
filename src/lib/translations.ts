@@ -277,7 +277,6 @@ const T = {
   },
   "ded.tabTypes": { id: "Jenis Potongan", en: "Deduction Types" },
   "ded.tabAdd": { id: "Tambah Potongan", en: "Add Deduction" },
-  "ded.tabEwa": { id: "Catat EWA", en: "Record EWA" },
   "ded.tabActive": { id: "Cicilan Aktif", en: "Active Installments" },
   "ded.tabArrears": { id: "Tunggakan", en: "Arrears" },
   "ded.tabRecap": { id: "Rekap", en: "Recap" },

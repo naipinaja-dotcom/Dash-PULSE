@@ -69,6 +69,7 @@ type Run = {
   finalized_by: string | null;
   finalized_at: string | null;
   published_by: string | null;
+  kind?: string | null;
 };
 type Client = { id: string; name: string };
 type FeeAuditEntry = {
@@ -1372,8 +1373,15 @@ function PayrollPage() {
         // biar gak gampang kena limit karakter Spend Control — nama legal
         // lengkap (clientName) tetap dipakai di kolom "Client" preview.
         const titleName = client?.project_name?.trim() || clientName;
-        const title = `Payroll Gaji Mitra - ${titleName} (${period})`;
-        const description = `Payroll disbursement rider ${titleName}, periode ${period} — submitted by Dash PULSE.`;
+        // Run EWA (upah lebih awal) ditandai di judul default biar kebedain di
+        // Basecamp — judul tetap bisa diedit manual sebelum push.
+        const isEwaRun = activeRun?.kind === "ewa";
+        const title = isEwaRun
+          ? `EWA - Payroll Gaji Mitra - ${titleName} (${period})`
+          : `Payroll Gaji Mitra - ${titleName} (${period})`;
+        const description = isEwaRun
+          ? `EWA (upah lebih awal) rider ${titleName}, periode ${period} — submitted by Dash PULSE.`
+          : `Payroll disbursement rider ${titleName}, periode ${period} — submitted by Dash PULSE.`;
         return {
           clientId,
           clientName,

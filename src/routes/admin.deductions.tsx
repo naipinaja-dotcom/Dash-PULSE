@@ -3,7 +3,6 @@ import { useState } from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { DTypesTab } from "@/components/deductions/d-types-tab";
 import { AddTab } from "@/components/deductions/add-tab";
-import { EwaTab } from "@/components/deductions/ewa-tab";
 import { ActiveTab } from "@/components/deductions/active-tab";
 import { RecapTab } from "@/components/deductions/recap-tab";
 import { ArrearsTab } from "@/components/deductions/arrears-tab";
@@ -16,7 +15,7 @@ export const Route = createFileRoute("/admin/deductions")({ component: Deduction
 
 function DeductionsPage() {
   const { t } = useT();
-  const [tab, setTab] = useState<"types" | "molis" | "add" | "ewa" | "active" | "arrears" | "recap" | "recipients" | "settlement" | "lunas">("types");
+  const [tab, setTab] = useState<"types" | "molis" | "add" | "active" | "arrears" | "recap" | "recipients" | "settlement" | "lunas">("types");
   return (
     <AdminLayout title={t("ded.title")} subtitle={t("ded.subtitle")}>
       <div className="deductions-workspace">
@@ -26,7 +25,6 @@ function DeductionsPage() {
               ["types", t("ded.tabTypes")],
               ["molis", t("ded.tabMolis")],
               ["add", t("ded.tabAdd")],
-              ["ewa", t("ded.tabEwa")],
               ["active", t("ded.tabActive")],
               ["arrears", t("ded.tabArrears")],
               ["recap", t("ded.tabRecap")],
@@ -55,7 +53,6 @@ function DeductionsPage() {
           {tab === "types" && <DTypesTab />}
           {tab === "molis" && <MolisTypesTab />}
           {tab === "add" && <AddTab />}
-          {tab === "ewa" && <EwaTab />}
           {tab === "active" && <ActiveTab />}
           {tab === "arrears" && <ArrearsTab onGoToActiveTab={() => setTab("active")} />}
           {tab === "recap" && <RecapTab />}

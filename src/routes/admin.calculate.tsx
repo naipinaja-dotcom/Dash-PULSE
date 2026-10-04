@@ -618,7 +618,9 @@ function CalculatePage() {
     const rows = isEwa ? allRows.filter((r) => ewaRiders.has(r.rider)) : allRows;
     if (rows.length === 0)
       return toast.error(
-        isEwa ? "Rider terpilih tidak punya baris untuk disimpan." : "Tidak ada baris untuk disimpan.",
+        isEwa
+          ? "Rider terpilih tidak punya baris untuk disimpan."
+          : "Tidak ada baris untuk disimpan.",
       );
     const table = isAttendance ? "attendance_logs" : "delivery_records";
 
@@ -1138,6 +1140,15 @@ function CalculatePage() {
               <div className="border-t border-border mt-2 pt-2">
                 <Line label="Total Tagihan" value={formatRupiah(result.billing.final)} bold />
               </div>
+            </div>
+          )}
+
+          {/* Mode EWA + skema rider tapi hasil kosong — kasih tau kenapa panel
+              centang rider belum muncul (biar gak dikira fitur-nya hilang). */}
+          {payMode === "ewa" && ranScheme.scheme_for === "rider" && result.perRider.length === 0 && (
+            <div className="rounded-lg border-2 border-border-strong bg-card p-4 mb-4 text-sm text-muted-foreground">
+              Belum ada rider di hasil hitungan ini — ganti ke periode yang ada pengirimannya lalu
+              klik <strong>Hitung</strong>, nanti daftar rider buat dicentang muncul di sini.
             </div>
           )}
 

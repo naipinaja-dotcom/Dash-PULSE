@@ -34,7 +34,7 @@ type RowResult = {
   error?: string;
 };
 
-// Push satu payment-request per client ke Basecamp Spend Control (lihat
+// Push satu partner-payment (Pembayaran Mitra) per client ke Basecamp Spend Control (lihat
 // spend-request-api-integration.md). Endpoint Basecamp sendiri gak ada auth
 // (§3), jadi requireAdmin di sini adalah satu-satunya gerbang — tanpa itu
 // siapa saja yang bisa manggil server fn ini bisa bikin spend request atas
@@ -94,7 +94,7 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: "payment-request",
+            type: "partner-payment",
             title: row.title,
             amount: Math.round(row.amount),
             description: row.description,

@@ -444,14 +444,18 @@ function CalculatePage() {
         setResult(res);
         setRanScheme(scheme);
 
-        // Zip baris COMPLETED (urutan sama seperti dipakai calcScheme secara
-        // internal) dengan res.perRow buat dapetin km/kg per baris.
+        // Cocokkan fee per-baris lewat ID baris, BUKAN urutan indeks:
+        // calcDeliveryFeeMultiCity menata ulang perRow per grup skema (city/
+        // hub), jadi urutannya beda dari completedDeliv. Zip-by-index bikin
+        // baris (mis. revenue_share Badung) kebagian fee dari grup lain —
+        // total rider tetap benar, tapi drilldown-nya salah tampil.
+        const feeByRowId = new Map(res.perRow.filter((p) => p.id).map((p) => [p.id, p.fee]));
         const completedDeliv = rows.filter((r) => isCompleted(r));
         const ddDeliv: Record<string, DrilldownRow[]> = {};
-        completedDeliv.forEach((r, i) => {
+        completedDeliv.forEach((r) => {
           const key = r.rider_id || r.driver_code || "(tanpa rider)";
-          const rf = res.perRow[i];
-          if (!rf) return;
+          const fee = r.id != null ? feeByRowId.get(r.id) : undefined;
+          if (fee === undefined) return;
           (ddDeliv[key] ??= []).push({
             date: r.delivery_date,
             district: r.district,
@@ -459,7 +463,7 @@ function CalculatePage() {
             hub: r.sender_name,
             km: r.distance_km,
             kg: r.weight_kg,
-            fee: rf.fee,
+            fee,
           });
         });
         setDrilldown(ddDeliv);

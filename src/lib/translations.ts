@@ -769,6 +769,15 @@ const T = {
     id: "Rekap kasbon lunas akan muncul otomatis setelah cicilan rider berhenti (nonaktif) dan sudah ada riwayat pembayaran.",
     en: "The paid-off kasbon recap will appear automatically once a rider's installment stops (goes inactive) and has a payment history.",
   },
+  "kasbonlunas.exportBtn": { id: "Export Kasbon Lunas", en: "Export Paid-off Kasbon" },
+  "kasbonlunas.colRider": { id: "Rider", en: "Rider" },
+  "kasbonlunas.colRecipient": { id: "Penerima", en: "Recipient" },
+  "kasbonlunas.colTotal": { id: "Total Kasbon", en: "Kasbon Total" },
+  "kasbonlunas.colPaid": { id: "Terbayar", en: "Paid" },
+  "kasbonlunas.colInstallments": { id: "Cicilan", en: "Installments" },
+  "kasbonlunas.colStart": { id: "Mulai", en: "Started" },
+  "kasbonlunas.colLastPaid": { id: "Bayar Terakhir", en: "Last Payment" },
+  "kasbonlunas.summary": { id: "kasbon lunas", en: "paid off" },
 
   // ── Recap tab ──────────────────────────────────────────────────────────
   "recap.period": { id: "Periode", en: "Period" },

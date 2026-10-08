@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { useEffect, useState } from "react";
 import { usePostHog } from "@posthog/react";
 import { RiderLayout } from "@/components/rider-layout";
@@ -59,6 +60,7 @@ function PayslipsPage() {
   const [loading, setLoading] = useState(true);
   const [openSlip, setOpenSlip] = useState<PayslipRow | null>(null);
 
+  const tick = useLiveTick(["payslips", "payroll_payment_holds"]);
   useEffect(() => {
     if (!rider) {
       setLoading(false);
@@ -89,7 +91,7 @@ function PayslipsPage() {
         } else setPaymentHolds({});
         setLoading(false);
       });
-  }, [rider]);
+  }, [rider, tick]);
 
   const busy = riderLoading || loading;
 
@@ -187,6 +189,7 @@ function PayslipDetailModal({
   const [incError, setIncError] = useState<string | null>(null);
   const [loadingClients, setLoadingClients] = useState(true);
   const [showPrint, setShowPrint] = useState(false);
+  const tick = useLiveTick(["payroll_deductions", "payroll_incentives", "payroll_details"]);
 
   useEffect(() => {
     sb.from("payroll_deductions")
@@ -278,7 +281,7 @@ function PayslipDetailModal({
           setLoadingClients(false);
         },
       );
-  }, [slip.detail_id, slip.run_id, riderId]);
+  }, [slip.detail_id, slip.run_id, riderId, tick]);
 
   const period = slip.payroll_runs;
   const gross = Number(slip.data?.gross_earning ?? 0);

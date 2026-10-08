@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { formatRupiah } from "@/lib/format";
@@ -40,10 +41,11 @@ function DriverAnalyticsPage() {
   const [sortBy, setSortBy] = useState<"earning" | "deliveries" | "onTime">("earning");
 
   // Ga ada filter sendiri di sini — tanggal acuan diatur dari Executive Dashboard.
+  const tick = useLiveTick(["upload_batches"]);
   useEffect(() => {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tick]);
 
   const run = async () => {
     setRunning(true);

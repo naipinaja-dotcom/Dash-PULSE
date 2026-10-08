@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { parseRupiah } from "@/lib/format";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { BulkActionBar } from "@/components/bulk-action-bar";
@@ -112,9 +113,10 @@ export function DTypesTab() {
     else setRows(data ?? []);
     setLoading(false);
   };
+  const tick = useLiveTick(["deduction_types"]);
   useEffect(() => {
     load();
-  }, []);
+  }, [tick]);
 
   const save = async () => {
     if (!nf.code.trim() || !nf.name.trim()) return toast.error(t("dtypes.errCodeName"));

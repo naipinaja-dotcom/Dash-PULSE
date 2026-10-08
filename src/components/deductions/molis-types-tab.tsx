@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { parseRupiah } from "@/lib/format";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { toast } from "sonner";
@@ -22,9 +23,10 @@ export function MolisTypesTab() {
     else setRows(data ?? []);
     setLoading(false);
   };
+  const tick = useLiveTick(["molis_types"]);
   useEffect(() => {
     load();
-  }, []);
+  }, [tick]);
 
   const save = async () => {
     if (!nf.name.trim()) return toast.error(t("molistypes.nameRequired"));

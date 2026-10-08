@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { toast } from "sonner";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
@@ -17,7 +18,8 @@ export function RecipientsTab() {
     if (error) { if (error.code !== "42P01") toast.error(error.message); return; }
     setRows(data ?? []);
   };
-  useEffect(() => { load(); }, []);
+  const tick = useLiveTick(["kasbon_recipients"]);
+  useEffect(() => { load(); }, [tick]);
   const save = async () => {
     if (!form.name.trim() || !form.bank_name.trim() || !form.account_number.trim() || !form.account_holder.trim()) return toast.error(t("kasbonrecip.validationError"));
     setSaving(true);

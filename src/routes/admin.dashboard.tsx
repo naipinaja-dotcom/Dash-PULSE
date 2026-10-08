@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { formatRupiah } from "@/lib/format";
 import { fetchAllRows } from "@/lib/fetch-all";
@@ -64,6 +65,8 @@ function DashboardPage() {
   const [attendanceMissing, setAttendanceMissing] = useState<number | null>(null);
   const [topRiders, setTopRiders] = useState<TopRider[]>([]);
   const [tunggakan, setTunggakan] = useState<TunggakanItem[]>([]);
+
+  const tick = useLiveTick(["riders", "rider_installments", "payroll_runs", "payroll_details", "upload_batches"]);
 
   useEffect(() => {
     if (!isSupabaseConnected) return;
@@ -169,7 +172,7 @@ function DashboardPage() {
           .map((r) => ({ name: r.name, remaining: r.remaining, total: r.total, installments: r.installments, amount: fmtRb(r.amountValue) })),
       );
     })();
-  }, []);
+  }, [tick]);
 
   /* ── stat cards config ────────────────────── */
   const stats = [
@@ -269,7 +272,7 @@ function DashboardPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [tick]);
 
   /* ── alerts ────────────────────────────────── */
   const alerts: { type: "danger" | "warn" | "info"; text: string }[] = [];

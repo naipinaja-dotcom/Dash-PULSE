@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
@@ -53,8 +54,8 @@ function RidersPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     const [r, c] = await Promise.all([
       supabase.from("riders").select("*").order("full_name"),
       supabase.from("clients").select("id, name").order("name"),
@@ -63,7 +64,8 @@ function RidersPage() {
     if (!c.error) setClients(c.data ?? []);
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  const tick = useLiveTick(["riders", "clients"]);
+  useEffect(() => { load(tick > 0); }, [tick]);
 
   const handleDelete = async (r: Rider) => {
     if (

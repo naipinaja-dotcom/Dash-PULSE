@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { AdminLayout } from "@/components/admin-layout";
 import { listPricingSchemes } from "@/lib/pricing-store";
@@ -34,6 +35,7 @@ function PnlPage() {
   // Ga ada filter sendiri di sini — tanggal acuan diatur dari Executive
   // Dashboard (lihat use-intelligence-date.ts), halaman ini otomatis hitung
   // begitu client/skema selesai dimuat.
+  const tick = useLiveTick(["upload_batches", "pricing_schemes", "clients"]);
   useEffect(() => {
     (async () => {
       const [{ data: clientsData }, schemesData] = await Promise.all([
@@ -44,7 +46,7 @@ function PnlPage() {
       setSchemes(schemesData);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tick]);
 
   useEffect(() => {
     if (clients.length > 0 && schemes.length >= 0) run();

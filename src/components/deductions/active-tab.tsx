@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { parseRupiah, formatRupiah } from "@/lib/format";
@@ -64,10 +65,11 @@ export function ActiveTab() {
       );
     setLoading(false);
   };
+  const tick = useLiveTick(["rider_installments", "payroll_deductions"]);
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showInactive]);
+  }, [showInactive, tick]);
   useEffect(() => {
     // Filter sama persis dengan AddTab.save(): jenis apapun yang non-auto-recurring
     // bisa dipakai di sini (installmentable cuma ngatur boleh-tidaknya dicicil,

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
@@ -148,8 +149,8 @@ function ClientsPage() {
     }
   };
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [clientData, schemes] = await Promise.all([
         fetchAllRows<Client>((c, from, to) =>
@@ -178,9 +179,10 @@ function ClientsPage() {
       setLoading(false);
     }
   };
+  const tick = useLiveTick(["clients", "pricing_schemes"]);
   useEffect(() => {
-    load();
-  }, []);
+    load(tick > 0);
+  }, [tick]);
 
   const remove = async (id: string) => {
     if (

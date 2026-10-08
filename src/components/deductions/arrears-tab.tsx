@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toast } from "sonner";
@@ -107,13 +108,14 @@ export function ArrearsTab({ onGoToActiveTab }: { onGoToActiveTab?: () => void }
     setLoading(false);
   };
 
+  const tick = useLiveTick(["rider_installments", "payroll_deductions", "kasbon_recipients"]);
   useEffect(() => {
     load();
     (supabase as any).from("deduction_types").select("*").eq("active", true).eq("auto_recurring", false)
       .then(({ data }: any) => setTypes(data ?? []));
     (supabase as any).from("kasbon_recipients").select("id, name, bank_name, account_number").eq("active", true).order("name")
       .then(({ data }: any) => setRecipients(data ?? []));
-  }, []);
+  }, [tick]);
 
   // Koreksi tunggakan sewa (mode daily/monthly) — master admin only, di-enforce
   // di RLS ("pded update tunggakan gated"), UI cuma nyembunyiin biar gak

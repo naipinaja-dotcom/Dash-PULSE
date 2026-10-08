@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { AdminLayout } from "@/components/admin-layout";
 import { listPricingSchemes } from "@/lib/pricing-store";
@@ -104,6 +105,7 @@ function ExecutiveDashboard() {
   };
 
   const [initialized, setInitialized] = useState(false);
+  const tick = useLiveTick(["upload_batches", "pnl_weekly_snapshots", "clients", "pricing_schemes"]);
   useEffect(() => {
     (async () => {
       const [{ data: clientsData }, schemesData] = await Promise.all([
@@ -115,7 +117,12 @@ function ExecutiveDashboard() {
       setInitialized(true);
     })();
     loadSnapshots();
-  }, []);
+  }, [tick]);
+
+  useEffect(() => {
+    if (initialized && tick > 0) run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   useEffect(() => {
     if (initialized) run();

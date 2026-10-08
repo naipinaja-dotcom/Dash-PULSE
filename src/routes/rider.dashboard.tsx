@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { useEffect, useState } from "react";
 import { RiderLayout } from "@/components/rider-layout";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +39,7 @@ function DashboardPage() {
   const [dedTypes, setDedTypes] = useState<DedType[]>([]);
   const [dedExpanded, setDedExpanded] = useState<Set<string>>(new Set());
 
+  const tick = useLiveTick(["payslips", "rider_installments", "payroll_details", "payroll_deductions"]);
   useEffect(() => {
     if (!rider) return;
     sb.from("payslips").select("data, payroll_runs(name)").eq("rider_id", rider.id)
@@ -149,7 +151,7 @@ function DashboardPage() {
           .sort((a, b) => b.totalAmount - a.totalAmount),
       );
     })();
-  }, [rider]);
+  }, [rider, tick]);
 
   return (
     <RiderLayout title={t("nav.beranda")}>

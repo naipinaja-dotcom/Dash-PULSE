@@ -56,6 +56,7 @@ export function RecapTab() {
   const [month, setMonth] = useState(months[0].value);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<RiderRecap[]>([]);
+  const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [summaryCards, setSummaryCards] = useState({
     totalDeduction: 0,
@@ -249,13 +250,23 @@ export function RecapTab() {
     return next;
   });
 
+  // Search by nama rider ATAU kode mitra — hanya memfilter tabel, export, dan
+  // paginasi; kartu ringkasan tetap menghitung seluruh periode.
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) => r.riderName.toLowerCase().includes(q) || r.employeeId.toLowerCase().includes(q),
+    );
+  }, [rows, search]);
+
   const { pageSize, setPageSize, page, setPage, totalPages, paged, from, to, total } =
-    usePagination(rows, 20);
+    usePagination(filteredRows, 20);
 
   const exportCSV = () => {
     const header = ["Kode Mitra", "Nama", "Home Client", "Jenis Potongan", "Mode", "Client", "Hari", "Nominal"];
     const data: (string | number)[][] = [];
-    for (const r of rows) {
+    for (const r of filteredRows) {
       for (const d of r.deductions) {
         for (const c of d.clients) {
           data.push([r.employeeId, r.riderName, r.homeClient, d.typeName, d.mode, c.clientName, c.days, c.amount]);
@@ -278,9 +289,20 @@ export function RecapTab() {
             {months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </div>
+        <div>
+          <label className="text-sm font-medium block mb-1" htmlFor="recap-search">Cari rider</label>
+          <input
+            id="recap-search"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Nama rider atau kode mitra"
+            className="w-64 rounded-md border-2 border-border-strong bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
         <button
           onClick={exportCSV}
-          disabled={!rows.length}
+          disabled={!filteredRows.length}
           className="inline-flex items-center gap-2 rounded-md border-2 border-border-strong bg-primary text-primary-foreground px-3 py-2 text-sm font-bold shadow-[3px_3px_0_0_var(--color-border-strong)] disabled:opacity-50 disabled:shadow-none hover:brightness-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-[filter,transform,box-shadow]"
         >
           <Download className="w-4 h-4" /> {t("btn.export")}
@@ -441,7 +463,7 @@ export function RecapTab() {
               </tbody>
             </table>
           </div>
-          {rows.length > 0 && (
+          {filteredRows.length > 0 && (
             <PaginationBar page={page} totalPages={totalPages} setPage={setPage} from={from} to={to} total={total} />
           )}
         </>

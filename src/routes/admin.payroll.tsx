@@ -25,6 +25,7 @@ import {
   ArrowUpRight,
   SkipForward,
   Lock,
+  Search,
 } from "lucide-react";
 import { generatePayrollDetails } from "@/lib/payroll-generate";
 import { publishPayrollDetails, maybeCompleteRunPublish } from "@/lib/payroll-publish";
@@ -255,6 +256,7 @@ function PayrollPage() {
   const [exportingBulk, setExportingBulk] = useState(false);
   const [deletingRun, setDeletingRun] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [runSearch, setRunSearch] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
   const [feeAuditLog, setFeeAuditLog] = useState<FeeAuditEntry[]>([]);
   const [nettingCandidates, setNettingCandidates] = useState<NettingCandidate[]>([]);
@@ -334,9 +336,17 @@ function PayrollPage() {
     total: detailTotal,
   } = usePagination(details, 20);
 
-  const filteredRuns = runs.filter((r) =>
-    showHistory ? r.status === "published" : r.status !== "published",
-  );
+  const runQuery = runSearch.trim().toLowerCase();
+  const filteredRuns = runs.filter((r) => {
+    if (showHistory ? r.status !== "published" : r.status === "published") return false;
+    if (!runQuery) return true;
+    const clientName = r.client_id
+      ? (clients.find((c) => c.id === r.client_id)?.name ?? "")
+      : "Semua Client";
+    return `${clientName} ${r.name} ${r.period_start} ${r.period_end}`
+      .toLowerCase()
+      .includes(runQuery);
+  });
   const {
     page: runPage,
     setPage: setRunPage,
@@ -1727,6 +1737,20 @@ function PayrollPage() {
             ))}
           </div>
 
+          <div className="relative mb-3">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              id="run-search"
+              value={runSearch}
+              onChange={(e) => {
+                setRunSearch(e.target.value);
+                setRunPage(1);
+              }}
+              placeholder="Cari client / periode"
+              className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-1.5 text-[12px]"
+            />
+          </div>
+
           <div className="space-y-1">
             {loading && !runs.length ? (
               <Loader2 className="w-4 h-4 animate-spin mx-auto" />
@@ -1770,9 +1794,11 @@ function PayrollPage() {
             )}
             {!loading && filteredRuns.length === 0 && (
               <p className="text-xs text-muted-foreground px-3 py-2">
-                {showHistory
-                  ? "Belum ada run yang di-publish."
-                  : "Belum ada run aktif — hitung fee dulu di halaman Hitung Fee, run-nya otomatis muncul di sini."}
+                {runQuery
+                  ? "Tidak ada run yang cocok."
+                  : showHistory
+                    ? "Belum ada run yang di-publish."
+                    : "Belum ada run aktif — hitung fee dulu di halaman Hitung Fee, run-nya otomatis muncul di sini."}
               </p>
             )}
           </div>

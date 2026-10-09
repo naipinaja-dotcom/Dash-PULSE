@@ -257,6 +257,9 @@ function PayrollPage() {
   const [holdReason, setHoldReason] = useState("");
   // Admin yang milih: status tahan (+ alasannya) kelihatan di payslip rider atau nggak.
   const [holdShowToRider, setHoldShowToRider] = useState(true);
+  // Mode ubah: dialog tahan dipakai ulang buat ngoreksi alasan/jenis tahanan yang
+  // sudah ada (termasuk di run yang udah published) — tanpa lepas tahanan.
+  const [editHold, setEditHold] = useState<PaymentHold | null>(null);
   const [loading, setLoading] = useState(true);
   const [finalizing, setFinalizing] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -1570,6 +1573,28 @@ function PayrollPage() {
     }
   };
 
+  const saveHoldEdit = async () => {
+    if (!editHold) return;
+    if (!holdReason.trim()) return toast.error("Alasan hold wajib diisi.");
+    setPaymentHoldBusyId(editHold.detail_id);
+    try {
+      const { error } = await (supabase as any)
+        .from("payroll_payment_holds")
+        .update({ reason: holdReason.trim(), show_to_rider: holdShowToRider })
+        .eq("id", editHold.id)
+        .eq("status", "held");
+      if (error) throw error;
+      toast.success("Tahanan diperbarui.");
+      setEditHold(null);
+      setHoldReason("");
+      await loadPaymentHolds(details.map((row) => row.id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPaymentHoldBusyId(null);
+    }
+  };
+
   const toggleHoldVisibility = async (hold: PaymentHold) => {
     setPaymentHoldBusyId(hold.detail_id);
     try {
@@ -2373,6 +2398,18 @@ function PayrollPage() {
                                     {paymentHolds[d.id].reason}
                                   </p>
                                   <button
+                                    onClick={() => {
+                                      const h = paymentHolds[d.id];
+                                      setEditHold(h);
+                                      setHoldReason(h.reason);
+                                      setHoldShowToRider(h.show_to_rider ?? true);
+                                    }}
+                                    disabled={paymentHoldBusyId === d.id}
+                                    className="block text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
+                                  >
+                                    Ubah alasan
+                                  </button>
+                                  <button
                                     onClick={() => toggleHoldVisibility(paymentHolds[d.id])}
                                     disabled={paymentHoldBusyId === d.id}
                                     title="Tampilkan / sembunyikan status tahan di payslip rider"
@@ -2653,10 +2690,11 @@ function PayrollPage() {
         </section>
       </div>
       <Dialog
-        open={!!holdDetail}
+        open={!!holdDetail || !!editHold}
         onOpenChange={(open) => {
           if (!open && !paymentHoldBusyId) {
             setHoldDetail(null);
+            setEditHold(null);
             setHoldReason("");
           }
         }}
@@ -2668,10 +2706,13 @@ function PayrollPage() {
               <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl border-2 border-border-strong bg-warning text-warning-foreground">
                 <AlertTriangle className="h-5 w-5" />
               </div>
-              <DialogTitle className="text-xl">Tahan pembayaran rider</DialogTitle>
+              <DialogTitle className="text-xl">
+                {editHold ? "Ubah alasan tahanan" : "Tahan pembayaran rider"}
+              </DialogTitle>
               <DialogDescription className="leading-relaxed">
-                {holdDetail?.riders?.full_name ?? "Rider"} tidak akan masuk file Bulk Payment
-                reguler. Nominal gaji dan payslip tetap tersimpan.
+                {editHold
+                  ? "Status tetap ditahan dan tidak masuk Bulk Payment reguler. Yang berubah hanya alasan dan apakah rider melihat label tahanan di payslip."
+                  : `${holdDetail?.riders?.full_name ?? "Rider"} tidak akan masuk file Bulk Payment reguler. Nominal gaji dan payslip tetap tersimpan.`}
               </DialogDescription>
             </DialogHeader>
             <div className="mt-5 space-y-3">
@@ -2744,6 +2785,7 @@ function PayrollPage() {
                 disabled={!!paymentHoldBusyId}
                 onClick={() => {
                   setHoldDetail(null);
+                  setEditHold(null);
                   setHoldReason("");
                 }}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
@@ -2752,8 +2794,10 @@ function PayrollPage() {
               </button>
               <button
                 type="button"
-                disabled={!holdDetail || !holdReason.trim() || !!paymentHoldBusyId}
-                onClick={() => holdDetail && holdPayment(holdDetail, holdReason)}
+                disabled={(!holdDetail && !editHold) || !holdReason.trim() || !!paymentHoldBusyId}
+                onClick={() =>
+                  editHold ? saveHoldEdit() : holdDetail && holdPayment(holdDetail, holdReason)
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-warning px-4 py-2 text-sm font-semibold text-warning-foreground hover:bg-warning/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {paymentHoldBusyId ? (
@@ -2761,7 +2805,7 @@ function PayrollPage() {
                 ) : (
                   <AlertTriangle className="h-4 w-4" />
                 )}
-                Tahan pembayaran
+                {editHold ? "Simpan perubahan" : "Tahan pembayaran"}
               </button>
             </DialogFooter>
           </div>

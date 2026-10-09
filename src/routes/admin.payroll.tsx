@@ -1447,6 +1447,7 @@ function PayrollPage() {
             amount: r.amount,
             businessUnit: r.businessUnit,
             contract: r.contract,
+            vendorName: r.clientName,
             externalReference: {
               system: "dash-pulse-payroll",
               payrollRunId: activeRun.id,

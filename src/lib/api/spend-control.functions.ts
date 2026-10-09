@@ -21,6 +21,8 @@ const RowSchema = z.object({
   amount: z.number().positive(),
   businessUnit: z.enum(["EXPRESS", "XDOCK", "SCHEDULED", "OVERHEAD", "OTHER"]).nullable(),
   contract: z.enum(["PT_DEI", "PT_DPI"]).nullable(),
+  // Kolom "Vendor/Recipient" di form Basecamp — diisi nama client yang diajukan.
+  vendorName: z.string().min(1).optional(),
   externalReference: z.record(z.any()),
 });
 
@@ -101,6 +103,7 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             department: data.department,
             businessUnit: row.businessUnit,
             contract: row.contract,
+            vendorName: row.vendorName,
             requester,
             requesterEmail,
             externalReference: {

@@ -101,11 +101,16 @@ type Detail = {
   net_pay: number;
   riders?: { full_name: string; employee_id: string };
 };
+// Jenis hold "beda periode bayar": alasan diisi otomatis, dan baris disembunyikan
+// dari payslip rider (show_to_rider=false) — rider beda area gak perlu tanya
+// kenapa fee-nya "ditahan" padahal cuma beda jadwal.
+const HOLD_REASON_PERIOD = "Beda periode bayar";
 type PaymentHold = {
   id: string;
   detail_id: string;
   status: "held" | "released";
   reason: string;
+  show_to_rider?: boolean;
   payroll_follow_up_payments?: {
     id: string;
     amount: number;
@@ -250,6 +255,8 @@ function PayrollPage() {
   const [exportingFollowUp, setExportingFollowUp] = useState(false);
   const [holdDetail, setHoldDetail] = useState<Detail | null>(null);
   const [holdReason, setHoldReason] = useState("");
+  // Admin yang milih: status tahan (+ alasannya) kelihatan di payslip rider atau nggak.
+  const [holdShowToRider, setHoldShowToRider] = useState(true);
   const [loading, setLoading] = useState(true);
   const [finalizing, setFinalizing] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -434,7 +441,7 @@ function PayrollPage() {
     const { data, error } = await (supabase as any)
       .from("payroll_payment_holds")
       .select(
-        "id, detail_id, status, reason, payroll_follow_up_payments(id, amount, status, exported_at)",
+        "id, detail_id, status, reason, show_to_rider, payroll_follow_up_payments(id, amount, status, exported_at)",
       )
       .in("detail_id", detailIds);
     if (error) {
@@ -1515,12 +1522,29 @@ function PayrollPage() {
         detail_id: detail.id,
         rider_id: detail.rider_id,
         reason: reason.trim(),
+        show_to_rider: holdShowToRider,
       });
       if (error) throw error;
       posthog.capture("payroll_payment_held", { run_id: activeRun.id, detail_id: detail.id });
       toast.success("Pembayaran ditahan. Rider tidak akan masuk bulk payment reguler.");
       setHoldDetail(null);
       setHoldReason("");
+      await loadPaymentHolds(details.map((row) => row.id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPaymentHoldBusyId(null);
+    }
+  };
+
+  const toggleHoldVisibility = async (hold: PaymentHold) => {
+    setPaymentHoldBusyId(hold.detail_id);
+    try {
+      const { error } = await (supabase as any)
+        .from("payroll_payment_holds")
+        .update({ show_to_rider: !(hold.show_to_rider ?? true) })
+        .eq("id", hold.id);
+      if (error) throw error;
       await loadPaymentHolds(details.map((row) => row.id));
     } catch (e) {
       toast.error((e as Error).message);
@@ -2316,6 +2340,16 @@ function PayrollPage() {
                                     {paymentHolds[d.id].reason}
                                   </p>
                                   <button
+                                    onClick={() => toggleHoldVisibility(paymentHolds[d.id])}
+                                    disabled={paymentHoldBusyId === d.id}
+                                    title="Tampilkan / sembunyikan status tahan di payslip rider"
+                                    className="block text-[11px] font-medium text-muted-foreground hover:text-foreground hover:underline disabled:opacity-50"
+                                  >
+                                    {(paymentHolds[d.id].show_to_rider ?? true)
+                                      ? "Tampil di payslip rider"
+                                      : "Tidak tampil di payslip rider"}
+                                  </button>
+                                  <button
                                     onClick={() => releasePaymentHold(paymentHolds[d.id])}
                                     disabled={paymentHoldBusyId === d.id}
                                     className="text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
@@ -2344,6 +2378,7 @@ function PayrollPage() {
                                   onClick={() => {
                                     setHoldDetail(d);
                                     setHoldReason("");
+                                    setHoldShowToRider(true);
                                   }}
                                   disabled={paymentHoldBusyId === d.id || Number(d.net_pay) <= 0}
                                   title={
@@ -2607,34 +2642,65 @@ function PayrollPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="mt-5 space-y-3">
-              <label htmlFor="payment-hold-reason" className="text-sm font-medium">
-                Alasan hold <span className="text-destructive">*</span>
-              </label>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  "Verifikasi data",
-                  "Kasus operasional",
-                  "Menunggu persetujuan",
-                  "Dokumen belum lengkap",
-                ].map((reason) => (
+                  {
+                    show: true,
+                    title: "Ditahan",
+                    note: "Rider melihat label “Pembayaran ditahan” di payslip",
+                  },
+                  {
+                    show: false,
+                    title: "Beda periode bayar",
+                    note: "Tidak tampil di payslip rider (jadwal area berbeda)",
+                  },
+                ].map((opt) => (
                   <button
-                    key={reason}
+                    key={opt.title}
                     type="button"
-                    onClick={() => setHoldReason(reason)}
-                    className={`rounded-lg border-2 px-3 py-2 text-left text-xs font-medium transition-colors ${holdReason === reason ? "border-border-strong bg-warning text-warning-foreground" : "border-border text-muted-foreground hover:border-warning/50 hover:text-foreground"}`}
+                    onClick={() => {
+                      setHoldShowToRider(opt.show);
+                      setHoldReason(opt.show ? "" : HOLD_REASON_PERIOD);
+                    }}
+                    className={`rounded-lg border-2 px-3 py-2 text-left transition-colors ${holdShowToRider === opt.show ? "border-border-strong bg-warning text-warning-foreground" : "border-border text-muted-foreground hover:border-warning/50 hover:text-foreground"}`}
                   >
-                    {reason}
+                    <span className="block text-xs font-semibold">{opt.title}</span>
+                    <span className="block text-[10px] leading-snug opacity-80">{opt.note}</span>
                   </button>
                 ))}
               </div>
-              <textarea
-                id="payment-hold-reason"
-                value={holdReason}
-                onChange={(event) => setHoldReason(event.target.value)}
-                placeholder="Tulis alasan atau pilih alasan cepat di atas"
-                rows={3}
-                className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-warning focus:ring-2 focus:ring-warning/20"
-              />
+              {holdShowToRider && (
+                <>
+                  <label htmlFor="payment-hold-reason" className="text-sm font-medium">
+                    Alasan hold <span className="text-destructive">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      "Verifikasi data",
+                      "Kasus operasional",
+                      "Menunggu persetujuan",
+                      "Dokumen belum lengkap",
+                    ].map((reason) => (
+                      <button
+                        key={reason}
+                        type="button"
+                        onClick={() => setHoldReason(reason)}
+                        className={`rounded-lg border-2 px-3 py-2 text-left text-xs font-medium transition-colors ${holdReason === reason ? "border-border-strong bg-warning text-warning-foreground" : "border-border text-muted-foreground hover:border-warning/50 hover:text-foreground"}`}
+                      >
+                        {reason}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    id="payment-hold-reason"
+                    value={holdReason}
+                    onChange={(event) => setHoldReason(event.target.value)}
+                    placeholder="Tulis alasan atau pilih alasan cepat di atas"
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-warning focus:ring-2 focus:ring-warning/20"
+                  />
+                </>
+              )}
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Saat hold dilepas, sistem membuat pembayaran susulan terpisah sebesar net pay asli.
               </p>

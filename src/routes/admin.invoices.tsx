@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
@@ -35,8 +36,8 @@ function InvoicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [printInv, setPrintInv] = useState<Invoice | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     const [{ data: inv, error }, { data: cl }] = await Promise.all([
       sb.from("invoice_details").select("*").order("created_at", { ascending: false }),
       supabase.from("clients").select("id, name, address, contact_person, phone").order("name"),
@@ -46,7 +47,8 @@ function InvoicesPage() {
     setClients(cl ?? []);
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  const tick = useLiveTick(["invoice_details", "clients"]);
+  useEffect(() => { load(tick > 0); }, [tick]);
 
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name ?? "(client tak dikenal)";
 

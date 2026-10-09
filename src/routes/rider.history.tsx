@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { useEffect, useState } from "react";
 import { RiderLayout } from "@/components/rider-layout";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +41,7 @@ function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  const tick = useLiveTick(["rider_installments", "payroll_deductions"]);
   useEffect(() => {
     if (!rider) return;
     (async () => {
@@ -93,7 +95,7 @@ function HistoryPage() {
       );
       setLoading(false);
     })();
-  }, [rider]);
+  }, [rider, tick]);
 
   return (
     <RiderLayout title={t("history.title")}>

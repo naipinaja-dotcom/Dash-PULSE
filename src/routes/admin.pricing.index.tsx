@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AdminLayout } from "@/components/admin-layout";
 import { Plus, Pencil, Trash2, Tag, Truck, Banknote, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
+import { useLiveTick } from "@/lib/use-live-tick";
 import {
   listPricingSchemes,
   deletePricingScheme,
@@ -59,7 +60,8 @@ function PricingListPage() {
     listPricingSchemes().then(setSchemes);
     listClients().then(setClients);
   };
-  useEffect(refresh, []);
+  const tick = useLiveTick(["pricing_schemes", "clients"]);
+  useEffect(refresh, [tick]);
 
   const filtered = schemes.filter(
     (s) => filterClient === "all" || (s.client_id ?? "all-clients") === filterClient,

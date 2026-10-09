@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
 import { toCSV, downloadCSV } from "@/lib/csv";
@@ -65,6 +66,7 @@ export function RecapTab() {
     avgPerRider: 0,
   });
 
+  const tick = useLiveTick(["payroll_runs", "payroll_details", "payroll_deductions"]);
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -242,7 +244,7 @@ export function RecapTab() {
         setLoading(false);
       }
     })();
-  }, [month]);
+  }, [month, tick]);
 
   const toggle = (id: string) => setExpanded((prev) => {
     const next = new Set(prev);

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { usePagination } from "@/lib/use-pagination";
@@ -55,6 +56,7 @@ function ReportsPage() {
   // Cegah effect sync-ke-URL nulis-timpa `search.runId` dari link SEBELUM
   // daftar run kelar di-fetch & runId hasil URL diverifikasi valid.
   const [runsLoaded, setRunsLoaded] = useState(false);
+  const tick = useLiveTick(["payroll_runs"]);
 
   useEffect(() => {
     // client_id dipakai finance-worksheet.tsx buat nentuin export template
@@ -70,6 +72,9 @@ function ReportsPage() {
           (run) => run.status === "finalized" || run.status === "published",
         );
         setRuns(reportRuns);
+        // Refresh realtime: jangan loncat ke run lain kalau run yang lagi
+        // dibuka masih ada di daftar.
+        if (tick > 0 && runId && reportRuns.some((run) => run.id === runId)) return;
         const fromLink = search.runId ? reportRuns.find((run) => run.id === search.runId) : undefined;
         if (fromLink) {
           setRunStatus(fromLink.status as ReportRunStatus);
@@ -88,7 +93,7 @@ function ReportsPage() {
         setRunsLoaded(true);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tick]);
 
   // Tulis balik ke address bar begitu runId/mode berubah (klik run lain,
   // ganti tab mode) — `replace: true` biar tombol Back browser gak numpuk
@@ -301,6 +306,7 @@ type ClientRow = {
 function ClientReport({ runId, run }: { runId: string; run?: Run }) {
   const [rows, setRows] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const tick = useLiveTick(["payroll_runs", "payroll_details", "payroll_deductions"]);
 
   useEffect(() => {
     if (!runId) return;
@@ -350,7 +356,7 @@ function ClientReport({ runId, run }: { runId: string; run?: Run }) {
       setRows([...byClient.values()].sort((a, b) => b.net - a.net));
       setLoading(false);
     })();
-  }, [runId]);
+  }, [runId, tick]);
 
   const exportCSV = () => {
     const header = [

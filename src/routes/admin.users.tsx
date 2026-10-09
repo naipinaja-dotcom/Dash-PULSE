@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -35,8 +36,8 @@ function UsersPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     const [{ data: profiles, error: pe }, { data: roles, error: re }] = await Promise.all([
       supabase.from("profiles").select("id, full_name, email").order("email"),
       supabase.from("user_roles").select("user_id, role"),
@@ -64,9 +65,10 @@ function UsersPage() {
     );
     setLoading(false);
   };
+  const tick = useLiveTick(["profiles", "user_roles"]);
   useEffect(() => {
-    load();
-  }, []);
+    load(tick > 0);
+  }, [tick]);
 
   const changeRole = async (uid: string, newRole: string) => {
     if (!newRole) return;

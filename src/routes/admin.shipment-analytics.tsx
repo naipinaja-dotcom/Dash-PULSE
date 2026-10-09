@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { fetchAllRows } from "@/lib/fetch-all";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
@@ -25,10 +26,11 @@ function ShipmentAnalyticsPage() {
   const [rows, setRows] = useState<ShipmentRow[] | null>(null);
 
   // Ga ada filter sendiri di sini — tanggal acuan diatur dari Executive Dashboard.
+  const tick = useLiveTick(["upload_batches"]);
   useEffect(() => {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tick]);
 
   const run = async () => {
     setRunning(true);

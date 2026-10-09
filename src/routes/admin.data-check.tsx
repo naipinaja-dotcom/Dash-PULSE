@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveTick } from "@/lib/use-live-tick";
 import { AdminLayout } from "@/components/admin-layout";
 import { PageSizeSelect, PaginationBar } from "@/components/pagination-bar";
 import { useT } from "@/lib/i18n";
@@ -182,10 +183,16 @@ function DeliveryCheck() {
   }, []);
 
   // Ganti halaman / page size — refetch dari server, bukan slice array lokal.
+  const tick = useLiveTick(["upload_batches"]);
   useEffect(() => {
     if (ran) fetchPage(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSize]);
+
+  useEffect(() => {
+    if (ran && tick > 0) fetchPage(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   const syncFromApi = async () => {
     if (!clientId) return toast.error("Pilih client dulu.");
@@ -450,10 +457,16 @@ function AttendanceCheck() {
     }
   };
 
+  const tick = useLiveTick(["upload_batches"]);
   useEffect(() => {
     if (ran) fetchPage(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSize]);
+
+  useEffect(() => {
+    if (ran && tick > 0) fetchPage(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   const clientName = (id: string | null) =>
     id ? (clients.find((c) => c.id === id)?.name ?? "(client tak dikenal)") : "(client KOSONG)";

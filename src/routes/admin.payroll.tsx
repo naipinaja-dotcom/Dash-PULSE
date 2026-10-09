@@ -106,6 +106,7 @@ type PaymentHold = {
   detail_id: string;
   status: "held" | "released";
   reason: string;
+  show_to_rider?: boolean;
   payroll_follow_up_payments?: {
     id: string;
     amount: number;
@@ -250,6 +251,8 @@ function PayrollPage() {
   const [exportingFollowUp, setExportingFollowUp] = useState(false);
   const [holdDetail, setHoldDetail] = useState<Detail | null>(null);
   const [holdReason, setHoldReason] = useState("");
+  // Admin yang milih: status tahan (+ alasannya) kelihatan di payslip rider atau nggak.
+  const [holdShowToRider, setHoldShowToRider] = useState(true);
   const [loading, setLoading] = useState(true);
   const [finalizing, setFinalizing] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -434,7 +437,7 @@ function PayrollPage() {
     const { data, error } = await (supabase as any)
       .from("payroll_payment_holds")
       .select(
-        "id, detail_id, status, reason, payroll_follow_up_payments(id, amount, status, exported_at)",
+        "id, detail_id, status, reason, show_to_rider, payroll_follow_up_payments(id, amount, status, exported_at)",
       )
       .in("detail_id", detailIds);
     if (error) {
@@ -1515,12 +1518,29 @@ function PayrollPage() {
         detail_id: detail.id,
         rider_id: detail.rider_id,
         reason: reason.trim(),
+        show_to_rider: holdShowToRider,
       });
       if (error) throw error;
       posthog.capture("payroll_payment_held", { run_id: activeRun.id, detail_id: detail.id });
       toast.success("Pembayaran ditahan. Rider tidak akan masuk bulk payment reguler.");
       setHoldDetail(null);
       setHoldReason("");
+      await loadPaymentHolds(details.map((row) => row.id));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPaymentHoldBusyId(null);
+    }
+  };
+
+  const toggleHoldVisibility = async (hold: PaymentHold) => {
+    setPaymentHoldBusyId(hold.detail_id);
+    try {
+      const { error } = await (supabase as any)
+        .from("payroll_payment_holds")
+        .update({ show_to_rider: !(hold.show_to_rider ?? true) })
+        .eq("id", hold.id);
+      if (error) throw error;
       await loadPaymentHolds(details.map((row) => row.id));
     } catch (e) {
       toast.error((e as Error).message);
@@ -2316,6 +2336,16 @@ function PayrollPage() {
                                     {paymentHolds[d.id].reason}
                                   </p>
                                   <button
+                                    onClick={() => toggleHoldVisibility(paymentHolds[d.id])}
+                                    disabled={paymentHoldBusyId === d.id}
+                                    title="Tampilkan / sembunyikan status tahan di payslip rider"
+                                    className="block text-[11px] font-medium text-muted-foreground hover:text-foreground hover:underline disabled:opacity-50"
+                                  >
+                                    {(paymentHolds[d.id].show_to_rider ?? true)
+                                      ? "Tampil di payslip rider"
+                                      : "Disembunyikan dari rider"}
+                                  </button>
+                                  <button
                                     onClick={() => releasePaymentHold(paymentHolds[d.id])}
                                     disabled={paymentHoldBusyId === d.id}
                                     className="text-[11px] font-medium text-primary hover:underline disabled:opacity-50"
@@ -2344,6 +2374,7 @@ function PayrollPage() {
                                   onClick={() => {
                                     setHoldDetail(d);
                                     setHoldReason("");
+                                    setHoldShowToRider(true);
                                   }}
                                   disabled={paymentHoldBusyId === d.id || Number(d.net_pay) <= 0}
                                   title={
@@ -2635,6 +2666,21 @@ function PayrollPage() {
                 rows={3}
                 className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-warning focus:ring-2 focus:ring-warning/20"
               />
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={holdShowToRider}
+                  onChange={(event) => setHoldShowToRider(event.target.checked)}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span>
+                  Tampilkan di payslip rider
+                  <span className="block text-[11px] text-muted-foreground">
+                    Kalau dicentang, rider melihat label &quot;Pembayaran ditahan&quot;. Kalau tidak,
+                    rider tidak melihat apa-apa soal tahanan ini.
+                  </span>
+                </span>
+              </label>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Saat hold dilepas, sistem membuat pembayaran susulan terpisah sebesar net pay asli.
               </p>

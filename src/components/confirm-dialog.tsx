@@ -35,16 +35,22 @@ export function ConfirmHost() {
   useEffect(() => {
     if (!opts) return;
     cancelRef.current?.focus(); // default fokus ke "Batal" biar aman (ga ke-Enter langsung hapus)
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(false); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Fase capture + stopPropagation: kalau konfirmasi dibuka dari dalam dialog Radix
+    // (mis. Push Spend Control), Esc cuma nutup konfirmasi — bukan dialog di belakangnya.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(false); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [opts]);
 
   if (!opts) return null;
   const danger = opts.danger ?? true;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    // pointer-events-auto: dialog Radix yang lagi terbuka mematikan pointer-events di <body>
+    // (diwarisi overlay ini → tombol gak bisa diklik). onPointerDown di-stop supaya klik di
+    // sini gak dianggap "klik di luar" dan nutup dialog Radix di belakangnya.
+    <div className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true"
+      onPointerDown={(e) => e.nativeEvent.stopImmediatePropagation()}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => close(false)} />
       <div className="relative w-full max-w-sm rounded-xl border-2 border-border-strong bg-card p-5 shadow-[8px_8px_0_0_var(--color-border-strong)] animate-in fade-in zoom-in-95">
         <div className="flex items-start gap-3">

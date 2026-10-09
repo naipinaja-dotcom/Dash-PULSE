@@ -2815,7 +2815,9 @@ function PayrollPage() {
       <Dialog open={spendControlOpen} onOpenChange={setSpendControlOpen}>
         <DialogContent className="max-w-4xl rounded-2xl bg-card p-0 overflow-hidden">
           <div className="h-1 bg-gradient-to-r from-primary via-warning to-primary" />
-          <div className="p-6">
+          {/* min-w-0: DialogContent itu grid — tanpa ini kolom grid melebar ngikutin
+              tabel (status bisa panjang) dan isi dialog kepotong overflow-hidden. */}
+          <div className="min-w-0 p-6">
             <DialogHeader>
               <DialogTitle className="text-xl">Push ke Spend Control</DialogTitle>
               <DialogDescription className="leading-relaxed">
@@ -2848,7 +2850,7 @@ function PayrollPage() {
               </div>
             ) : (
               <>
-                <div className="mt-4 max-h-96 overflow-y-auto rounded-lg border border-border">
+                <div className="mt-4 max-h-96 overflow-auto rounded-lg border border-border">
                   <table className="w-full text-xs">
                     <thead className="bg-muted text-muted-foreground sticky top-0">
                       <tr>
@@ -2905,7 +2907,7 @@ function PayrollPage() {
                                 </span>
                               )}
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap">
+                            <td className="px-3 py-2">
                               {!result && "—"}
                               {result?.ok && result.workflowConfigured === false && (
                                 <span
@@ -3011,7 +3013,7 @@ function PayrollPage() {
               </>
             )}
 
-            <DialogFooter className="mt-6 gap-2 sm:gap-2">
+            <DialogFooter className="mt-6 flex-wrap gap-2 sm:gap-2">
               <button
                 type="button"
                 onClick={() => setSpendControlOpen(false)}

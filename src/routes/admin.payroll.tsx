@@ -361,8 +361,11 @@ function PayrollPage() {
     paged: pagedRuns,
   } = usePagination(filteredRuns, 5);
 
-  const loadRuns = async () => {
-    setLoading(true);
+  // silent = refresh dari realtime: gak nyalain spinner list, dan activeRun
+  // diganti ke baris terbaru (null kalau run-nya udah kehapus) biar detail ikut
+  // ke-load ulang lewat effect [activeRun].
+  const loadRuns = async (silent = false) => {
+    if (!silent) setLoading(true);
     // (supabase as any): kolom client_id belum ke-generate di types.ts sampai
     // migration 20260714000000 di-apply + `supabase gen types` dijalanin ulang.
     const { data, error } = await (supabase as any)
@@ -370,7 +373,13 @@ function PayrollPage() {
       .select("*")
       .order("created_at", { ascending: false });
     if (error) toast.error(error.message);
-    else setRuns(data ?? []);
+    else {
+      setRuns(data ?? []);
+      if (silent)
+        setActiveRun((prev) =>
+          prev ? ((data ?? []).find((r: Run) => r.id === prev.id) ?? null) : prev,
+        );
+    }
     resolveProfileNames((data ?? []).map((r: Run) => r.finalized_by));
     resolveProfileNames((data ?? []).map((r: Run) => r.published_by));
 
@@ -413,6 +422,30 @@ function PayrollPage() {
       .select("id, name")
       .order("name")
       .then(({ data }) => setClients(data ?? []));
+  }, []);
+
+  // Auto-refresh: tiap ada perubahan di tabel payroll (dari user lain, webhook
+  // Basecamp, atau edit langsung di DB) list + detail run ikut ke-update tanpa
+  // reload. Debounce karena 1 aksi (generate/publish) bisa nembak banyak event.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => loadRuns(true), 600);
+    };
+    const channel = supabase.channel("payroll-live");
+    for (const table of [
+      "payroll_runs",
+      "payroll_details",
+      "payroll_deductions",
+      "spend_control_pushes",
+    ])
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, refresh);
+    channel.subscribe();
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const loadDetails = async (runId: string) => {
@@ -1693,7 +1726,7 @@ function PayrollPage() {
               daftar ini nunjukin run terbaru kalau abis commit di tab/halaman
               lain sebelum balik ke sini. */}
           <button
-            onClick={loadRuns}
+            onClick={() => loadRuns()}
             disabled={loading}
             className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-border-strong px-3 py-2 text-sm mb-3 disabled:opacity-50 hover:bg-muted transition-colors"
           >

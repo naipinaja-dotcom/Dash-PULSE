@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePostHog } from "@posthog/react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Session } from "@supabase/supabase-js";
@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const hydratedUid = useRef<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -65,15 +66,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      // Supabase nembak SIGNED_IN/TOKEN_REFRESHED tiap tab browser balik aktif.
+      // User-nya sama → jangan query roles/profile lagi & jangan bikin objek
+      // user baru (itu re-render SEMUA yang pakai useAuth tiap ganti tab).
+      if (s?.user.id && s.user.id === hydratedUid.current && event !== "USER_UPDATED") return;
       setTimeout(() => {
-        hydrateUser(s).then(setUser);
+        hydrateUser(s).then((u) => {
+          hydratedUid.current = u?.id ?? null;
+          setUser(u);
+        });
       }, 0);
     });
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       hydrateUser(data.session).then((u) => {
+        hydratedUid.current = u?.id ?? null;
         setUser(u);
         setLoading(false);
       });

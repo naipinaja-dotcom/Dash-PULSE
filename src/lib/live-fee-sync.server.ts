@@ -49,9 +49,11 @@ import {
   calcDeliveryFeeMultiCity,
   resolveSchemeForCity,
 } from "./pricing-calc";
-import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
-import { fetchLiveDeliveries } from "./api/live-fee-deliveries.functions";
-import { fetchLiveAttendance } from "./api/live-fee-attendance.functions";
+// Type-only: modul *.functions.ts menjalankan createServerFn(...) saat di-load,
+// jadi fungsinya di-import LAZY di call site — static import dari file *.server
+// ini bikin chunk SSR crash "inputValidator is not a function" (prod 2026-10-15,
+// setelah ukuran chunk berubah di deploy PR #174).
+import type { ApiProvider } from "./api/providers.functions";
 import { upsertLiveDeliveries } from "./sync-live-deliveries";
 import { upsertLiveAttendance } from "./sync-live-attendance";
 import { matchesRunTime, nowInWib, withTransientRetry } from "./payroll-workflow.server";
@@ -142,6 +144,7 @@ export async function syncOneClient(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cfg = scheme.params.config as any;
     const shifts = Array.isArray(cfg?.shifts) ? cfg.shifts : [];
+    const { fetchLiveAttendance } = await import("./api/live-fee-attendance.functions");
     const live = await fetchLiveAttendance(dashToken, provider.id, from, to, shifts);
     const res = calcAttendanceScheme(scheme.params, live.rows);
     const fees = res.perRow.map((r) => Number(r.fee) || 0);
@@ -153,6 +156,7 @@ export async function syncOneClient(
     // admin.calculate.tsx/pnl-engine.ts) sama-sama sumber datanya dari
     // delivery live; hybrid butuh attendance juga tapi belum dipakai client
     // manapun yang di-link provider hari ini — cukup delivery dulu.
+    const { fetchLiveDeliveries } = await import("./api/live-fee-deliveries.functions");
     const live = await fetchLiveDeliveries(dashToken, provider.id, businessUnit, from, to);
     // Revenue sharing tidak punya rate-card rider sendiri: fee rider adalah
     // persentase dari revenue client per delivery. calcScheme() sengaja
@@ -252,7 +256,7 @@ export async function runLiveFeeSync(opts: {
           .select("id, name, provider_id")
           .eq("active", true)
           .not("provider_id", "is", null),
-        fetchApiProviders(dashToken),
+        import("./api/providers.functions").then((m) => m.fetchApiProviders(dashToken)),
         adminAny
           .from("pricing_schemes")
           .select(

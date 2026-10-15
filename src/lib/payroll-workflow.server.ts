@@ -183,7 +183,11 @@ async function isAlreadyProcessed(
   return (count ?? 0) > 0;
 }
 import { syncOneClient, type ClientRow } from "./live-fee-sync.server";
-import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
+// Type-only: modul *.functions.ts menjalankan createServerFn(...) saat di-load,
+// jadi di-import LAZY di call site (lihat loadWorkflowInputs) — static import dari
+// file *.server ini bikin chunk SSR crash "inputValidator is not a function"
+// (prod 2026-10-15, setelah ukuran chunk berubah di deploy PR #174).
+import type { ApiProvider } from "./api/providers.functions";
 
 async function loadClientPeriodSchedules(
   admin: SupabaseAdmin,
@@ -604,6 +608,7 @@ async function loadWorkflowInputs(admin: SupabaseAdmin) {
   if (rawToken) {
     dashToken = `Bearer ${rawToken}`;
     try {
+      const { fetchApiProviders } = await import("./api/providers.functions");
       providers = await fetchApiProviders(dashToken);
     } catch (e) {
       console.error(

@@ -132,8 +132,56 @@ export function resolvePeriodIfDue(
 // (dipakai bareng sama live-fee-sync.server.ts, lihat komentar di file itu
 // soal kenapa gak boleh tinggal di sini lagi — circular import). Re-export
 // di sini biar importer lama (tests, dst.) gak perlu ganti path.
-export { nowInWib, matchesRunTime, withTransientRetry } from "./workflow-shared.server";
-import { nowInWib, matchesRunTime, withTransientRetry } from "./workflow-shared.server";
+export {
+  nowInWib,
+  matchesRunTime,
+  minutesPastRunTime,
+  withTransientRetry,
+} from "./workflow-shared.server";
+import {
+  nowInWib,
+  matchesRunTime,
+  minutesPastRunTime,
+  withTransientRetry,
+} from "./workflow-shared.server";
+
+// Catch-up cron: sampai berapa menit setelah run_time client yang belum
+// dikerjakan masih boleh diambil tick berikutnya.
+const CATCH_UP_MINUTES = 180;
+// Function dibunuh ~300 detik setelah mulai (terbukti: batch 09:00 mati setelah
+// 5 client) — sisakan ruang buat client yang sedang jalan + tulis log + notif.
+const TICK_BUDGET_MS = 180_000;
+
+// Sudah "dikerjakan" = ada run non-draft, atau run draft yang sudah punya
+// payroll_details. Run draft KOSONG (mis. function mati di tengah pipeline)
+// dianggap belum dikerjakan -> boleh di-catch-up.
+async function isAlreadyProcessed(
+  admin: SupabaseAdmin,
+  clientId: string,
+  periodStart: string,
+  periodEnd: string,
+): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: runs, error } = await (admin as any)
+    .from("payroll_runs")
+    .select("id, status")
+    .eq("client_id", clientId)
+    .eq("period_start", periodStart)
+    .eq("period_end", periodEnd);
+  if (error) throw new Error(`Gagal cek payroll_runs: ${error.message}`);
+  if (!runs?.length) return false;
+  if (runs.some((r: { status: string }) => r.status !== "draft")) return true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count, error: dErr } = await (admin as any)
+    .from("payroll_details")
+    .select("id", { count: "exact", head: true })
+    .in(
+      "run_id",
+      runs.map((r: { id: string }) => r.id),
+    );
+  if (dErr) throw new Error(`Gagal cek payroll_details: ${dErr.message}`);
+  return (count ?? 0) > 0;
+}
 import { syncOneClient, type ClientRow } from "./live-fee-sync.server";
 import { fetchApiProviders, type ApiProvider } from "./api/providers.functions";
 
@@ -586,6 +634,7 @@ export async function runPayrollWorkflow(opts: {
   const today = nowInWib();
   const nowMinutesOfDay = today.getUTCHours() * 60 + today.getUTCMinutes();
   const startedAt = new Date().toISOString();
+  const t0 = Date.now();
 
   const runs: PayrollWorkflowRunResult[] = [];
   const skippedClients: string[] = [];
@@ -614,7 +663,36 @@ export async function runPayrollWorkflow(opts: {
         // eksplisit minta "jalanin SEKARANG" — gak masuk akal ikut nunggu jam
         // custom itu juga (sebelumnya ini bikin tombol "Run Workflow Sekarang"
         // kelihatan gak jalan kalau diklik di luar jendela ±7 menit itu).
-        if (opts.triggeredBy === "cron" && !matchesRunTime(nowMinutesOfDay, p.runTime)) continue;
+        if (opts.triggeredBy === "cron") {
+          if (!matchesRunTime(nowMinutesOfDay, p.runTime)) {
+            // Catch-up: tick 09:00 bisa mati sebelum semua client kebagian
+            // (batch sekuensial, ±1 menit/client, function dibunuh di batas
+            // durasi) — client yang belum sempat dulu KELEWAT sehari penuh
+            // karena jendela ±7 menit cuma kena 1 tick (2026-10-15: Nusantara
+            // Card Semesta, Noovoleum, Noovoleum Cleaning, YCH gak keproses).
+            // Tick berikutnya sampai CATCH_UP_MINUTES setelah run_time boleh
+            // ngerjain yang BELUM dikerjakan (tanpa nyentuh run yang udah
+            // jadi/ada detail-nya, biar edit manual draft gak ke-reset).
+            const late = minutesPastRunTime(nowMinutesOfDay, p.runTime);
+            if (late < 0 || late > CATCH_UP_MINUTES) continue;
+            // Error cek (blip DB) -> anggap sudah diproses: lebih baik skip tick
+            // ini daripada nge-generate ulang & ngereset draft yang mungkin udah ada.
+            const done = await isAlreadyProcessed(
+              admin,
+              c.id,
+              period.periodStart,
+              period.periodEnd,
+            ).catch(() => true);
+            if (done) continue;
+          }
+          // Sisa waktu function terbatas — berhenti ambil client baru sebelum
+          // dibunuh di tengah jalan (log run + notif gak ke-tulis); sisanya
+          // diambil tick berikutnya lewat catch-up di atas.
+          if (Date.now() - t0 > TICK_BUDGET_MS) {
+            console.warn(`[payroll-workflow] budget tick habis, ${c.name} ditunda ke tick berikutnya`);
+            continue;
+          }
+        }
 
         // Isolasi per client+periode — dulu SATU try/catch ngebungkus SELURUH
         // loop di atas function ini, jadi kalau satu client throw (mis.

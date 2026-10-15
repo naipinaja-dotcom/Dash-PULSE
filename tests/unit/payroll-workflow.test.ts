@@ -3,6 +3,7 @@ import {
   resolvePeriodIfDue,
   nowInWib,
   matchesRunTime,
+  minutesPastRunTime,
   withTransientRetry,
 } from "@/lib/payroll-workflow.server";
 
@@ -147,5 +148,23 @@ describe("matchesRunTime", () => {
     expect(matchesRunTime(toMinutes(0, 10), "23:99")).toBe(false);
     // Ter-clamp jadi 23:59 -> tetap match kalau sekarang emang di sekitar 23:59.
     expect(matchesRunTime(toMinutes(23, 58), "23:99")).toBe(true);
+  });
+});
+
+describe("minutesPastRunTime", () => {
+  const toMinutes = (h: number, m: number) => h * 60 + m;
+
+  it("positif kalau sudah lewat run_time (catch-up 09:15 untuk run_time 09:00)", () => {
+    expect(minutesPastRunTime(toMinutes(9, 15), "09:00")).toBe(15);
+    expect(minutesPastRunTime(toMinutes(9, 15), null)).toBe(15);
+  });
+
+  it("negatif kalau belum waktunya, 0 pas di jamnya", () => {
+    expect(minutesPastRunTime(toMinutes(8, 45), "09:00")).toBe(-15);
+    expect(minutesPastRunTime(toMinutes(9, 0), "09:00")).toBe(0);
+  });
+
+  it("format invalid fallback ke 09:00", () => {
+    expect(minutesPastRunTime(toMinutes(9, 30), "bukan-jam")).toBe(30);
   });
 });

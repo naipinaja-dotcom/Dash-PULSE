@@ -36,6 +36,12 @@ export function matchesRunTime(
   runTime: string | null,
   toleranceMinutes = 7,
 ): boolean {
+  const target = runTimeMinutes(runTime);
+  const diff = Math.abs(nowMinutesOfDay - target);
+  return Math.min(diff, 1440 - diff) <= toleranceMinutes; // Math.min(...) buat wrap-around lewat tengah malam
+}
+
+function runTimeMinutes(runTime: string | null): number {
   const [rawH, rawM] = (runTime && /^\d{1,2}:\d{2}$/.test(runTime) ? runTime : "09:00")
     .split(":")
     .map(Number);
@@ -43,9 +49,15 @@ export function matchesRunTime(
   // Tanpa ini, target bisa >1439 dan bikin `1440 - diff` negatif -> false match di jam manapun.
   const h = Math.min(23, Math.max(0, rawH || 0));
   const m = Math.min(59, Math.max(0, rawM || 0));
-  const target = h * 60 + m;
-  const diff = Math.abs(nowMinutesOfDay - target);
-  return Math.min(diff, 1440 - diff) <= toleranceMinutes; // Math.min(...) buat wrap-around lewat tengah malam
+  return h * 60 + m;
+}
+
+// Berapa menit SEKARANG sudah lewat dari run_time di hari yang sama (negatif =
+// belum waktunya). Dipakai buat catch-up: tick yang kelewat jendela ±7 menit
+// (mis. function mati di tengah batch 09:00) masih boleh diproses beberapa jam
+// kemudian, selama run-nya memang belum dikerjakan.
+export function minutesPastRunTime(nowMinutesOfDay: number, runTime: string | null): number {
+  return nowMinutesOfDay - runTimeMinutes(runTime);
 }
 
 // Query awal (clients/schedules/pricing_schemes, dst.) itu prasyarat SEBELUM

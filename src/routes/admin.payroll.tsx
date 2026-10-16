@@ -73,6 +73,42 @@ type Run = {
   kind?: string | null;
 };
 type Client = { id: string; name: string };
+
+// Guard sebelum Finalize/Publish: order COMPLETED di periode run ini yang fee-nya
+// 0/kosong hampir pasti artinya Hitung Fee belum jalan untuk baris itu (mis. batch
+// cron mati di tengah — GORECA 8–14 Okt 2026: 20 order fee 0 ke-publish, rider
+// kurang Rp 643.500). Slip yang sudah terbit susah dikoreksi, jadi tahan DULU di
+// sini; admin masih bisa lanjut lewat konfirmasi eksplisit (fee 0 yang sah).
+// Return true = boleh lanjut. Run EWA dilewati (cuma payout rider terpilih).
+async function confirmNoZeroFee(run: Run): Promise<boolean> {
+  if (run.kind === "ewa") return true;
+  let q = (supabase as any)
+    .from("delivery_records")
+    .select("awb, delivery_date, driver_code", { count: "exact" })
+    .gte("delivery_date", run.period_start)
+    .lte("delivery_date", run.period_end)
+    .ilike("status", "completed")
+    .or("fee.is.null,fee.eq.0")
+    .order("delivery_date")
+    .limit(8);
+  if (run.client_id) q = q.eq("client_id", run.client_id);
+  const { data, count, error } = await q;
+  if (error) {
+    toast.error(`Gagal cek fee 0: ${error.message}`);
+    return false; // gagal cek = jangan lanjut diam-diam
+  }
+  if (!count) return true;
+  const sample = (data as { awb: string | null; delivery_date: string; driver_code: string | null }[])
+    .map((r) => `${r.delivery_date} · ${r.driver_code ?? "-"} · ${r.awb ?? "-"}`)
+    .join("\n");
+  return confirmDialog({
+    title: `${count} order COMPLETED fee-nya 0`,
+    description: `Ada ${count} order di periode ${run.period_start} s/d ${run.period_end} yang fee-nya masih 0 — rider bisa kurang dibayar. Jalankan Hitung Fee dulu. Contoh:\n${sample}${count > 8 ? "\n…" : ""}\n\nLanjut cuma kalau fee 0 itu memang disengaja.`,
+    confirmText: "Fee 0 memang disengaja, lanjut",
+    danger: true,
+  });
+}
+
 type FeeAuditEntry = {
   id: string;
   action: string;
@@ -1006,6 +1042,7 @@ function PayrollPage() {
 
   const finalize = async () => {
     if (!activeRun) return;
+    if (!(await confirmNoZeroFee(activeRun))) return;
     setFinalizing(true);
     const finalizedAt = new Date().toISOString();
     const { error } = await (supabase as any)
@@ -1035,6 +1072,7 @@ function PayrollPage() {
 
   const publish = async () => {
     if (!activeRun) return;
+    if (!(await confirmNoZeroFee(activeRun))) return;
     setPublishing(true);
     try {
       // Fallback manual: force-publish SEMUA client di run ini sekaligus,

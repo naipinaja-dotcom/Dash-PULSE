@@ -230,6 +230,9 @@ export async function fetchLiveDeliveries(
   businessUnit: string | null,
   from: string,
   to: string,
+  // Cron sync harian pakai buffer pendek (window rolling, lihat live-fee-sync.server.ts);
+  // buffer 90 hari bikin tarikan ~6x lebih banyak & timeout 300 detik (2026-10-16).
+  createdBufferDays: number = CREATED_BUFFER_DAYS,
 ): Promise<LiveFeeDeliveriesResult> {
   if (from > to) throw new Error("Tanggal 'dari' tidak boleh setelah 'sampai'");
 
@@ -239,7 +242,7 @@ export async function fetchLiveDeliveries(
   // Solusi: tarik window createdAt lebih LEBAR (mundur BUFFER hari), lalu filter
   // hasilnya by delivery_date sesuai [from, to]. Cocok dengan basis file upload.
   const startDt = new Date(from + "T00:00:00Z");
-  startDt.setUTCDate(startDt.getUTCDate() - CREATED_BUFFER_DAYS);
+  startDt.setUTCDate(startDt.getUTCDate() - createdBufferDays);
   const fetchStart = startDt.toISOString().slice(0, 10);
   // UI 'sampai' inklusif; API endDate eksklusif → +1 hari.
   const endDt = new Date(to + "T00:00:00Z");

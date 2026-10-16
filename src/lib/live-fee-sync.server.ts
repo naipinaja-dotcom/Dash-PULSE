@@ -61,6 +61,8 @@ import { sendSlackMessage } from "./notify/slack.server";
 
 type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>;
 
+const CRON_CREATED_BUFFER_DAYS = 14;
+
 // Fallback kalau {from,to} gak dikirim (mis. trigger manual tanpa param):
 // rolling 8 hari (kalender Asia/Jakarta) — bukan coba pas-in ke batas periode
 // payroll (itu urusan payroll-workflow yang jalan setelahnya). Overlap
@@ -120,6 +122,7 @@ export async function syncOneClient(
   schemesRaw: unknown[],
   from: string,
   to: string,
+  opts: { createdBufferDays?: number } = {},
 ): Promise<LiveFeeSyncClientResult> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const schemes = (schemesRaw as any[]).map(normalize);
@@ -157,7 +160,14 @@ export async function syncOneClient(
     // delivery live; hybrid butuh attendance juga tapi belum dipakai client
     // manapun yang di-link provider hari ini — cukup delivery dulu.
     const { fetchLiveDeliveries } = await import("./api/live-fee-deliveries.functions");
-    const live = await fetchLiveDeliveries(dashToken, provider.id, businessUnit, from, to);
+    const live = await fetchLiveDeliveries(
+      dashToken,
+      provider.id,
+      businessUnit,
+      from,
+      to,
+      opts.createdBufferDays,
+    );
     // Revenue sharing tidak punya rate-card rider sendiri: fee rider adalah
     // persentase dari revenue client per delivery. calcScheme() sengaja
     // membutuhkan array revenue itu secara eksplisit; tanpa ini ia mengembalikan
@@ -336,7 +346,12 @@ export async function runLiveFeeSync(opts: {
       // di atas file), jadi aman diulang dari awal.
       results.push(
         await withTransientRetry(() =>
-          syncOneClient(admin, client, provider, dashToken, schemesRaw ?? [], from, to),
+          syncOneClient(admin, client, provider, dashToken, schemesRaw ?? [], from, to, {
+            // Cron = window rolling 8 hari tiap 15 menit-an; buffer 90 hari (default
+            // manual/payroll) bikin tarikan kegedean & timeout. Order dengan gap
+            // panjang tetap ketarik lewat sync sebelum generate payroll.
+            createdBufferDays: opts.triggeredBy === "cron" ? CRON_CREATED_BUFFER_DAYS : undefined,
+          }),
         ),
       );
     } catch (e) {

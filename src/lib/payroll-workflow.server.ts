@@ -59,7 +59,8 @@ export interface ValidationWarning {
     | "missing_bank_account"
     | "negative_net_pay"
     | "duplicate_period_payment"
-    | "unresolved_rider";
+    | "unresolved_rider"
+    | "zero_fee_orders";
   message: string;
 }
 
@@ -482,6 +483,26 @@ async function validateRun(
     });
   }
 
+  // Order COMPLETED fee 0/kosong = Hitung Fee belum jalan untuk baris itu (kasus
+  // GORECA 8–14 Okt 2026: 20 order fee 0 ke-publish, rider kurang Rp 643.500).
+  if (run.client_id) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count: zeroFee } = await (admin as any)
+      .from("delivery_records")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", run.client_id)
+      .gte("delivery_date", run.period_start)
+      .lte("delivery_date", run.period_end)
+      .ilike("status", "completed")
+      .or("fee.is.null,fee.eq.0");
+    if (zeroFee) {
+      warnings.push({
+        type: "zero_fee_orders",
+        message: `${zeroFee} order COMPLETED fee-nya 0 — rider bisa kurang dibayar, jalankan Hitung Fee sebelum finalize/publish`,
+      });
+    }
+  }
+
   return { warnings, totalGross, totalNet };
 }
 
@@ -518,6 +539,32 @@ async function runAudit(
   }
 }
 
+// Cron jalan tiap 15 menit dan SELALU nulis 1 baris payroll_workflow_runs di akhir
+// tick (termasuk tick kosong). Kalau function mati di tengah (timeout 300 detik,
+// 2026-10-15 jam 09:00), log tick itu gak pernah ada dan gak ada yang tahu.
+// Tick berikutnya cek jeda log terakhir: > 25 menit = ada tick yang hilang.
+const HEARTBEAT_MAX_GAP_MS = 25 * 60 * 1000;
+async function alertIfPreviousTickDied(admin: SupabaseAdmin): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (admin as any)
+      .from("payroll_workflow_runs")
+      .select("created_at")
+      .eq("trigger_type", "cron")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data?.created_at) return;
+    const gapMs = Date.now() - new Date(data.created_at).getTime();
+    if (gapMs <= HEARTBEAT_MAX_GAP_MS) return;
+    await sendSlackMessage(
+      `🔴 *Payroll Workflow cron* — log tick terakhir ${Math.round(gapMs / 60000)} menit lalu (harusnya tiap 15 menit). Kemungkinan ada tick yang mati/timeout sebelum selesai: cek client yang jatuh tempo hari ini di Payroll Run.`,
+    );
+  } catch (e) {
+    console.error("[payroll-workflow] heartbeat check gagal:", (e as Error).message);
+  }
+}
+
 function buildNotification(result: PayrollWorkflowResult): {
   subject: string;
   text: string;
@@ -541,6 +588,9 @@ function buildNotification(result: PayrollWorkflowResult): {
         `  ⚠️ *Fee belum kehitung otomatis* — ${r.feeSkipReason}. Angka di atas BUKAN gaji final, cek manual sebelum publish.`,
       );
     }
+    for (const w of r.warnings) {
+      if (w.type === "zero_fee_orders") lines.push(`  🔴 *${w.message}*`);
+    }
     if (r.audit) lines.push(`  _${r.audit.summary}_`);
   }
   if (skippedClients.length)
@@ -562,6 +612,10 @@ function buildNotification(result: PayrollWorkflowResult): {
         (!r.feeAutoComputed
           ? `<br/><b style="color:#b8791f">⚠️ Fee belum kehitung otomatis — ${r.feeSkipReason}. Cek manual sebelum publish.</b>`
           : "") +
+        r.warnings
+          .filter((w) => w.type === "zero_fee_orders")
+          .map((w) => `<br/><b style="color:#c0392b">🔴 ${w.message}</b>`)
+          .join("") +
         (r.audit ? `<br/><i>${r.audit.summary}</i>` : "") +
         `</li>`,
     )
@@ -640,6 +694,7 @@ export async function runPayrollWorkflow(opts: {
   const nowMinutesOfDay = today.getUTCHours() * 60 + today.getUTCMinutes();
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
+  if (opts.triggeredBy === "cron") await alertIfPreviousTickDied(admin);
 
   const runs: PayrollWorkflowRunResult[] = [];
   const skippedClients: string[] = [];

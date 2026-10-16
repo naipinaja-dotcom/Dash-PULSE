@@ -31,7 +31,15 @@ import {
   Palette,
   Zap,
 } from "lucide-react";
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { useAuth } from "@/lib/auth";
 import { usePayrollOverdue } from "@/lib/use-payroll-overdue";
 import { useT, LangToggle } from "@/lib/i18n";
@@ -105,6 +113,14 @@ function initDesign() {
   document.documentElement.setAttribute("data-design", stored ?? "classic");
 }
 
+// Shell (sidebar/header/background) di-mount SEKALI di route /admin (lihat
+// admin.tsx), bukan per halaman — dulu tiap pindah halaman seluruh shell
+// dibongkar & dibangun ulang (lemot). Halaman cukup render <AdminLayout title>
+// yang cuma ngirim judul ke shell lewat context, lalu render isinya.
+type PageHeading = { title: string; subtitle?: string };
+const HeadingCtx = createContext<((h: PageHeading) => void) | null>(null);
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 export function AdminLayout({
   children,
   title,
@@ -114,6 +130,23 @@ export function AdminLayout({
   title: string;
   subtitle?: string;
 }) {
+  const setHeading = useContext(HeadingCtx);
+  useIsoLayoutEffect(() => {
+    setHeading?.({ title, subtitle });
+  }, [setHeading, title, subtitle]);
+  return <>{children}</>;
+}
+
+export function AdminShell({ children }: { children: ReactNode }) {
+  const [heading, setHeadingState] = useState<PageHeading>({ title: "" });
+  const setHeading = useCallback(
+    (h: PageHeading) =>
+      setHeadingState((cur) =>
+        cur.title === h.title && cur.subtitle === h.subtitle ? cur : h,
+      ),
+    [],
+  );
+  const { title, subtitle } = heading;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -190,7 +223,9 @@ export function AdminLayout({
   const navGroups = groupNavItems(navItems);
 
   // ── Sidebar shared content ──────────────────────────────────────────────
-  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
+  // Fungsi render (bukan komponen inline) supaya React gak nge-unmount sidebar
+  // tiap render shell.
+  const renderSidebar = (mobile = false) => (
     <>
       {/* Brand */}
       <div
@@ -351,7 +386,7 @@ export function AdminLayout({
       <aside
         className={`admin-sidebar hidden lg:flex flex-col bg-sidebar flex-shrink-0 transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] ${collapsed ? "w-[72px]" : "w-60"}`}
       >
-        <SidebarContent />
+        {renderSidebar()}
       </aside>
 
       {/* Mobile sidebar overlay */}
@@ -365,7 +400,7 @@ export function AdminLayout({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <SidebarContent mobile />
+            {renderSidebar(true)}
           </aside>
         </div>
       )}
@@ -445,7 +480,9 @@ export function AdminLayout({
           </button>
         </header>
 
-        <main className="admin-content flex-1 px-4 lg:px-8 py-6 overflow-x-hidden">{children}</main>
+        <main className="admin-content flex-1 px-4 lg:px-8 py-6 overflow-x-hidden">
+          <HeadingCtx.Provider value={setHeading}>{children}</HeadingCtx.Provider>
+        </main>
       </div>
     </div>
   );

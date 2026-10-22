@@ -82,9 +82,12 @@ async function apiGet(
       });
       if (res.ok) return await res.json();
       if (res.status === 401) throw new Error("Token mgmt API ditolak / kadaluarsa (401)");
-      if (![408, 429, 500, 502, 503, 504].includes(res.status))
-        throw new Error(`mgmt API error ${res.status}`);
-      lastErr = new Error(`mgmt API error ${res.status}`);
+      // Sertakan parameter + isi jawaban API di pesan error (tanpa token): "error 400"
+      // doang bikin penyebabnya gak bisa ditebak (2026-10-22, hari gajian).
+      const body = (await res.text().catch(() => "")).slice(0, 300);
+      const detail = `mgmt API error ${res.status} [${start}→${endExclusive}, bu=${businessUnit ?? "semua"}, hal ${page}]${body ? `: ${body}` : ""}`;
+      if (![408, 429, 500, 502, 503, 504].includes(res.status)) throw new Error(detail);
+      lastErr = new Error(detail);
     } catch (e) {
       if ((e as Error).message.includes("401")) throw e;
       lastErr = e;

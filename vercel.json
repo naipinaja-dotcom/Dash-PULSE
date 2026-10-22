@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "bun install",
-  "buildCommand": "NITRO_PRESET=vercel bun run build",
+  "installCommand": "npm ci --no-audit --no-fund",
+  "buildCommand": "NITRO_PRESET=vercel npm run build",
   "framework": null
 }

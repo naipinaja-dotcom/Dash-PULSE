@@ -30,7 +30,7 @@ import {
 import { generatePayrollDetails } from "@/lib/payroll-generate";
 import { publishPayrollDetails, maybeCompleteRunPublish } from "@/lib/payroll-publish";
 import { allocateKasbonByRecipient } from "@/lib/kasbon-allocation";
-import { triggerPayrollWorkflow } from "@/lib/api/payroll-workflow.functions";
+import { triggerPayrollWorkflow, computeFeeForPeriod } from "@/lib/api/payroll-workflow.functions";
 import { IncentiveEditor } from "@/components/incentive-editor";
 import {
   downloadBulkPaymentCSV,
@@ -987,9 +987,37 @@ function PayrollPage() {
   // generatePayrollDetails() yang sama).
   const generate = async () => {
     if (!activeRun) return;
-    // Generate cuma MENJUMLAHKAN fee yang sudah tersimpan, gak ngitung fee. Order
-    // fee 0 di sini jadi gaji Rp 0 (GORECA 15–21 Okt 2026: semua rider Rp 0 karena
-    // Generate sebelum Hitung Fee). Tahan dulu, sama seperti Finalize/Publish.
+    // Hitung Fee otomatis SEBELUM guard & generate — nutup celah lama: Generate
+    // cuma MENJUMLAHKAN fee yang sudah tersimpan tanpa ngitung dulu, jadi order
+    // yang belum pernah di-Hitung-Fee (fee masih 0) ikut jadi gaji Rp 0 (kasus
+    // nyata GORECA 2x periode: 8–14 Okt kurang Rp 643.500, 15–21 Okt semua
+    // rider Rp 0). Jalan DULU di sini (bukan setelah confirmNoZeroFee) biar
+    // guard fee-0 di bawah ngecek data yang SUDAH dihitung, bukan data mentah
+    // yang emang masih kosong — kalau urutannya kebalik, dialog fee-0 bakal
+    // selalu muncul di periode baru walau sebentar lagi kehitung sendiri.
+    // Cuma jalan buat run per-client (bukan run "Semua Client", client_id
+    // null — skema rider bisa beda tiap client) dan bukan EWA (payout parsial
+    // rider terpilih, beda semantik) — dua kasus itu tetap pakai Hitung Fee
+    // manual seperti biasa.
+    if (activeRun.client_id && activeRun.kind !== "ewa") {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const adminToken = sess.session?.access_token ?? "";
+        const feeResult = await computeFeeForPeriod({
+          data: {
+            adminToken,
+            clientId: activeRun.client_id,
+            periodStart: activeRun.period_start,
+            periodEnd: activeRun.period_end,
+          },
+        });
+        if (!feeResult.computed) {
+          toast.message(`Hitung Fee dilewati: ${feeResult.reason ?? "tidak diketahui"}`);
+        }
+      } catch (e) {
+        return toast.error(`Gagal hitung fee otomatis: ${(e as Error).message}`);
+      }
+    }
     if (!(await confirmNoZeroFee(activeRun))) return;
     // Run yang udah difinalisasi ORANG LAIN (bukan yang lagi generate ulang
     // sekarang) — badge "Difinalisasi oleh X" bakal tetep nempel ke angka

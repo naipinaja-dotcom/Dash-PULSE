@@ -83,7 +83,7 @@ export interface PayrollWorkflowRunResult {
   feeSkipReason?: string;
 }
 
-interface FeeAutoComputeResult {
+export interface FeeAutoComputeResult {
   computed: boolean;
   reason?: string;
   rowCount?: number;
@@ -149,9 +149,14 @@ import {
 // Catch-up cron: sampai berapa menit setelah run_time client yang belum
 // dikerjakan masih boleh diambil tick berikutnya.
 const CATCH_UP_MINUTES = 180;
-// Function dibunuh ~300 detik setelah mulai (terbukti: batch 09:00 mati setelah
-// 5 client) — sisakan ruang buat client yang sedang jalan + tulis log + notif.
-const TICK_BUDGET_MS = 180_000;
+// Function dibunuh ~300 detik setelah mulai (terbukti: batch 09:00 2026-10-15
+// mati setelah 5 client, DAN batch 2026-10-22 mati lagi walau budget ini
+// sudah 180 detik — 1 client berat gampang makan >2 menit sendirian, budget
+// yang dicek CUMA di antar-client jadi gak sempat ke-trigger). Turunin ke 100
+// detik biar ruang sisa buat 1 client yang lagi jalan + tulis log + notif
+// lebih lega — DOWNSIDE: lebih sedikit client kebagian per tick, tapi catch-up
+// (CATCH_UP_MINUTES di atas) nutupin sisanya di tick 15-menitan berikutnya.
+const TICK_BUDGET_MS = 100_000;
 
 // Sudah "dikerjakan" = ada run non-draft, atau run draft yang sudah punya
 // payroll_details. Run draft KOSONG (mis. function mati di tengah pipeline)
@@ -238,7 +243,7 @@ async function loadClientPeriodSchedules(
 // calcScheme/calcAttendanceScheme/calcHybridScheme -> tulis fee -> audit log.
 // `committed_by` sengaja NULL (beda dari commit manual yang selalu ada user id)
 // biar tetap bisa dibedakan di fee_calculation_audit_log siapa yang commit.
-async function autoComputeFee(
+export async function autoComputeFee(
   admin: SupabaseAdmin,
   schemes: PricingScheme[],
   clientId: string,

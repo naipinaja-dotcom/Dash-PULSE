@@ -322,6 +322,7 @@ function PayrollPage() {
   // Ref di sini keupdate LANGSUNG (gak nunggu re-render), jadi klik ke-2
   // dalam sepersekian detik ke-tolak jelas, bukan diam-diam bikin baris dobel.
   const savingDeductionLock = useRef(false);
+  const nettingReq = useRef(0);
   const [addingDedForDetail, setAddingDedForDetail] = useState<string | null>(null);
   const [newDedTypeId, setNewDedTypeId] = useState<string | null>(null);
   const [spendControlOpen, setSpendControlOpen] = useState(false);
@@ -540,6 +541,10 @@ function PayrollPage() {
       )
       .lte("period_start", run.period_end)
       .gte("period_end", run.period_start)
+      // commit_invoice = tagihan ke CLIENT (revenue), bukan fee rider — jangan
+      // dicampur ke riwayat Hitung Fee payroll (GORECA: Rp 3,51 jt muncul di run
+      // rider padahal itu total invoice 12–18 Okt).
+      .neq("action", "commit_invoice")
       .order("created_at", { ascending: false });
     if (run.client_id) q = q.eq("client_id", run.client_id);
     const { data, error } = await q;
@@ -558,6 +563,10 @@ function PayrollPage() {
   // Cuma nyentuh run berstatus draft (never finalized/published) biar gak
   // ganggu run yang udah settel.
   const checkNettingCandidates = async (run: Run) => {
+    // Token request: pindah run bikin efek ini jalan pakai `details` run SEBELUMNYA
+    // (belum ke-reload), dan hasil async-nya bisa mendarat SETELAH state dikosongkan
+    // — banner "kekurangan gross" jadi nyangkut di run yang belum punya detail.
+    const req = ++nettingReq.current;
     // total_deduction/gross_earning numeric dari Supabase balik sebagai STRING
     // — `>` mentah di string itu perbandingan leksikografik (per-karakter),
     // bukan angka (mis. "9000" dianggap "lebih besar" dari "15000" karena '9'
@@ -579,6 +588,7 @@ function PayrollPage() {
       .eq("payroll_runs.status", "draft")
       .lte("payroll_runs.period_start", run.period_end)
       .gte("payroll_runs.period_end", run.period_start);
+    if (req !== nettingReq.current) return; // sudah ada request yang lebih baru / state dikosongkan
     if (!siblingDetails?.length) return setNettingCandidates([]);
 
     const candidates: NettingCandidate[] = [];
@@ -623,7 +633,10 @@ function PayrollPage() {
 
   useEffect(() => {
     if (activeRun && details.length) checkNettingCandidates(activeRun);
-    else setNettingCandidates([]);
+    else {
+      nettingReq.current++; // batalin request netting yang masih jalan
+      setNettingCandidates([]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRun, details]);
 

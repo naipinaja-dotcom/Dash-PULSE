@@ -987,6 +987,10 @@ function PayrollPage() {
   // generatePayrollDetails() yang sama).
   const generate = async () => {
     if (!activeRun) return;
+    // Generate cuma MENJUMLAHKAN fee yang sudah tersimpan, gak ngitung fee. Order
+    // fee 0 di sini jadi gaji Rp 0 (GORECA 15–21 Okt 2026: semua rider Rp 0 karena
+    // Generate sebelum Hitung Fee). Tahan dulu, sama seperti Finalize/Publish.
+    if (!(await confirmNoZeroFee(activeRun))) return;
     // Run yang udah difinalisasi ORANG LAIN (bukan yang lagi generate ulang
     // sekarang) — badge "Difinalisasi oleh X" bakal tetep nempel ke angka
     // approval LAMA walau detailnya diitung ulang sekarang, jadi bisa

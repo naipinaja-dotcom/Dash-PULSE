@@ -23,11 +23,12 @@ const STATUSES =
 const PAGE_SIZE = 500;
 const MAX_WORKERS = 6;
 const MAX_PAGES = 40; // pengaman (~20k baris) — 1 businessUnit/7hari biasanya < 10 halaman
-// ponytail: 90 hari — Noovoleum Cleaning ada order dibuat 14 Agu tapi COMPLETED
-// 8 Okt (gap ~55 hari), lolos dari buffer 14 hari lama dan gak pernah ke-sync.
-// Harga: tarikan lebih banyak halaman (MAX_PAGES tetap jadi pengaman). Kalau ada
-// order dengan gap > 90 hari, kelewat lagi diam-diam — naikin lagi angkanya.
-const CREATED_BUFFER_DAYS = 90; // mundur tarikan createdAt biar nangkap order yg dibuat sebelum periode tapi selesai di dalam periode
+// ponytail: 20 hari. Buffer 90 hari bikin tarikan 98 hari per BU dan tombol "Tarik &
+// Sync dari API" kena "mgmt API error 400" (2026-10-22, hari gajian) — kemungkinan
+// halaman terlalu dalam. Order dengan gap dibuat→selesai > 20 hari (mis. Noovoleum
+// Cleaning: dibuat 14 Agu, COMPLETED 8 Okt, gap ~55 hari) TIDAK ketarik lagi
+// otomatis — kalau ketemu lagi, naikin angka ini atau sync per rentang sempit.
+const CREATED_BUFFER_DAYS = 20; // mundur tarikan createdAt biar nangkap order yg dibuat sebelum periode tapi selesai di dalam periode
 const RETRIES = 3;
 const JKT_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Jakarta = UTC+7
 

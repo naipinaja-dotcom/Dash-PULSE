@@ -20,12 +20,16 @@ const STATUSES =
   "PENDING_PAYMENT,QUEUEING,ALLOCATING,PENDING_PICKUP,PICKING_UP,PREPARING," +
   "PENDING_DELIVERY,IN_DELIVERY,COMPLETED,NOT_VERIFIED,VERIFIED,FAILED," +
   "IN_RETURN,PENDING_RETURN,FAILED_IN_RETURN,ON_HOLD,RETURNED,CANCELLED,DISPOSED";
-const PAGE_SIZE = 500;
+// mgmt API mulai menolak size>100 per 2026-10-22 ("size must be at most 100",
+// errorCode VALIDATION_FAILED) — sebelumnya nerima 500 tanpa keluhan sejak kode
+// ini ada (Juli 2026). Bukan perubahan di sisi kita; API-nya yang baru
+// memperketat validasi. Turunkan lagi kalau ternyata batasnya lebih kecil dari 100.
+const PAGE_SIZE = 100;
 const MAX_WORKERS = 6;
-const MAX_PAGES = 40; // pengaman (~20k baris) — 1 businessUnit/7hari biasanya < 10 halaman
-// ponytail: 20 hari. Buffer 90 hari bikin tarikan 98 hari per BU dan tombol "Tarik &
-// Sync dari API" kena "mgmt API error 400" (2026-10-22, hari gajian) — kemungkinan
-// halaman terlalu dalam. Order dengan gap dibuat→selesai > 20 hari (mis. Noovoleum
+// pengaman total baris (PAGE_SIZE x MAX_PAGES ~20k) — dinaikkan sebanding saat
+// PAGE_SIZE diturunkan 500->100, biar kapasitas tarikan gak ikut menyusut.
+const MAX_PAGES = 200;
+// ponytail: 20 hari — order dengan gap dibuat→selesai > 20 hari (mis. Noovoleum
 // Cleaning: dibuat 14 Agu, COMPLETED 8 Okt, gap ~55 hari) TIDAK ketarik lagi
 // otomatis — kalau ketemu lagi, naikin angka ini atau sync per rentang sempit.
 const CREATED_BUFFER_DAYS = 20; // mundur tarikan createdAt biar nangkap order yg dibuat sebelum periode tapi selesai di dalam periode

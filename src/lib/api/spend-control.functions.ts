@@ -8,11 +8,20 @@ import { getServerConfig } from "@/lib/config.server";
 async function requireAdmin(adminToken: string) {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(adminToken);
-  if (userErr || !userRes.user) throw new Error(`Sesi admin tidak valid: ${userErr?.message ?? "no user"}`);
-  const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", userRes.user.id);
+  if (userErr || !userRes.user)
+    throw new Error(`Sesi admin tidak valid: ${userErr?.message ?? "no user"}`);
+  const { data: roles } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userRes.user.id);
   if (!roles?.some((r) => r.role === "admin")) throw new Error("Hanya admin yang bisa lakukan ini");
   return userRes.user;
 }
+
+// Domain publik Pulse — sama persis yang dipakai spendControlAttachmentUrl()
+// di admin.payroll.tsx buat link attachment, dipakai lagi di sini buat
+// callbackUrl (lihat bawah).
+const APP_URL = "https://dash-payroll-engine.vercel.app";
 
 const RowSchema = z.object({
   clientId: z.string().min(1),
@@ -58,8 +67,10 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const admin = await requireAdmin(data.adminToken);
     const requesterEmail = admin.email ?? "";
-    if (!requesterEmail) throw new Error("Akun admin tidak punya email — Spend Control butuh requesterEmail");
-    const requester = (admin.user_metadata as { full_name?: string } | null)?.full_name ?? requesterEmail;
+    if (!requesterEmail)
+      throw new Error("Akun admin tidak punya email — Spend Control butuh requesterEmail");
+    const requester =
+      (admin.user_metadata as { full_name?: string } | null)?.full_name ?? requesterEmail;
     const base = getServerConfig().basecampSpendControlUrl;
     const attachmentUrl = data.attachmentUrl;
     const supabaseAdmin = getSupabaseAdmin();
@@ -71,7 +82,8 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
       .eq("payroll_run_id", data.payrollRunId)
       .in("client_id", clientIds)
       .order("attempt", { ascending: false });
-    if (priorPushesError) throw new Error(`Gagal cek riwayat Spend Control: ${priorPushesError.message}`);
+    if (priorPushesError)
+      throw new Error(`Gagal cek riwayat Spend Control: ${priorPushesError.message}`);
 
     // Karena hasilnya diurutkan attempt desc, entri pertama setiap client adalah
     // pengajuan terakhir yang akan digantikan oleh re-push berikutnya.
@@ -84,7 +96,9 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
       (clientId) => latestPushByClient.has(clientId) && !confirmedRepushes.has(clientId),
     );
     if (unconfirmedRepush) {
-      throw new Error("Konfirmasi kirim ulang diperlukan untuk pengajuan Spend Control yang sudah pernah terkirim");
+      throw new Error(
+        "Konfirmasi kirim ulang diperlukan untuk pengajuan Spend Control yang sudah pernah terkirim",
+      );
     }
 
     const results: RowResult[] = [];
@@ -106,16 +120,28 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             vendorName: row.vendorName,
             requester,
             requesterEmail,
+            // Tanpa callbackUrl, Basecamp gak akan pernah nembak webhook kita
+            // sama sekali (lihat spend-request-api-integration.md §10) — ini
+            // yang bikin auto-publish lewat api.basecamp-webhook.ts gak
+            // pernah ke-trigger walau request-nya completed di Basecamp.
+            // webhookToken dikirim balik via header x-api-key, kita pakai
+            // basecampWebhookSecret yang sama (lihat api.basecamp-webhook.ts).
+            callbackUrl: `${APP_URL}/api/basecamp-webhook`,
             externalReference: {
               ...row.externalReference,
               spendControlAttempt: attempt,
               supersedesRequestId: previous?.request_id ?? null,
+              webhookToken: getServerConfig().basecampWebhookSecret,
             },
           }),
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) {
-          results.push({ clientId: row.clientId, ok: false, error: body?.error ?? `HTTP ${res.status}` });
+          results.push({
+            clientId: row.clientId,
+            ok: false,
+            error: body?.error ?? `HTTP ${res.status}`,
+          });
           continue;
         }
         // Best-effort: lampirkan link admin payroll sebagai bukti pendukung.
@@ -124,13 +150,19 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
           await fetch(`${base}/api/spend-requests/${body.id}/attachments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "Dash PULSE — Payroll Run", linkUrl: attachmentUrl, user: requester, userEmail: requesterEmail }),
+            body: JSON.stringify({
+              name: "Dash PULSE — Payroll Run",
+              linkUrl: attachmentUrl,
+              user: requester,
+              userEmail: requesterEmail,
+            }),
           }).catch(() => {});
         }
         // Simpan setiap attempt, bukan upsert: re-push membuat request baru dan
         // request lama harus tetap bisa diaudit/di-hold di Spend Control.
-        const { error: pushHistoryError } = await supabaseAdmin.from("spend_control_pushes").insert(
-          {
+        const { error: pushHistoryError } = await supabaseAdmin
+          .from("spend_control_pushes")
+          .insert({
             payroll_run_id: data.payrollRunId,
             client_id: row.clientId,
             request_id: body.id,
@@ -143,9 +175,11 @@ export const pushSpendControlRequests = createServerFn({ method: "POST" })
             attempt,
             is_repush: !!previous,
             supersedes_request_id: previous?.request_id ?? null,
-          },
-        );
-        if (pushHistoryError) throw new Error(`Payment request sudah dibuat, tetapi histori push gagal disimpan: ${pushHistoryError.message}`);
+          });
+        if (pushHistoryError)
+          throw new Error(
+            `Payment request sudah dibuat, tetapi histori push gagal disimpan: ${pushHistoryError.message}`,
+          );
         results.push({
           clientId: row.clientId,
           ok: true,

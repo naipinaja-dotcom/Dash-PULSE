@@ -11,10 +11,13 @@ import { getPostHogClient } from "@/utils/posthog-server";
 // payroll-publish.ts), gak perlu tombol "Publish" manual lagi. Tombol manual
 // tetap ada sebagai fallback kalau webhook ini gagal/telat.
 //
-// PAYLOAD BELUM DIKONFIRMASI ke kontrak asli Basecamp — ini asumsi wajar
-// (requestId, status, completedAt opsional) sampai dicek ke tim Basecamp.
-// Auth: header `x-basecamp-webhook-secret` harus sama persis dgn env
-// BASECAMP_WEBHOOK_SECRET (sama pola dgn x-pnl-push-secret dkk).
+// Payload & auth dikonfirmasi dari spend-request-api-integration.md §10:
+// Basecamp cuma manggil callbackUrl yang kita kirim saat create (lihat
+// spend-control.functions.ts) dan body-nya { spendRequestId, status,
+// requestCode, title, amount, currency, externalReference, reason,
+// timestamp } — BUKAN { requestId, completedAt } seperti asumsi lama.
+// Auth-nya pun bukan header custom kita: Basecamp kirim balik
+// externalReference.webhookToken apa adanya lewat header `x-api-key`.
 function verifyBasecampWebhookSecret(headerValue: string | null): boolean {
   const expected = getServerConfig().basecampWebhookSecret;
   if (!expected) return false;
@@ -32,22 +35,17 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
     handlers: {
       POST: async () => {
         const request = getRequest();
-        const secretHeader = request?.headers.get("x-basecamp-webhook-secret") ?? null;
-        if (!verifyBasecampWebhookSecret(secretHeader)) {
+        const apiKeyHeader = request?.headers.get("x-api-key") ?? null;
+        if (!verifyBasecampWebhookSecret(apiKeyHeader)) {
           return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
             status: 401,
             headers: { "Content-Type": "application/json" },
           });
         }
 
-        // TODO(sementara): hapus log ini begitu kontrak payload Basecamp udah
-        // dikonfirmasi cocok sama { requestId, status, completedAt } di bawah —
-        // cuma buat liat PERSIS apa yang Basecamp kirim pertama kali (cek
-        // Vercel function logs buat "/api/basecamp-webhook") tanpa nebak lagi.
         const rawBody = await request!.text();
-        console.log("[basecamp-webhook] raw body:", rawBody);
 
-        let body: { requestId?: string; status?: string; completedAt?: string };
+        let body: { spendRequestId?: string; status?: string; timestamp?: string };
         try {
           body = JSON.parse(rawBody);
         } catch {
@@ -56,9 +54,9 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
             headers: { "Content-Type": "application/json" },
           });
         }
-        const requestId = body.requestId?.trim();
+        const requestId = body.spendRequestId?.trim();
         if (!requestId) {
-          return new Response(JSON.stringify({ ok: false, error: "requestId wajib diisi" }), {
+          return new Response(JSON.stringify({ ok: false, error: "spendRequestId wajib diisi" }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
           });
@@ -107,7 +105,7 @@ export const Route = createFileRoute("/api/basecamp-webhook")({
             .update({
               basecamp_status: status || "unknown",
               basecamp_completed_at:
-                status === "completed" ? (body.completedAt ?? new Date().toISOString()) : null,
+                status === "completed" ? (body.timestamp ?? new Date().toISOString()) : null,
             })
             .eq("id", push.id);
 

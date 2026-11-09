@@ -237,6 +237,7 @@ export type Database = {
           contact_person: string | null
           contract: string | null
           created_at: string | null
+          ewa_admin_fee_per_request: number
           id: string
           name: string
           phone: string | null
@@ -251,6 +252,7 @@ export type Database = {
           contact_person?: string | null
           contract?: string | null
           created_at?: string | null
+          ewa_admin_fee_per_request?: number
           id?: string
           name: string
           phone?: string | null
@@ -265,6 +267,7 @@ export type Database = {
           contact_person?: string | null
           contract?: string | null
           created_at?: string | null
+          ewa_admin_fee_per_request?: number
           id?: string
           name?: string
           phone?: string | null
@@ -464,6 +467,7 @@ export type Database = {
         Row: {
           awb: string | null
           batch_id: string | null
+          city: string | null
           client_id: string | null
           created_at: string
           dash_delivery_id: string | null
@@ -488,6 +492,7 @@ export type Database = {
         Insert: {
           awb?: string | null
           batch_id?: string | null
+          city?: string | null
           client_id?: string | null
           created_at?: string
           dash_delivery_id?: string | null
@@ -512,6 +517,7 @@ export type Database = {
         Update: {
           awb?: string | null
           batch_id?: string | null
+          city?: string | null
           client_id?: string | null
           created_at?: string
           dash_delivery_id?: string | null
@@ -711,6 +717,45 @@ export type Database = {
           },
         ]
       }
+      kasbon_recipients: {
+        Row: {
+          account_holder: string
+          account_number: string
+          active: boolean
+          bank_name: string
+          created_at: string
+          id: string
+          name: string
+          no_transfer_needed: boolean
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_holder: string
+          account_number: string
+          active?: boolean
+          bank_name: string
+          created_at?: string
+          id?: string
+          name: string
+          no_transfer_needed?: boolean
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_holder?: string
+          account_number?: string
+          active?: boolean
+          bank_name?: string
+          created_at?: string
+          id?: string
+          name?: string
+          no_transfer_needed?: boolean
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       molis_types: {
         Row: {
           active: boolean
@@ -738,33 +783,42 @@ export type Database = {
       payroll_deductions: {
         Row: {
           amount: number
+          closed_month: string | null
           created_at: string
           deduction_type_id: string | null
           description: string | null
           detail_id: string | null
           id: string
           installment_id: string | null
+          kasbon_recipient_id: string | null
           paid_amount: number | null
+          rider_id: string | null
         }
         Insert: {
           amount?: number
+          closed_month?: string | null
           created_at?: string
           deduction_type_id?: string | null
           description?: string | null
           detail_id?: string | null
           id?: string
           installment_id?: string | null
+          kasbon_recipient_id?: string | null
           paid_amount?: number | null
+          rider_id?: string | null
         }
         Update: {
           amount?: number
+          closed_month?: string | null
           created_at?: string
           deduction_type_id?: string | null
           description?: string | null
           detail_id?: string | null
           id?: string
           installment_id?: string | null
+          kasbon_recipient_id?: string | null
           paid_amount?: number | null
+          rider_id?: string | null
         }
         Relationships: [
           {
@@ -793,6 +847,20 @@ export type Database = {
             columns: ["installment_id"]
             isOneToOne: false
             referencedRelation: "rider_installments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_deductions_kasbon_recipient_id_fkey"
+            columns: ["kasbon_recipient_id"]
+            isOneToOne: false
+            referencedRelation: "kasbon_recipients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_deductions_rider_id_fkey"
+            columns: ["rider_id"]
+            isOneToOne: false
+            referencedRelation: "riders"
             referencedColumns: ["id"]
           },
         ]
@@ -870,6 +938,68 @@ export type Database = {
           },
         ]
       }
+      payroll_follow_up_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          detail_id: string
+          exported_at: string | null
+          hold_id: string
+          id: string
+          rider_id: string
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          detail_id: string
+          exported_at?: string | null
+          hold_id: string
+          id?: string
+          rider_id: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          detail_id?: string
+          exported_at?: string | null
+          hold_id?: string
+          id?: string
+          rider_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_follow_up_payments_detail_id_fkey"
+            columns: ["detail_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_follow_up_payments_detail_id_fkey"
+            columns: ["detail_id"]
+            isOneToOne: false
+            referencedRelation: "report_summary_weekly"
+            referencedColumns: ["detail_id"]
+          },
+          {
+            foreignKeyName: "payroll_follow_up_payments_hold_id_fkey"
+            columns: ["hold_id"]
+            isOneToOne: true
+            referencedRelation: "payroll_payment_holds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_follow_up_payments_rider_id_fkey"
+            columns: ["rider_id"]
+            isOneToOne: false
+            referencedRelation: "riders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_incentives: {
         Row: {
           amount: number
@@ -906,6 +1036,73 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "report_summary_weekly"
             referencedColumns: ["detail_id"]
+          },
+        ]
+      }
+      payroll_payment_holds: {
+        Row: {
+          created_at: string
+          detail_id: string
+          held_at: string
+          held_by: string | null
+          id: string
+          reason: string
+          released_at: string | null
+          released_by: string | null
+          rider_id: string
+          show_to_rider: boolean
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          detail_id: string
+          held_at?: string
+          held_by?: string | null
+          id?: string
+          reason: string
+          released_at?: string | null
+          released_by?: string | null
+          rider_id: string
+          show_to_rider?: boolean
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          detail_id?: string
+          held_at?: string
+          held_by?: string | null
+          id?: string
+          reason?: string
+          released_at?: string | null
+          released_by?: string | null
+          rider_id?: string
+          show_to_rider?: boolean
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_payment_holds_detail_id_fkey"
+            columns: ["detail_id"]
+            isOneToOne: true
+            referencedRelation: "payroll_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_payment_holds_detail_id_fkey"
+            columns: ["detail_id"]
+            isOneToOne: true
+            referencedRelation: "report_summary_weekly"
+            referencedColumns: ["detail_id"]
+          },
+          {
+            foreignKeyName: "payroll_payment_holds_rider_id_fkey"
+            columns: ["rider_id"]
+            isOneToOne: false
+            referencedRelation: "riders"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1009,12 +1206,14 @@ export type Database = {
           finalized_at: string | null
           finalized_by: string | null
           id: string
+          kind: string
           name: string
           period_end: string
           period_start: string
           period_type: string
           published_at: string | null
           published_by: string | null
+          rider_scope: string[] | null
           status: string
         }
         Insert: {
@@ -1023,12 +1222,14 @@ export type Database = {
           finalized_at?: string | null
           finalized_by?: string | null
           id?: string
+          kind?: string
           name: string
           period_end: string
           period_start: string
           period_type?: string
           published_at?: string | null
           published_by?: string | null
+          rider_scope?: string[] | null
           status?: string
         }
         Update: {
@@ -1037,12 +1238,14 @@ export type Database = {
           finalized_at?: string | null
           finalized_by?: string | null
           id?: string
+          kind?: string
           name?: string
           period_end?: string
           period_start?: string
           period_type?: string
           published_at?: string | null
           published_by?: string | null
+          rider_scope?: string[] | null
           status?: string
         }
         Relationships: [
@@ -1308,9 +1511,11 @@ export type Database = {
           cycle_start_day: number | null
           daily_rate: number | null
           deduction_type_id: string | null
+          ewa_request_code: string | null
           id: string
           installment_count: number | null
           installments_paid: number
+          kasbon_recipient_id: string | null
           mode: string
           molis_type_id: string | null
           next_deduction_date: string | null
@@ -1329,9 +1534,11 @@ export type Database = {
           cycle_start_day?: number | null
           daily_rate?: number | null
           deduction_type_id?: string | null
+          ewa_request_code?: string | null
           id?: string
           installment_count?: number | null
           installments_paid?: number
+          kasbon_recipient_id?: string | null
           mode?: string
           molis_type_id?: string | null
           next_deduction_date?: string | null
@@ -1350,9 +1557,11 @@ export type Database = {
           cycle_start_day?: number | null
           daily_rate?: number | null
           deduction_type_id?: string | null
+          ewa_request_code?: string | null
           id?: string
           installment_count?: number | null
           installments_paid?: number
+          kasbon_recipient_id?: string | null
           mode?: string
           molis_type_id?: string | null
           next_deduction_date?: string | null
@@ -1375,6 +1584,13 @@ export type Database = {
             columns: ["deduction_type_id"]
             isOneToOne: false
             referencedRelation: "deduction_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rider_installments_kasbon_recipient_id_fkey"
+            columns: ["kasbon_recipient_id"]
+            isOneToOne: false
+            referencedRelation: "kasbon_recipients"
             referencedColumns: ["id"]
           },
           {
@@ -1473,15 +1689,42 @@ export type Database = {
           },
         ]
       }
+      spatial_ref_sys: {
+        Row: {
+          auth_name: string | null
+          auth_srid: number | null
+          proj4text: string | null
+          srid: number
+          srtext: string | null
+        }
+        Insert: {
+          auth_name?: string | null
+          auth_srid?: number | null
+          proj4text?: string | null
+          srid: number
+          srtext?: string | null
+        }
+        Update: {
+          auth_name?: string | null
+          auth_srid?: number | null
+          proj4text?: string | null
+          srid?: number
+          srtext?: string | null
+        }
+        Relationships: []
+      }
       spend_control_pushes: {
         Row: {
           amount: number
           attempt: number
+          basecamp_completed_at: string | null
+          basecamp_status: string
           client_id: string
           department: string
           id: string
           is_repush: boolean
           payroll_run_id: string
+          published_at: string | null
           pushed_at: string
           pushed_by: string | null
           request_code: string | null
@@ -1493,11 +1736,14 @@ export type Database = {
         Insert: {
           amount: number
           attempt?: number
+          basecamp_completed_at?: string | null
+          basecamp_status?: string
           client_id: string
           department: string
           id?: string
           is_repush?: boolean
           payroll_run_id: string
+          published_at?: string | null
           pushed_at?: string
           pushed_by?: string | null
           request_code?: string | null
@@ -1509,11 +1755,14 @@ export type Database = {
         Update: {
           amount?: number
           attempt?: number
+          basecamp_completed_at?: string | null
+          basecamp_status?: string
           client_id?: string
           department?: string
           id?: string
           is_repush?: boolean
           payroll_run_id?: string
+          published_at?: string | null
           pushed_at?: string
           pushed_by?: string | null
           request_code?: string | null
@@ -1538,30 +1787,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      spatial_ref_sys: {
-        Row: {
-          auth_name: string | null
-          auth_srid: number | null
-          proj4text: string | null
-          srid: number
-          srtext: string | null
-        }
-        Insert: {
-          auth_name?: string | null
-          auth_srid?: number | null
-          proj4text?: string | null
-          srid: number
-          srtext?: string | null
-        }
-        Update: {
-          auth_name?: string | null
-          auth_srid?: number | null
-          proj4text?: string | null
-          srid?: number
-          srtext?: string | null
-        }
-        Relationships: []
       }
       upload_batches: {
         Row: {
@@ -2033,6 +2258,28 @@ export type Database = {
       regenerate_payroll_details: {
         Args: { p_deductions?: Json; p_details?: Json; p_run_id: string }
         Returns: undefined
+      }
+      release_held_payroll_payment: {
+        Args: { p_hold_id: string }
+        Returns: string
+      }
+      replace_live_attendance: {
+        Args: {
+          p_client_id: string
+          p_from: string
+          p_rows?: Json
+          p_to: string
+        }
+        Returns: {
+          inserted: number
+        }[]
+      }
+      replace_live_deliveries: {
+        Args: { p_client_id: string; p_rows?: Json }
+        Returns: {
+          inserted: number
+          overwritten: number
+        }[]
       }
       st_3dclosestpoint: {
         Args: { geom1: unknown; geom2: unknown }
@@ -2628,7 +2875,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "superadmin" | "rider"
+      app_role: "admin" | "superadmin" | "rider" | "master_admin"
       calculation_type:
         | "NORMAL_AWB"
         | "ADDRESS_DEDUP"
@@ -2661,12 +2908,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2690,11 +2937,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2715,11 +2962,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2740,11 +2987,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2757,11 +3004,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2773,7 +3020,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "superadmin", "rider"],
+      app_role: ["admin", "superadmin", "rider", "master_admin"],
       calculation_type: [
         "NORMAL_AWB",
         "ADDRESS_DEDUP",

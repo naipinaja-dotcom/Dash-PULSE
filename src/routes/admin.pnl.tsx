@@ -9,6 +9,7 @@ import type { PricingScheme } from "@/lib/pricing-types";
 import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, type ClientPnl } from "@/lib/pnl-engine";
 import { fetchMolisRevenueCost } from "@/lib/molis-cost";
+import { fetchIncentiveCostByClient } from "@/lib/incentive-cost";
 import { formatRupiah } from "@/lib/format";
 import { useIntelligenceDate } from "@/lib/use-intelligence-date";
 import { useT } from "@/lib/i18n";
@@ -57,7 +58,7 @@ function PnlPage() {
     setRunning(true);
     setRows(null);
     try {
-      const [all, attAll, molisCost] = await Promise.all([
+      const [all, attAll, molisCost, incentiveCost] = await Promise.all([
         fetchAllRows<DeliveryRow & { client_id: string | null }>((c, f, t) =>
           c
             .from("delivery_records")
@@ -79,8 +80,17 @@ function PnlPage() {
             .range(f, t),
         ),
         fetchMolisRevenueCost(from, to),
+        fetchIncentiveCostByClient(from, to),
       ]);
-      const { perClient } = computePnl(all, schemes, clients, attAll, molisCost);
+      const { perClient } = computePnl(
+        all,
+        schemes,
+        clients,
+        attAll,
+        molisCost,
+        undefined,
+        incentiveCost,
+      );
       setRows(perClient);
       if (perClient.length === 0) toast.message("Tidak ada data pengiriman di rentang ini.");
     } catch (e) {

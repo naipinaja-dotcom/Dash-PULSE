@@ -30,6 +30,9 @@ export const DEDUCTION_PRIORITY: Record<string, number> = {
   // EWA = upah yang SUDAH dicairkan duluan, jadi harus kepotong paling pertama
   // (kode yang gak terdaftar di sini jatuh ke 99 = paling akhir, salah buat EWA).
   EWA: 0,
+  // Biaya admin per pengajuan EWA — nempel sama kewajiban EWA, kepotong di
+  // prioritas yang sama (lihat hitungan ewaAdminFee di generatePayrollDetails).
+  EWA_FEE: 0,
   ADM: 1,
   BPJS: 2,
   RUSAK: 3,
@@ -761,6 +764,10 @@ export async function generatePayrollDetails(
   // gak kebayar dobel. net_pay tiap baris run EWA = jumlah yang beneran cair,
   // itu yang dipotong di run reguler. Dihitung ulang tiap generate (idempoten).
   const ewaPaidByRider = new Map<string, { amount: number; periods: string[] }>();
+  // Jumlah baris EWA detail (= jumlah pengajuan/pencairan, 1 run EWA = 1
+  // pengajuan batch) per rider — dasar hitungan Admin EWA (rate x count),
+  // BEDA dari ewaInfo.periods yang di-dedup per string periode buat deskripsi.
+  const ewaRequestCountByRider = new Map<string, number>();
   let ewaDeductionTypeId: string | null = null;
   if (!isEwa) {
     let ewaRunQ = (client as any)
@@ -770,7 +777,9 @@ export async function generatePayrollDetails(
       .eq("status", "published")
       .lte("period_start", run.period_end)
       .gte("period_end", run.period_start);
-    ewaRunQ = run.client_id ? ewaRunQ.eq("client_id", run.client_id) : ewaRunQ.is("client_id", null);
+    ewaRunQ = run.client_id
+      ? ewaRunQ.eq("client_id", run.client_id)
+      : ewaRunQ.is("client_id", null);
     const { data: ewaRuns } = await ewaRunQ;
     const ewaRunIds = ((ewaRuns ?? []) as any[]).map((r) => r.id);
     if (ewaRunIds.length > 0) {
@@ -788,6 +797,7 @@ export async function generatePayrollDetails(
         const p = periodOf.get(d.run_id);
         if (p && !cur.periods.includes(p)) cur.periods.push(p);
         ewaPaidByRider.set(d.rider_id, cur);
+        ewaRequestCountByRider.set(d.rider_id, (ewaRequestCountByRider.get(d.rider_id) ?? 0) + 1);
       }
       if (ewaPaidByRider.size > 0) {
         const { data: ewaType } = await (client as any)
@@ -797,6 +807,29 @@ export async function generatePayrollDetails(
           .maybeSingle();
         ewaDeductionTypeId = ewaType?.id ?? null;
       }
+    }
+  }
+
+  // Admin EWA (rate x jumlah pengajuan, lihat ewaRequestCountByRider di atas)
+  // — rate beda-beda per client/project (clients.ewa_admin_fee_per_request),
+  // dulunya manual di-entry pakai tipe EWA yang sama dgn pokok pencairan
+  // (numpuk jadi 1 baris, rawan salah angka) — sekarang dipisah & otomatis.
+  let ewaFeePerRequest = 0;
+  let ewaFeeDeductionTypeId: string | null = null;
+  if (!isEwa && run.client_id && ewaRequestCountByRider.size > 0) {
+    const { data: clientRow } = await (client as any)
+      .from("clients")
+      .select("ewa_admin_fee_per_request")
+      .eq("id", run.client_id)
+      .maybeSingle();
+    ewaFeePerRequest = Number(clientRow?.ewa_admin_fee_per_request || 0);
+    if (ewaFeePerRequest > 0) {
+      const { data: ewaFeeType } = await (client as any)
+        .from("deduction_types")
+        .select("id")
+        .eq("code", "EWA_FEE")
+        .maybeSingle();
+      ewaFeeDeductionTypeId = ewaFeeType?.id ?? null;
     }
   }
 
@@ -1027,7 +1060,9 @@ export async function generatePayrollDetails(
     // null kalau gak ada run EWA overlap atau tipe EWA gak ketemu).
     const ewaInfo = ewaDeductionTypeId ? ewaPaidByRider.get(rider.id) : undefined;
     const ewaAmount = ewaInfo ? ewaInfo.amount : 0;
-    const totalDed = installTotal + autoTotal + ewaAmount;
+    const ewaRequestCount = ewaFeeDeductionTypeId ? (ewaRequestCountByRider.get(rider.id) ?? 0) : 0;
+    const ewaAdminFee = ewaFeePerRequest * ewaRequestCount;
+    const totalDed = installTotal + autoTotal + ewaAmount + ewaAdminFee;
     const net = Math.max(0, gross - totalDed);
     const detailId = crypto.randomUUID();
     // Prioritaskan client dari run (deliveries/attendance di atas udah
@@ -1113,6 +1148,15 @@ export async function generatePayrollDetails(
         installment_id: null,
         description: `EWA dibayar lebih awal (${ewaInfo!.periods.join(", ")})`,
         amount: ewaAmount,
+      });
+    }
+    if (ewaAdminFee > 0 && ewaFeeDeductionTypeId) {
+      deductionsToInsert.push({
+        detail_id: detailId,
+        deduction_type_id: ewaFeeDeductionTypeId,
+        installment_id: null,
+        description: `Admin EWA (${ewaRequestCount}x pengajuan x Rp${ewaFeePerRequest.toLocaleString("id-ID")})`,
+        amount: ewaAdminFee,
       });
     }
   }

@@ -9,6 +9,7 @@ import type { PricingScheme } from "@/lib/pricing-types";
 import type { DeliveryRow, AttendanceLogRow } from "@/lib/pricing-calc";
 import { computePnl, buildTrend, type ClientPnl, type TrendGranularity } from "@/lib/pnl-engine";
 import { fetchMolisRevenueCost } from "@/lib/molis-cost";
+import { fetchIncentiveCostByClient } from "@/lib/incentive-cost";
 import { formatRupiah } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -105,7 +106,12 @@ function ExecutiveDashboard() {
   };
 
   const [initialized, setInitialized] = useState(false);
-  const tick = useLiveTick(["upload_batches", "pnl_weekly_snapshots", "clients", "pricing_schemes"]);
+  const tick = useLiveTick([
+    "upload_batches",
+    "pnl_weekly_snapshots",
+    "clients",
+    "pricing_schemes",
+  ]);
   useEffect(() => {
     (async () => {
       const [{ data: clientsData }, schemesData] = await Promise.all([
@@ -198,7 +204,7 @@ function ExecutiveDashboard() {
     setRunning(true);
     setPerClient(null);
     try {
-      const [all, attAll, molisCost] = await Promise.all([
+      const [all, attAll, molisCost, incentiveCost] = await Promise.all([
         fetchAllRows<DeliveryRow & { client_id: string | null }>((c, f, t) =>
           c
             .from("delivery_records")
@@ -220,8 +226,17 @@ function ExecutiveDashboard() {
             .range(f, t),
         ),
         fetchMolisRevenueCost(from, to),
+        fetchIncentiveCostByClient(from, to),
       ]);
-      const { perClient: pc } = computePnl(all, schemes, clients, attAll, molisCost);
+      const { perClient: pc } = computePnl(
+        all,
+        schemes,
+        clients,
+        attAll,
+        molisCost,
+        undefined,
+        incentiveCost,
+      );
       setPerClient(pc);
       if (pc.length === 0) toast.message("Tidak ada data pengiriman di rentang ini.");
 

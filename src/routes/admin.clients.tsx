@@ -17,6 +17,7 @@ import {
   saveClientExportTemplate,
 } from "@/lib/export-template";
 import { loadApiProviders } from "@/lib/api/providers.functions";
+import { parseRupiah, formatRupiah } from "@/lib/format";
 
 export const Route = createFileRoute("/admin/clients")({ component: ClientsPage });
 
@@ -31,6 +32,7 @@ type Client = {
   active: boolean;
   contract: string | null;
   created_at: string;
+  ewa_admin_fee_per_request: number | null;
 };
 
 // Map calc_type → label
@@ -99,9 +101,15 @@ function ClientsPage() {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token ?? "";
       const { providers } = await loadApiProviders({ data: { token } });
-      const { data: existing } = await (supabase as any).from("clients").select("id, name, code, provider_id");
-      const byName = new Map<string, any>((existing ?? []).map((c: any) => [c.name.trim().toLowerCase(), c]));
-      const haveCode = new Set((existing ?? []).map((c: any) => (c.code ?? "").trim().toUpperCase()));
+      const { data: existing } = await (supabase as any)
+        .from("clients")
+        .select("id, name, code, provider_id");
+      const byName = new Map<string, any>(
+        (existing ?? []).map((c: any) => [c.name.trim().toLowerCase(), c]),
+      );
+      const haveCode = new Set(
+        (existing ?? []).map((c: any) => (c.code ?? "").trim().toUpperCase()),
+      );
 
       let created = 0;
       let linked = 0;
@@ -156,7 +164,9 @@ function ClientsPage() {
         fetchAllRows<Client>((c, from, to) =>
           c
             .from("clients")
-            .select("id, code, name, project_name, address, contact_person, phone, active, contract, created_at")
+            .select(
+              "id, code, name, project_name, address, contact_person, phone, active, contract, created_at, ewa_admin_fee_per_request",
+            )
             .order("name")
             .range(from, to),
         ),
@@ -407,6 +417,7 @@ function ClientModal({
     phone: initial?.phone ?? "",
     active: initial?.active ?? true,
     contract: initial?.contract ?? "",
+    ewa_admin_fee_per_request: initial?.ewa_admin_fee_per_request ?? 0,
   });
   const [saving, setSaving] = useState(false);
 
@@ -420,10 +431,11 @@ function ClientModal({
       contact_person: form.contact_person || null,
       phone: form.phone || null,
       contract: form.contract || null,
+      ewa_admin_fee_per_request: form.ewa_admin_fee_per_request || 0,
     };
     const { error } = initial
-      ? await supabase.from("clients").update(payload).eq("id", initial.id)
-      : await supabase.from("clients").insert(payload);
+      ? await (supabase as any).from("clients").update(payload).eq("id", initial.id)
+      : await (supabase as any).from("clients").insert(payload);
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success("Tersimpan");
@@ -460,7 +472,9 @@ function ClientModal({
         {tab === "info" ? (
           <>
             <div className="space-y-3 text-sm">
-              {(["code", "name", "project_name", "address", "contact_person", "phone"] as const).map((f) => (
+              {(
+                ["code", "name", "project_name", "address", "contact_person", "phone"] as const
+              ).map((f) => (
                 <div key={f}>
                   <label className="text-xs text-muted-foreground font-medium capitalize">
                     {f.replace(/_/g, " ")}
@@ -468,12 +482,15 @@ function ClientModal({
                   <input
                     value={(form as any)[f]}
                     onChange={(e) => setForm({ ...form, [f]: e.target.value })}
-                    placeholder={f === "project_name" ? "Kosongkan buat pakai nama client di atas" : undefined}
+                    placeholder={
+                      f === "project_name" ? "Kosongkan buat pakai nama client di atas" : undefined
+                    }
                     className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
                   />
                   {f === "project_name" && (
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Nama pendek buat judul pengajuan Spend Control — biar gak kepanjangan kena limit karakter kalau nama client-nya panjang.
+                      Nama pendek buat judul pengajuan Spend Control — biar gak kepanjangan kena
+                      limit karakter kalau nama client-nya panjang.
                     </p>
                   )}
                 </div>
@@ -489,6 +506,28 @@ function ClientModal({
                   <option value="DPI">PT DPI</option>
                   <option value="DEI">PT DEI</option>
                 </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground font-medium">
+                  Biaya Admin EWA / Pengajuan
+                </label>
+                <input
+                  inputMode="numeric"
+                  value={
+                    form.ewa_admin_fee_per_request
+                      ? formatRupiah(form.ewa_admin_fee_per_request)
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setForm({ ...form, ewa_admin_fee_per_request: parseRupiah(e.target.value) })
+                  }
+                  placeholder="Rp0 — kosongkan kalau client ini gak pakai EWA"
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Dipotong otomatis per rider = rate ini × jumlah pengajuan EWA periode itu, beda
+                  dari pokok pencairan EWA.
+                </p>
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <input

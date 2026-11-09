@@ -9,6 +9,7 @@ import type { DeliveryRow, AttendanceLogRow } from "./pricing-calc";
 import type { PricingScheme } from "./pricing-types";
 import { normalize } from "./pricing-store";
 import { fetchMolisRevenueCost } from "./molis-cost";
+import { fetchIncentiveCostByClient } from "./incentive-cost";
 import { sendSlackMessage } from "./notify/slack.server";
 import { sendEmail } from "./notify/email.server";
 
@@ -156,6 +157,7 @@ export async function runWeeklyPnlPush(opts: {
     { data: schemesRaw, error: schemesErr },
     { data: clientsRaw, error: clientsErr },
     molisCost,
+    incentiveCost,
   ] = await Promise.all([
     fetchAllRowsAdmin<DeliveryRow & { client_id: string | null }>(admin, (c, from, to) =>
       (c as any)
@@ -187,6 +189,7 @@ export async function runWeeklyPnlPush(opts: {
     // Margin Analytics (admin.pnl-dashboard.tsx) udah masukin ini ke computePnl,
     // tapi job mingguan ini dulu enggak, jadi cost-nya ke-bawah-hitung tiap minggu.
     fetchMolisRevenueCost(weekStart, weekEnd, admin as any),
+    fetchIncentiveCostByClient(weekStart, weekEnd, admin as any),
   ]);
   // pricing_schemes/clients gagal fetch dulu diam-diam jadi array kosong (data
   // null ?? []) — delivery/attendance di atas udah fail-fast lewat
@@ -211,6 +214,7 @@ export async function runWeeklyPnlPush(opts: {
     attendance,
     molisCost,
     weekEnd,
+    incentiveCost,
   );
 
   const slackResult = await sendSlackMessage(buildSlackText(weekStart, weekEnd, perClient));

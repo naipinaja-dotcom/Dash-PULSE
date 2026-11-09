@@ -179,6 +179,9 @@ export function computePnl(
   // pickPricingScheme) — default hari ini, TAPI caller yang ngitung periode
   // historis (mis. Weekly PNL Push) wajib kirim akhir periode laporannya.
   asOfDate?: string,
+  // Insentif tambahan di luar skema (lihat incentive-cost.ts) — duit beneran
+  // keluar ke rider, harus ikut ngurangin margin client, sama kayak molisCost.
+  incentiveCostByClient: Map<string, number> = new Map(),
 ): PnlResult {
   const byClient = new Map<string, DeliveryRow[]>();
   for (const r of rows) {
@@ -200,6 +203,7 @@ export function computePnl(
     ...byClient.keys(),
     ...attByClient.keys(),
     ...molisCostByClient.keys(),
+    ...incentiveCostByClient.keys(),
   ]);
 
   const nameOf = new Map(clients.map((c) => [c.id, c.name]));
@@ -238,7 +242,10 @@ export function computePnl(
         ? revResult?.perRow.map((r) => r.fee)
         : undefined;
     const costResult = calcForScheme(riderCandidates, cid, crows, cattendance, clientRevenueByRow);
-    const cost = (costResult?.grandTotal ?? 0) + (molisCostByClient.get(cid) ?? 0);
+    const cost =
+      (costResult?.grandTotal ?? 0) +
+      (molisCostByClient.get(cid) ?? 0) +
+      (incentiveCostByClient.get(cid) ?? 0);
     const revenue = revResult ? revResult.grandTotal : null;
     const margin = revenue === null ? null : revenue - cost;
     const marginPct = revenue && revenue > 0 && margin !== null ? (margin / revenue) * 100 : null;
